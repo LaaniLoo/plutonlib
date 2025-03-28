@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"] #, "hatch-vcs"
+build-backend = "hatchling.build"
+
+[project]
+name = "pluto_py_tools"
+version = "0.01"
+# dynamic = ["version"]
+description = ""
+readme = "README.md"
+license = "GPL-3.0"
+authors = [
+    { name = "Alain Mackay", email = "alain.x.mackay@gmail.com" },
+]
+keywords = [
+    "astrophsyics",
+    "pluto",
+]
+dependencies = [
+    "plutokore",
+    "astropy",
+    "contextlib2",
+    "future",
+
+    "ipython",
+    "matplotlib",
+    "numba",
+    "numpy",
+    "pyyaml",
+    "scipy",
+]
+
+[project.urls]
+Homepage = "https://github.com/LaaniLoo/plutonlib"
+
+# [tool.hatch.version]
+# source = "vcs"
+
+# [tool.hatch.build.hooks.vcs]
+# version-file = "src/plutokore/_version.py"
+
+# [tool.hatch.envs.hatch-test]
+# extra-dependencies = [
+#     "pytest-datafiles",
+# ]
