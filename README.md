@@ -1,24 +1,25 @@
 
 # Features:
-
+* Get data from PLUTO simulations (through the use of plutokore)
+* Plot 2D and 3D colour maps, 1D slice plots across all simulation files
+* Find peaks for a variable of interest
 
 # Requirements
+See `pyproject.toml`.
 
-The requirements should be handled automatically if installing from the pip package manager. They are listed in `pyproject.toml`.
+# Installing
 
-For installing manually, the requirements are as follows:
+## pip package manager (recommended)
 
-* numpy
-* astropy
-* matplotlib
-* tabulate
-* contextlib2
-* h5py
-* pyyaml
-* scipy
-<!-- * numba (for speedy for loops)
-* future (for Python 2 compatibility)
-* jupyter (for some interactive things)
-* pytest (for tests)
-* pytest-runner (for tests) -->
+Can be installed by cloning the git repo and navigating to it, then installed using the following command.
 
+```
+pip install .
+```
+
+You can also use an "editable" install (any changes you make to files under `src/plutonlib` are visible without having to re-install the package) by passing the `-e` flag to `pip install`.
+
+# Module overview
+
+* `p_utils` - Simple setup functions to load the PLUTO_DIR var as well as set up a save environment
+* `p_funcs` - loads all sim data, can plot and find peaks

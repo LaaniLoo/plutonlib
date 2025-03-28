@@ -1,11 +1,13 @@
 import plutonlib.p_utils as pu
 # save_dir = pu.setup_dir()
 save_dir = pu.save_dir
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import plutokore as pk
+
+import plutokore.io as pk_io
+from plutokore.simulations import get_output_count as pk_sim_count
+
 import matplotlib as mpl
 from astropy import units as u
 from collections import defaultdict 
@@ -62,12 +64,12 @@ def pluto_loader(sim_type, run_name, profile_choice):
     wdir = os.path.join(plutodir, "Simulations", sim_type, run_name)
 
     #NOTE USE FOR LAST OUTPUT ONLY
-    nlinf = pk.io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
-    n_outputs = pk.simulations.get_output_count(wdir) # grabs number of data output files, might need datatype
+    nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
+    n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
     # D = pk.io.pload(nlinf["nlast"], w_dir=wdir)
 
     # Load all available data files, change d_all from 0,1 for 0th output NOTE excludes 0th
-    d_all = {f"data_{output}": pk.io.pload(output, w_dir=wdir) for output in range(0,n_outputs + 1)} # Loads all available data files
+    d_all = {f"data_{output}": pk_io.pload(output, w_dir=wdir) for output in range(0,n_outputs + 1)} # Loads all available data files
     d_files = list(d_all.keys()) # list of data files as keys
     # print("Loaded files:",d_files) 
 
