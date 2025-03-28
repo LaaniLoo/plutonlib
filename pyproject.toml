@@ -18,7 +18,6 @@ keywords = [
 ]
 
 dependencies = [
-    "plutokore", 
     "astropy",
     "contextlib2",
     "future",
