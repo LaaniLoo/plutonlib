@@ -16,18 +16,38 @@ keywords = [
     "astrophsyics",
     "pluto",
 ]
-dependencies = [
-    "plutokore",
-    "astropy",
-    "contextlib2",
-    "future",
-    "ipython",
-    "matplotlib",
-    "numba",
-    "numpy",
-    "pyyaml",
-    "scipy",
-]
+# dependencies = [
+#     "plutokore" 
+#     "astropy",
+#     "contextlib2",
+#     "future",
+#     "h5py",
+#     "hdf5plugin",
+#     "ipython",
+#     "matplotlib",
+#     "numba",
+#     "numpy",
+#     "pyyaml",
+#     "scipy",
+#     "tabulate",
+#     "yt",
+# ]
+
+[project.dependencies]
+plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" }
+astropy
+contextlib2
+future
+h5py
+hdf5plugin
+python
+matplotlib
+numba
+numpy
+pyyaml
+scipy
+tabulate
+yt
 
 [project.urls]
 Homepage = "https://github.com/LaaniLoo/plutonlib"
