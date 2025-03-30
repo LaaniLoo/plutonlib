@@ -29,11 +29,13 @@ def choose_directory(start_dir):
         subdirectories = list_subdirectories(current_dir)
 
         if not subdirectories:
+            print('\n')
             print(f"No subdirectories found in {current_dir}.")
             break
 
         # sleep(0.5)
-        print(f"\nCurrent directory: {current_dir}")
+        print(f"Current directory: {current_dir}")
+        print('\n')
         sys.stdout.flush()
         print("Subdirectories:")
 
@@ -59,38 +61,15 @@ def choose_directory(start_dir):
     
     return current_dir
 
-def select_profile(profiles):
-    keys = list(profiles.keys())
-    # sleep(0.5)
-    print("Available profiles:")
-    for i, profile in enumerate(profiles):
-        print(f"{i}: {profile}, {profiles[profile]}")
-        sys.stdout.flush()
-
-    while True:
-        choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
-        if choice.lower() == "q":
-            print("Selection cancelled.")
-            return None  # Return None if the user quits
-
-        if choice.isdigit():
-            choice = int(choice)
-
-            if 0 <= int(choice) < len(profiles):
-                return keys[choice]
-            else:
-                print(f"Invalid choice. Please enter a number between 0 and {len(profiles) - 1}.")
-        else:
-            print("Invalid input. Please enter a valid number or 'q' to quit.")
-
-def setup_dir():
+def setup_dir(start_dir):
     # SETTING DIR
     # Specify the initial directory to start navigation
-    start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/"
+    # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/"
 
     # Let the user select the directory (printing of subdirectories is handled inside the function)
     save_dir = choose_directory(start_dir)
+
     print(f"Final selected directory: {save_dir}")
 
     return save_dir
-save_dir = setup_dir()
+

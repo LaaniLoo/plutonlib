@@ -21,5 +21,14 @@ You can also use an "editable" install (any changes you make to files under `src
 
 # Module overview
 
-* `p_utils` - Simple setup functions to load the PLUTO_DIR var as well as set up a save environment
-* `p_funcs` - loads all sim data, can plot and find peaks
+* `utils` 
+  * Simple setup functions to load/list directories for saving  
+* `load`
+  * loads all sim data, can convert all data to SI units, functions to load different variable profiles
+  * Can output sim info, vars etc
+* `config`
+  * Used to store the `start_dir` variable which is the starting location for a save point, e.g. navigating outside WSL or to a different drive, 
+  * load the PLUTO_DIR env var 
+  * contains set profiles and coord systems used by `load`
+* `plot`
+  * can plot 2D/3D colour maps, 1D slices for any variable profile or .dbl data file, can also find max values/graphical peaks
