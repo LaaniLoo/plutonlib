@@ -10,139 +10,96 @@ import inspect
 
 save_dir = pu.setup_dir(pc.start_dir) #set the save dir using the setup function and start location found in config
 
-class PlotData:
-    """First attempt at using a class to load and access all plot data"""
-    def __init__(self, sim_type = None, run = None, profile_choice = None, **kwargs):
-        self.sim_type = sim_type
-        self.run = run
-        self.profile_choice = profile_choice
+def cmap_base(profile_choice, sim_type, run,vars, var_choice, ax, fig): #TODO USE PLUTO LOADER TO GET RID OF ALL INPUTS
 
-        self.d_files = None
-        self.vars = None
-        self.var_choice = None 
-
-        self.fig = None
-        self.axes = None
-
-        self.extras = None #storing plot_extras() data
-        self.conv_data = None 
-        self.__dict__.update(kwargs)
-
-
-def cmap_base(pdata = None, **kwargs):
     called_func = inspect.stack()[1].function #finds which function is calling c_map base
 
-    if pdata is None:
-        pdata = PlotData(**kwargs)
-    
-    extras = plot_extras(pdata=pdata)
-
-    idx = kwargs.get('ax_idx',0) #gets the plot index as a kwarg
-    ax = pdata.axes[idx]
-
-    plot_vars = pdata.var_choice[2:]
-    
+    extras_data = plot_extras(profile_choice, sim_type, run) 
+    c_maps = extras_data["c_maps"]
+    cbar_labels = extras_data["cbar_labels"]
+    # Get just the variables to plot (skip coordinates x1 and x2)
+    plot_vars = var_choice[2:]
 
     for i, var_name in enumerate(plot_vars):
-        if var_name not in pdata.vars:
+
+        if var_name not in vars:
             print(f"Warning: Variable {var_name} not found in data, skipping")
             continue
 
-        if called_func == "plot_cmap_3d":
-            # Handle 3D data by taking first slice #TODO Handle 3D 
-            if pdata.vars[var_name].ndim == 3:
-                dim = pdata.vars[var_name].shape
-                slice = dim[2]//2
-                pdata.vars[var_name] = pdata.vars[var_name][:,:,slice]  # gives a 2D array
+
+        # Handle 3D data by taking first slice #TODO Handle 3D 
+        # if vars[var_name].ndim == 3:
+        #     dim = vars[var_name].shape
+        #     slice = dim[2]//2
+        #     vars[var_name] = vars[var_name][:,:,slice]  # gives a 2D array
 
 
-                is_log = var_name in ('rho', 'prs')
-                vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+        #     is_log = var_name in ('rho', 'prs')
+        #     vars_data = np.log10(vars[var_name].T) if is_log else vars[var_name].T
 
-                
+            
 
-                im = ax.pcolormesh(pdata.vars[pdata.var_choice[0]], pdata.vars[pdata.var_choice[1]], vars_data, cmap=extras["c_maps"][i])
+        #     im = ax.pcolormesh(vars[var_choice[0]], vars[var_choice[1]], vars_data, cmap=c_maps[i])
 
-                cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-                cbar.set_label(f"Log10({extras["cbar_labels"][i]})" if is_log else extras["cbar_labels"][i], fontsize=14)
+        #     cbar = fig.colorbar(im, ax=ax, fraction=0.050, pad=0.25)
+        #     cbar.set_label(f"Log10({cbar_labels[i]})" if is_log else cbar_labels[i], fontsize=14)
 
+
+        # else:
 
         if called_func == "plot_jet_profile":
             # Apply log scale if density or pressure
             is_log = var_name in ('rho', 'prs')
-            vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+            vars_data = np.log10(vars[var_name].T) if is_log else vars[var_name].T
             
             # Determine plot side and colormap
             if i % 2 == 0:  # Even index vars on right
-                im = ax.pcolormesh(pdata.vars[pdata.var_choice[0]], pdata.vars[pdata.var_choice[1]], vars_data, cmap=extras["c_maps"][i])
+                im = ax.pcolormesh(vars[var_choice[0]], vars[var_choice[1]], vars_data, cmap=c_maps[i])
             else:           # Odd index vars on left (flipped)
-                im = ax.pcolormesh(-1 * pdata.vars[pdata.var_choice[0]], pdata.vars[pdata.var_choice[1]], vars_data, cmap=extras["c_maps"][i])
+                im = ax.pcolormesh(-1 * vars[var_choice[0]], vars[var_choice[1]], vars_data, cmap=c_maps[i])
             
             # Add colorbar with appropriate label
-            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
+            cbar = fig.colorbar(im, ax=ax, fraction=0.050, pad=0.25)
             cbar.set_label(
-                f"Log10({extras["cbar_labels"][i]})" if is_log else extras["cbar_labels"][i],
+                f"Log10({cbar_labels[i]})" if is_log else cbar_labels[i],
                 fontsize=14
             )
 
-def subplot_base(d_files = None, pdata = None): #sets base subplots determined by number of data_files
-
-    if pdata is None:
-        pdata = PlotData()
-
-    pdata.d_files = d_files = d_files if d_files is not None else pdata.d_files
-
-    # Validate we have files to plot
-    if not pdata.d_files:
-        raise ValueError("No data files provided (d_files is empty)")
-
-    n_files = len(pdata.d_files) 
+def subplot_base(d_files): #sets base subplots determined by number of data_files
+    n_files = len(d_files) 
     cols = 3 
     # rows = (n_files + cols - 1) // cols
     rows = max(1, (n_files + cols - 1) // cols)  # Ensure at least 1 row
 
     figsize_width = min(7 * cols, 21)  # Cap maximum width
     figsize_height = 7 * rows
-
-    pdata.fig, axes = plt.subplots(rows, cols, figsize=(figsize_width, figsize_height),constrained_layout = True) #NOTE CHANGE HERE
-
-    # plt.subplots(rows, cols, figsize=(7 * cols, 7 * rows))
+    fig, axes = plt.subplots(rows, cols, figsize=(figsize_width, figsize_height))
     # fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 7 * rows))
 
-    # pdata.fig.subplots_adjust(wspace=0.3, hspace=0.3)
-    pdata.axes = axes.flatten()
+    fig.subplots_adjust(wspace=0.3, hspace=0.3)
+    axes = axes.flatten()
 
     # Hide unused subplots
-    for i in range(n_files, len(pdata.axes)):  
-        pdata.fig.delaxes(pdata.axes[i])  
+    for i in range(n_files, len(axes)):  
+        fig.delaxes(axes[i])  
 
-    return pdata.axes, pdata.fig
+    return axes, fig
 
-def plot_save(pdata=None, **kwargs):
-    """Save plot with PlotData or legacy params."""
-    if pdata is None:
-        pdata = PlotData(**kwargs)
-    
-    if not pdata.fig:
-        raise ValueError("No figure to save")
-
-    save = input(f"Save plot for {pdata.run}? [1/0]: ")
+def plot_save(run,sim_type,profile_choice):
+    save = input(f"Save grouped plot for {run}? 1 = Yes, 0 = No")
     if save == "1":
-        filename = f"{save_dir}/{pdata.sim_type}_{pdata.run}_plot.png"
-        pdata.fig.savefig(filename, bbox_inches='tight')
-        print(f"Saved to {filename}")
+        plt.savefig(f"{save_dir}/{sim_type}_{run}_Grouped_Prof_{profile_choice}.png", bbox_inches = "tight") #NOTE bbox_inches fixes plotting deleted subplots
+        print(f"Saved to {save_dir}/{sim_type}_{run}_Grouped_Prof_{profile_choice}.png")
+    # plt.show()
 
-def plot_label(pdata=None,idx= 0,d_file = None,**kwargs):
-    if pdata is None:
-        pdata = PlotData(**kwargs)
+def plot_label(profile_choice,sim_type,run,axes,idx,d_file):
+    extras_data = plot_extras(profile_choice, sim_type, run)
 
-    extras_data = plot_extras(pdata=pdata)
-
-    # labels = extras_data["labels"]
+    labels = extras_data["labels"]
     xy_labels = extras_data["xy_labels"]
     title = extras_data["title_other"][0]
 
-    ax = pdata.axes[idx]
+    ax = axes[idx]
     ax.set_aspect("equal")
     ax.set_title(f"{title}, ({d_file})")
 
@@ -151,7 +108,7 @@ def plot_label(pdata=None,idx= 0,d_file = None,**kwargs):
 
     return ax
 
-def plot_extras(pdata = None, **kwargs):
+def plot_extras(profile_choice, sim_type, run_name, **kwargs):
     """
     Adds extra plotting functions for plotting Pluto simulations.
 
@@ -178,18 +135,7 @@ def plot_extras(pdata = None, **kwargs):
         - cbar_labels: list of str
         - labels: list of str
     """
-
-    if pdata is None:
-        pdata = PlotData(**kwargs)
-
-    if pdata.extras is not None:
-        return pdata.extras
-
-    
-
     cbar_labels = []
-    c_map_names = []
-    c_maps = []
     labels = []
     coord_labels = []
     xy_labels = []
@@ -201,40 +147,41 @@ def plot_extras(pdata = None, **kwargs):
     # nlinf = loaded_data["nlinf"]
     # print("Last timestep info:", nlinf)
 
-    conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
+    conv_data = pl.pluto_conv(sim_type, run_name, profile_choice)
     vars = conv_data["vars_si"]
-    pdata.var_choice = conv_data["var_choice"]
+    var_choice = conv_data["var_choice"]
     CGS_code_units = conv_data["CGS_code_units"]
+    c_map_names = []
 
-    for var_name in pdata.var_choice[0:2]: #assigning x,y,z etc labels
+    for var_name in var_choice[0:2]: #assigning x,y,z etc labels
         coord_labels.append(CGS_code_units[var_name][4])
         xy_labels.append(f"{CGS_code_units[var_name][4]} [{CGS_code_units[var_name][2]}]")  
 
-    for var_name in pdata.var_choice[2:4]: #assigning cbar and title labs from rho prs etc
+    for var_name in var_choice[2:4]: #assigning cbar and title labs from rho prs etc
         cbar_labels.append(CGS_code_units[var_name][3]+ " " + f"[{(CGS_code_units[var_name][2]).to_string('latex')}]")
         labels.append(CGS_code_units[var_name][3])
 
-    title_other.append(f"{pdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run})")
+    title_other.append(f"{sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({run_name})")
     
 
-    if "vel" in pdata.profile_choice.lower(): #velocity profiles have different colour maps if profile_choice % 2 == 0:
+    if "vel" in profile_choice.lower(): #velocity profiles have different colour maps if profile_choice % 2 == 0:
         # c_map_names = ['inferno','viridis']
         c_map_names = ["inferno", "hot"]
 
-    elif "rho" in pdata.profile_choice.lower(): #dens/prs profiles have different colour maps
+    elif "rho" in profile_choice.lower(): #dens/prs profiles have different colour maps
         # c_map_names = ["inferno", "hot"]
         c_map_names = ['inferno','viridis']
 
 
     #assigning colour maps
+    c_maps = []
     for i in range(len(c_map_names)):
         c_maps.append(mpl.colormaps[c_map_names[i]]) #https://matplotlib.org/stable/users/explain/colors/colormaps.html
 
-    pdata.extras = {"c_maps": c_maps, "cbar_labels": cbar_labels, "labels": labels, "coord_labels": coord_labels, "xy_labels": xy_labels, "title_other": title_other}
-        
-    return pdata.extras
+    return {"c_maps": c_maps, "cbar_labels": cbar_labels, "labels": labels, 
+            "coord_labels": coord_labels, "xy_labels": xy_labels, "title_other": title_other} #"f": f, "a": a,
 
-def plot_jet_profile(sel_runs = None,sel_d_files=None,pdata = None, **kwargs):
+def plot_jet_profile(sim_type = "Jet",sel_runs = None,sel_d_files=None, **kwargs): #TODO Fix grouped, might remove as done by _all_data #plots progession of data files as grouped cmap
     """
     Plots colour maps of selected variables from Pluto simulations.
     Can plot either grouped subplots or individual plots based on the `grouped` parameter.
@@ -258,71 +205,127 @@ def plot_jet_profile(sel_runs = None,sel_d_files=None,pdata = None, **kwargs):
     --------
     None
     """
-    if pdata is None:
-        pdata = PlotData(sim_type="Jet",**kwargs)
-
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-
-    run_data = pl.pluto_load_profile(pdata.sim_type, sel_runs)
-    run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
-
-
-    for run in run_names:  # Loop over each run
-
-        pdata.run = run
-        pdata.profile_choice = profile_choices[run][0]
-
-        loaded_data = pl.pluto_loader(pdata.sim_type, run, pdata.profile_choice)
-        pdata.var_choice = loaded_data["var_choice"]
-
-        pdata.d_files = loaded_data['d_files'] if sel_d_files is None else sel_d_files #load all or specific d_file
-
-        pdata.axes, pdata.fig = subplot_base(pdata=pdata)
-
-        for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
-
-            conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
-            pdata.vars = conv_data["vars_si"][d_file]  # List which data file to plot
-
-            plot_label(pdata,idx,d_file)
-
-            cmap_base(pdata, ax_idx = idx) #puts current plot axis into camp_base
-
-        plot_save(pdata) # make sure is under run_names so that it saves multiple runs
-
-def plot_cmap_3d(sim_type,sel_d_files = None,sel_runs = None,pdata = None, **kwargs): #NOTE takes multiple d_files
-
-    if pdata is None:
-        pdata = PlotData(sim_type=sim_type,**kwargs)
-
-    sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-
 
     run_data = pl.pluto_load_profile(sim_type, sel_runs)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
 
+
+    for run in run_names:  # Loop over each run
+        profile_choice = profile_choices[run][0] #NOTE sus of 0 index
+        loaded_data = pl.pluto_loader(sim_type, run, profile_choice)
+        var_choice = loaded_data["var_choice"]
+
+        d_files = loaded_data['d_files'] if sel_d_files is None else sel_d_files #load all or specific d_file
+        axes,fig = subplot_base(d_files)
+
+        for idx, d_file in enumerate(d_files):  # Loop over each data file
+            conv_data = pl.pluto_conv(sim_type, run, profile_choice)
+            vars = conv_data["vars_si"][d_file]  # List which data file to plot
+
+            ax = plot_label(profile_choice,sim_type,run,axes,idx,d_file) #gets ax from plot_label
+            cmap_base(profile_choice, sim_type, run,vars, var_choice, ax, fig) #assigns cmap data
+
+    plot_save(run,sim_type,profile_choice)
+
+def plot_cmap_3d(sim_type,d_files,sel_runs = None, **kwargs): #NOTE takes multiple d_files
+
+    run_data = pl.pluto_load_profile(sim_type, sel_runs)
+    run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
+
+    # num_vars = len(pl.pluto_conv(sim_type, run_names[0], profile_choices[run_names[0]][0])["vars_si"][d_files[0]]) - 2 #TODO This is a hard watch, loads a default config to find the number of vars
+    # n_plots = len(run_names) * len(d_files) * num_vars  # Total number of subplots
+
+    # cols = 3
+    # rows = (n_plots + cols - 1) // cols  # Compute rows needed
+
+    # # Create figure and axes for grouped plots
+    # fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 7 * rows))
+    # fig.subplots_adjust(wspace=0.4, hspace=0.3)
+    # axes = axes.flatten()  # Flatten in case of multi-dimensional array
+
+    axes,fig = subplot_base(d_files)
+
+    plot_idx = 0  # Keep track of which subplot index we are using
+
     for run in run_names:
-        
-        pdata.run = run
-        pdata.profile_choice = profile_choices[run][0]
+        for d_file in d_files:
+            profile_choice = profile_choices[run][0]
 
-        loaded_data = pl.pluto_loader(pdata.sim_type, run, pdata.profile_choice)
-        pdata.var_choice = loaded_data["var_choice"]
+            loaded_data = pl.pluto_loader(sim_type, run, profile_choice)
+            var_choice = loaded_data["var_choice"]
 
-        pdata.d_files = loaded_data['d_files'] if sel_d_files is None else sel_d_files #load all or specific d_file
+            conv_data = pl.pluto_conv(sim_type, run, profile_choice)
+            vars = conv_data["vars_si"][d_file]
+            CGS_code_units = conv_data["CGS_code_units"]
 
-        pdata.axes, pdata.fig = subplot_base(pdata=pdata)
+            extras_data = plot_extras(profile_choice, sim_type, run, t=1, **kwargs)
+            c_maps = extras_data["c_maps"]
+            cbar_labels = extras_data["cbar_labels"]
+            labels = extras_data["labels"]
+            coord_labels = extras_data["coord_labels"]
+            xy_labels = extras_data["xy_labels"]
 
-        for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+            # Get just the variables to plot (skip coordinates x1 and x2)
+            plot_vars = var_choice[2:]
+            # num_vars = len(plot_vars)
 
-            conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
-            pdata.vars = conv_data["vars_si"][d_file]  # List which data file to plot
+            for i, var_name in enumerate(plot_vars):
+                if plot_idx >= len(axes):  # Avoid out-of-bounds errors
+                    print(f"Breaking early at plot_idx={plot_idx} out of {len(axes)}")
+                    break
+                    
+                ax = axes[plot_idx]
+                plot_idx += 1
 
-            plot_label(pdata,idx,d_file)
+                ax.set_aspect("equal")
+                ax.set_title(f"{sim_type} {labels[i]} ({run}, {d_file})")
+                ax.set_xlabel(xy_labels[0])
+                ax.set_ylabel(xy_labels[1])
 
-            cmap_base(pdata, ax_idx = idx) #puts current plot axis into camp_base
+                # Handle 3D data by taking first slice
+                dim = vars[var_name].shape
+                slice = dim[2]//2
+                if vars[var_name].ndim == 3:
+                    vars[var_name] = vars[var_name][:,:,slice]  # gives a 2D array
 
-        plot_save(pdata) # make sure is under run_names so that it saves multiple runs
+                # Apply log scale if variable is density or pressure
+                is_log = var_name in ('rho', 'prs')
+                vars_data = np.log10(vars[var_name].T) if is_log else vars[var_name].T
+
+                # Plot on right (even index) or left (odd index)
+                if i % 2 == 0:
+                    im = ax.pcolormesh(vars[var_choice[0]], vars[var_choice[1]], vars_data, cmap=c_maps[i])
+                    if 'xlim' in kwargs: # xlim kwarg to change x limits
+                        ax.set_xlim(kwargs['xlim'])
+                    if 'ylim' in kwargs: # xlim kwarg to change x limits
+                        ax.set_ylim(kwargs['ylim']) 
+                else:
+                    im = ax.pcolormesh(-1 * vars[var_choice[0]], vars[var_choice[1]], vars_data, cmap=c_maps[i])
+                    if 'xlim' in kwargs: # xlim kwarg to change x limits
+                        ax.set_xlim(kwargs['xlim']) 
+                    if 'ylim' in kwargs: # xlim kwarg to change x limits
+                        ax.set_ylim(kwargs['ylim'])
+
+
+                # Add colorbar with appropriate label
+                cbar = fig.colorbar(im, ax=ax, fraction=0.050, pad=0.1)
+                cbar.set_label(
+                    f"Log10({cbar_labels[i]})" if is_log else cbar_labels[i],
+                    fontsize=14
+                )
+    # # Remove unused axes
+    # for j in range(plot_idx, len(axes)):
+    #     fig.delaxes(axes[j])
+
+    # save = input("Save grouped plot? 1 = Yes, 0 = No")
+    # if save == "1":
+    #     plt.savefig(f"{save_dir}/{sim_type}_Grouped_Prof_{profile_choice}.png")
+    #     print(f"Saved to {save_dir}/{sim_type}_Grouped_Prof_{profile_choice}.png")
+
+    # plt.show()
+
+    plot_save(run,sim_type,profile_choice)
 
 def plotter(sim_type, run_name, coords, sel_vars,sel_d_file = None,**kwargs):#NOTE use over plot_lines
     """
@@ -618,3 +621,12 @@ def peak_findr(sim_type, run_name, coords, sel_vars,**kwargs): #TODO FIX USE SCI
 
     return {"coord_peaks": coord_peaks, "var_peaks": var_peaks, "peak_inds": peak_inds}
 
+# def grouped_init(grouped):
+#     # Setting parameters if plotting grouped
+#     if grouped:
+#         n_runs = len(run_names)
+#         cols = 3
+#         rows = (n_runs + cols - 1) // cols
+#         fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 7 * rows))
+#         fig.subplots_adjust(wspace=0.3, hspace=0.3)
+#         axes = axes.flatten()
