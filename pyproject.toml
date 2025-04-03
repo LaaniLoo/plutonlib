@@ -36,6 +36,14 @@ dependencies = [
 [tool.hatch.dependencies]
 plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" }
 
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version = "0.1.1"
+update_changelog_on_bump = true
+major_version_zero = true
 [project.urls]
 Homepage = "https://github.com/LaaniLoo/plutonlib"
 

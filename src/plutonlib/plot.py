@@ -34,20 +34,17 @@ class PlotData:
         self.__dict__.update(kwargs)
 
 def subplot_base(d_files = None, pdata = None): #sets base subplots determined by number of data_files
-    called_func = inspect.stack()[1].function #finds which function is calling c_map base
-
-
     if pdata is None:
         pdata = PlotData()
 
     pdata.d_files = d_files = d_files if d_files is not None else pdata.d_files
-
+    sim_type = pdata.sim_type
     # Validate we have files to plot
     if not pdata.d_files:
         raise ValueError("No data files provided (d_files is empty)")
 
     plot_vars = pdata.var_choice[2:]
-    n_plots = len(pdata.d_files) if called_func == "plot_jet_profile" else len(pdata.d_files)*len(plot_vars)
+    n_plots = len(pdata.d_files) if sim_type in ("Jet") else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
     cols = 3 
     rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
 
@@ -121,33 +118,6 @@ def cmap_base(pdata = None, **kwargs):
                 f"Log10({extras["cbar_labels"][i]})" if is_log else extras["cbar_labels"][i],
                 fontsize=14
             )
-
-def subplot_base(d_files = None, pdata = None): #sets base subplots determined by number of data_files
-    if pdata is None:
-        pdata = PlotData()
-
-    pdata.d_files = d_files = d_files if d_files is not None else pdata.d_files
-    sim_type = pdata.sim_type
-    # Validate we have files to plot
-    if not pdata.d_files:
-        raise ValueError("No data files provided (d_files is empty)")
-
-    plot_vars = pdata.var_choice[2:]
-    n_plots = len(pdata.d_files) if sim_type in ("Jet") else len(pdata.d_files)*len(plot_vars)
-    cols = 3 
-    rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
-
-    figsize_width = min(7 * cols, 21)  # Cap maximum width
-    figsize_height = 7 * rows
-
-    pdata.fig, axes = plt.subplots(rows, cols, figsize=(figsize_width, figsize_height),constrained_layout = True) 
-    pdata.axes = axes.flatten() #note that axes is assigned to pdata when flattened
-
-    # Hide unused subplots
-    for i in range(n_plots, len(pdata.axes)):  
-        pdata.fig.delaxes(pdata.axes[i])  
-
-    return pdata.axes, pdata.fig
 
 def plot_extras(pdata = None, **kwargs):
     """
@@ -285,7 +255,7 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
         pdata.var_choice = loaded_data["var_choice"]
         pdata.d_files = loaded_data['d_files'] if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        pdata.axes, pdata.fig = subplot_base2(pdata=pdata)
+        pdata.axes, pdata.fig = subplot_base(pdata=pdata)
 
         if sim_type in ("Jet"):
             for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
@@ -295,7 +265,7 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
 
                 plot_label(pdata,idx,d_file)
 
-                cmap_base2(pdata, ax_idx = idx) #puts current plot axis into camp_base
+                cmap_base(pdata, ax_idx = idx) #puts current plot axis into camp_base
 
         if sim_type in ("Stellar_Wind"):
             plot_vars = pdata.var_choice[2:]
@@ -310,7 +280,7 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
                         break
                         
                     # Plot each variable in its own subplot
-                    cmap_base2(pdata, ax_idx=plot_idx, var_name=var_name)
+                    cmap_base(pdata, ax_idx=plot_idx, var_name=var_name)
                     plot_label(pdata, plot_idx, d_file)
                     plot_idx += 1
         
