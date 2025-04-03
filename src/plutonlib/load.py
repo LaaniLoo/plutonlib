@@ -120,7 +120,7 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
         "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
         "T": [1.203e02, (u.K), u.K, "Temperature"],
         # "t_s": [np.linspace(0,1.496e08,coord_shape), (u.s), u.s, "Time (Seconds)"],
-        "t_yr": [4.744e00, (u.yr), u.s, "Time"], #NOTE makes array of shape x2, possibly why its x2-like ha! "t_yr": [np.linspace(0,4.744e00,coord_shape), (u.yr), u.s, "Time"],
+        "t_yr": [4.744e00, (u.yr), u.s, "Time"], 
         # "t_yr": [np.linspace(0,4.744e00,coord_shape), (u.yr), u.s, "Time"], 
     }
 

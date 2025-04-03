@@ -1,0 +1,17 @@
+[changelog]
+header = "# Changelog"
+body = """
+## [{{version}}] - {{timestamp}}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits %}
+- {{ commit.message }} ([{{ commit.hash }}](https://github.com/LaaniLoo/plutonlib/commit/{{ commit.hash }}) )
+{% endfor %}
+{% endfor %}
+"""
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
