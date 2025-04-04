@@ -1,3 +1,9 @@
+## v0.2.1 (2025-04-04)
+
+### Fix
+
+- **Plotting**: fixed labeling of xy and titles
+
 ## v0.2.0 (2025-04-03)
 
 ### BREAKING CHANGE
