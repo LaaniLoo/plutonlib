@@ -17,10 +17,11 @@ save_dir = pu.setup_dir(pc.start_dir) #set the save dir using the setup function
 
 class PlotData:
     """First attempt at using a class to load and access all plot data"""
-    def __init__(self, sim_type = None, run = None, profile_choice = None, **kwargs):
+    def __init__(self, sim_type = None, run = None, profile_choice = None,d_file = None, **kwargs):
         self.sim_type = sim_type
         self.run = run
         self.profile_choice = profile_choice
+        self.d_file = d_file 
 
         self.d_files = None
         self.vars = None
@@ -33,7 +34,7 @@ class PlotData:
         self.conv_data = None #storing pluto_conv() data 
         self.__dict__.update(kwargs)
 
-def subplot_base(d_files = None, pdata = None): #sets base subplots determined by number of data_files
+def subplot_base(pdata = None,d_files = None): #sets base subplots determined by number of data_files
     if pdata is None:
         pdata = PlotData()
 
@@ -150,9 +151,8 @@ def plot_extras(pdata = None, **kwargs):
     if pdata is None:
         pdata = PlotData(**kwargs)
 
-    if pdata.extras is not None:
+    if pdata.extras and pdata.extras.get("_last_d_file") == pdata.d_file:
         return pdata.extras
-
     
 
     cbar_labels = []
@@ -163,27 +163,35 @@ def plot_extras(pdata = None, **kwargs):
     xy_labels = []
     title_other = []
 
-    # loaded_data = pluto_loader(sim_type, run_name, profile_choice)
-    # var_choice = loaded_data["var_choice"]
 
+    #Gets last timestep if req
     # nlinf = loaded_data["nlinf"]
     # print("Last timestep info:", nlinf)
 
     conv_data = pl.pluto_conv(pdata.sim_type, pdata.run,pdata.profile_choice ) 
-    vars = conv_data["vars_si"]
     pdata.var_choice = conv_data["var_choice"]
     CGS_code_units = conv_data["CGS_code_units"]
 
-    for var_name in pdata.var_choice[0:2]: #assigning x,y,z etc labels
+    #assigning x,y,z etc labels
+    for var_name in pdata.var_choice[0:2]: 
         coord_labels.append(CGS_code_units[var_name][4])
         xy_labels.append(f"{CGS_code_units[var_name][4]} [{CGS_code_units[var_name][2]}]")  
 
-    for var_name in pdata.var_choice[2:4]: #assigning cbar and title labs from rho prs etc
+    #assigning cbar and title labs from rho prs etc
+    for var_name in pdata.var_choice[2:4]: 
         cbar_labels.append(CGS_code_units[var_name][3]+ " " + f"[{(CGS_code_units[var_name][2]).to_string('latex')}]")
         labels.append(CGS_code_units[var_name][3])
 
-    title_other.append(f"{pdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run})")
-    
+    #assigning title if jet: two vars per subplot
+    if pdata.sim_type in ("Jet"):
+        title = f"{pdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
+        title_other.append(title)
+
+    #assigning title if other: one var per subplot
+    if pdata.sim_type in ("Stellar_Wind"):
+        title_L = f"{pdata.sim_type} {labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
+        title_R = f"{pdata.sim_type} {labels[1]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
+        title_other.append([title_L,title_R])
 
     if "vel" in pdata.profile_choice.lower(): #velocity profiles have different colour maps if profile_choice % 2 == 0:
         # c_map_names = ['inferno','viridis']
@@ -198,28 +206,42 @@ def plot_extras(pdata = None, **kwargs):
     for i in range(len(c_map_names)):
         c_maps.append(mpl.colormaps[c_map_names[i]]) #https://matplotlib.org/stable/users/explain/colors/colormaps.html
 
-    pdata.extras = {"c_maps": c_maps, "cbar_labels": cbar_labels, "labels": labels, "coord_labels": coord_labels, "xy_labels": xy_labels, "title_other": title_other}
+    pdata.extras = {
+        "c_maps": c_maps, 
+        "cbar_labels": cbar_labels, 
+        "labels": labels, 
+        "coord_labels": coord_labels, 
+        "xy_labels": xy_labels, 
+        "title_other": title_other,
+        "_last_d_file": pdata.d_file #saves last data file, used to regenerate pdata.extras if changes
+        }
         
     return pdata.extras
 
-def plot_label(pdata=None,idx= 0,d_file = None,**kwargs):
+def plot_label(pdata=None,idx= 0,**kwargs):
     if pdata is None:
         pdata = PlotData(**kwargs)
 
-    extras_data = plot_extras(pdata=pdata)
+    extras_data = plot_extras(pdata)
 
     # labels = extras_data["labels"]
     xy_labels = extras_data["xy_labels"]
     title = extras_data["title_other"][0]
 
-    ax = pdata.axes[idx]
-    ax.set_aspect("equal")
-    ax.set_title(f"{title}, ({d_file})")
+    # Plot suptitle, not sure if req
+    # fig = pdata.fig
+    # st = fig.suptitle("suptitle", fontsize="x-large")
 
+    ax = pdata.axes[idx] #get ax from PlotData class
+    ax.set_aspect("equal")
     ax.set_xlabel(xy_labels[0])
     ax.set_ylabel(xy_labels[1])   
 
-    return ax
+    if pdata.sim_type in ("Stellar_Wind"):
+        ax.set_title(f"{title[0]}") if idx % 2 == 0 else ax.set_title(f"{title[1]}")
+
+    else:
+        ax.set_title(f"{title}")
 
 def plot_save(pdata=None, **kwargs):
     if pdata is None:
@@ -257,23 +279,26 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
 
         pdata.axes, pdata.fig = subplot_base(pdata=pdata)
 
+        # Jet only needs to iterate  over d_file 
         if sim_type in ("Jet"):
             for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+                pdata.d_file = d_file
 
                 conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
-                pdata.vars = conv_data["vars_si"][d_file]  # List which data file to plot
+                pdata.vars = conv_data["vars_si"][pdata.d_file]  # List which data file to plot
 
-                plot_label(pdata,idx,d_file)
+                plot_label(pdata,idx)
+                cmap_base(ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
 
-                cmap_base(pdata, ax_idx = idx) #puts current plot axis into camp_base
-
+        # Stellar_Wind needs to iterate  over d_file and var name 
         if sim_type in ("Stellar_Wind"):
             plot_vars = pdata.var_choice[2:]
             plot_idx = 0
 
             for d_file in pdata.d_files:
+                pdata.d_file = d_file
                 conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
-                pdata.vars = conv_data["vars_si"][d_file]
+                pdata.vars = conv_data["vars_si"][pdata.d_file]
                 
                 for var_name in plot_vars:
                     if plot_idx >= len(pdata.axes):
@@ -281,7 +306,7 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
                         
                     # Plot each variable in its own subplot
                     cmap_base(pdata, ax_idx=plot_idx, var_name=var_name)
-                    plot_label(pdata, plot_idx, d_file)
+                    plot_label(pdata,plot_idx)
                     plot_idx += 1
         
         
