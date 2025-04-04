@@ -2,7 +2,7 @@
 
 ### Fix
 
-- **Plotting**: fixed labeling of xy and titles
+- **Plotting**: fixed labelling of xy and titles
 
 ## v0.2.0 (2025-04-03)
 
@@ -24,7 +24,7 @@
 
 ### Feat
 
-- added  PlotData class for easier plotting, fix: removed some plotting functions, now plot_cmap_2d -> plot_jet_profile
+- added PlotData class for easier plotting, fix: removed some plotting functions, now plot_cmap_2d -> plot_jet_profile
 
 ## v0.1.0 (2025-03-30)
 

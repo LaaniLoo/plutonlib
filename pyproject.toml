@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plutonlib"
-version = "0.2.0"
+version = "0.2.1"
 # dynamic = ["version"]
 description = ""
 readme = "README.md"
@@ -37,14 +37,6 @@ dependencies = [
 plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" }
 
 
-# [tool.commitizen]
-# name = "cz_conventional_commits"
-# tag_format = "v$version"
-# version_scheme = "pep440"
-# version = "0.1.1"
-# update_changelog_on_bump = true
-# major_version_zero = true
-
 [tool.commitizen]
 name = "cz_conventional_commits"
 version = "0.2.1"  # Must match [project] version
@@ -60,14 +52,7 @@ major_version_zero = true
 [project.urls]
 Homepage = "https://github.com/LaaniLoo/plutonlib"
 
-# [tool.hatch.version]
-# source = "vcs"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/plutonlib"]
-# [tool.hatch.build.hooks.vcs]
-# version-file = "src/plutokore/_version.py"
 
-# [tool.hatch.envs.hatch-test]
-# extra-dependencies = [
-#     "pytest-datafiles",
-# ]
