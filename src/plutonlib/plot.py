@@ -8,7 +8,8 @@ import scipy as sp
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-import inspect 
+import inspect
+import time
 
 from collections import defaultdict 
 
@@ -44,7 +45,13 @@ def subplot_base(pdata = None,d_files = None): #sets base subplots determined by
     if not pdata.d_files:
         raise ValueError("No data files provided (d_files is empty)")
 
-    plot_vars = pdata.var_choice[2:]
+    try: #only some funcs use var_choice hence try except
+        plot_vars = pdata.var_choice[2:]
+    except TypeError: #e.g. plotter()
+        print("No var_choice, setting plot_vars to None")
+        print("\n")
+        plot_vars = None
+
     n_plots = len(pdata.d_files) if sim_type in ("Jet") else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
     cols = 3 
     rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
@@ -258,18 +265,21 @@ def plot_save(pdata=None, **kwargs):
 
 
 
-def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
+def plot_sim(sim_type,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = None,**kwargs):
+
     if pdata is None:
         pdata = PlotData(sim_type=sim_type,**kwargs)
 
     sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
 
-    run_data = pl.pluto_load_profile(sim_type, sel_runs)
+
+    run_data = pl.pluto_load_profile(sim_type, sel_runs,sel_prof)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
 
+
+
     for run in run_names:
-        
         pdata.run = run
         pdata.profile_choice = profile_choices[run][0]
 
@@ -279,9 +289,10 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
 
         pdata.axes, pdata.fig = subplot_base(pdata=pdata)
 
-        # Jet only needs to iterate  over d_file 
+        # Jet only needs to iterate  over d_file
         if sim_type in ("Jet"):
             for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+
                 pdata.d_file = d_file
 
                 conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, pdata.profile_choice)
@@ -290,10 +301,11 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
                 plot_label(pdata,idx)
                 cmap_base(ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
 
+
         # Stellar_Wind needs to iterate  over d_file and var name 
         if sim_type in ("Stellar_Wind"):
             plot_vars = pdata.var_choice[2:]
-            plot_idx = 0
+            plot_idx = 0 #only way to index plot per var 
 
             for d_file in pdata.d_files:
                 pdata.d_file = d_file
@@ -309,8 +321,8 @@ def plot_sim(sim_type,sel_d_files = None,sel_runs = None,pdata = None,**kwargs):
                     plot_label(pdata,plot_idx)
                     plot_idx += 1
         
-        
-        plot_save(pdata) # make sure is under run_names so that it saves multiple runs
+
+        plot_save(pdata) # make sure is indent under run_names so that it saves multiple runs
 
 def plotter(sim_type = None,run_name = None,coords = None,sel_vars = None,sel_d_file = None,pdata = None,**kwargs):
     """
@@ -340,11 +352,9 @@ def plotter(sim_type = None,run_name = None,coords = None,sel_vars = None,sel_d_
     loaded_data = pl.pluto_loader(pdata.sim_type, pdata.run, pdata.profile_choice)
     pdata.d_files = loaded_data["d_files"] if sel_d_file is None else sel_d_file
 
-
     axes, fig = subplot_base(pdata=pdata)
 
     plot_idx = 0  # Keep track of which subplot index we are using
-
 
     for d_file in pdata.d_files: # plot across all files
         pdata.vars = conv_data["vars_si"][d_file]
@@ -353,8 +363,8 @@ def plotter(sim_type = None,run_name = None,coords = None,sel_vars = None,sel_d_
         coords_dict = {"x1": vars["x1"], "x2": vars["x2"], "x3": vars["x3"], "t_yr": vars["SimTime"]}
         vars_dict = {"rho": vars["rho"], "prs": vars["prs"], "vx1": vars["vx1"], "vx2": vars["vx2"]}
         
-
         extras_data = plot_extras(pdata=pdata)
+
         xy_labels = extras_data["xy_labels"]
 
         title = extras_data["title_other"][0]
@@ -424,11 +434,10 @@ def plotter(sim_type = None,run_name = None,coords = None,sel_vars = None,sel_d_
                 #         ax.plot(sel_coord, np.log10(sel_var[:, 0]))
 
                 plot_idx += 1
-    
     plot_save(pdata)
 
 
-
+#TODO Maybe make a analysis.py
 def peak_findr(sim_type, run_name,sel_coord,sel_var):
     conv_data = pl.pluto_conv(sim_type,run_name,"all")
     vars = conv_data["vars_si"]

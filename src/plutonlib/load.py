@@ -15,6 +15,7 @@ from plutokore.simulations import get_output_count as pk_sim_count
 from astropy import units as u
 from collections import defaultdict 
 
+import time
 
 def pluto_loader(sim_type, run_name, profile_choice):
     """
@@ -23,21 +24,21 @@ def pluto_loader(sim_type, run_name, profile_choice):
     Parameters:
     -----------
     sim_type : str
-        Type of simulation to load.
+        Type of simulation to load (e.g., "Jet", "Stellar_Wind") #NOTE see config for saving structure.
     run_name : str
-        Name of the specific simulation run.
-    profile_choice : int
-        Index selecting a profile from predefined variable lists:
-        - 0: ["x1", "x2", "rho", "prs"]
-        - 1: ["x1", "x2", "vx1", "vx2"]
+        Name of the specific simulation file to load e.g. "default".
+    profile_choice : str
+        Index selecting a profile from predefined variable lists (#NOTE found in config.py):
+        - "2d_rho_prs": ["x1", "x2", "rho", "prs"]
 
     Returns:
     --------
     dict
         Dictionary containing:
-        - vars: List of selected variables from the simulation data.
+        - vars: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
         - var_choice: List of variable names corresponding to the selected profile.
-        - nlinf: Dictionary containing metadata about the latest simulation output.
+        - vars_extra: contains the geometry of the sim
+        - d_files: contains a list of the available data files for the sim
     """
     vars = defaultdict(list) # Stores variables for each D_file
     non_vars = []
@@ -83,18 +84,21 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     Parameters:
     -----------
     sim_type : str
-        Type of simulation to load (e.g., "hydro", "mhd").
+        Type of simulation to load (e.g., "Jet", "Stellar_Wind") #NOTE see config for saving structure.
     run_name : str
-        Name of the specific simulation run.
-    profile_choice : int
-        Index selecting a profile from predefined variable lists.
+        Name of the specific simulation file to load e.g. "default".
+    profile_choice : str
+        Index selecting a profile from predefined variable lists (#NOTE found in config.py):
+        - "2d_rho_prs": ["x1", "x2", "rho", "prs"]
 
     Returns:
     --------
     dict
         Dictionary containing:
-        - vars_si: List of variables converted to SI units.
-        - CGS_code_units: Dictionary of CGS code units used for conversion.
+        - vars_si: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
+        - CGS_code_units: dictionary of the normalization value, units in CGS/SI and other important labels
+        - var_choice: List of variable names corresponding to the selected profile.
+        - d_files: contains a list of the available data files for the sim
     """
     loaded_data = pluto_loader(sim_type, run_name, profile_choice)
     d_files = loaded_data["d_files"]
@@ -119,12 +123,12 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
         "vx2": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[1]}_Velocity"],
         "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
         "T": [1.203e02, (u.K), u.K, "Temperature"],
-        # "t_s": [np.linspace(0,1.496e08,coord_shape), (u.s), u.s, "Time (Seconds)"],
-        "t_yr": [4.744e00, (u.yr), u.s, "Time"], 
-        # "t_yr": [np.linspace(0,4.744e00,coord_shape), (u.yr), u.s, "Time"], 
+        "t_s": [1.496e08, (u.s),u.s, "Time"],
+        "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
     }
 
     # Process each file and variable
+
     for d_file in d_files:
         for var_name in var_choice:
             # if var_name not in vars_dict[d_file]: 
@@ -145,18 +149,41 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
                 conv_val = (raw_data * norm * CGS_code_units[var_name][1]).si.value #converts the units as well as normalize 
             
             vars_si[d_file][var_name] = conv_val
-            
+    
+
 
 
     return {"vars_si": vars_si, "CGS_code_units": CGS_code_units, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord}
 
-def select_profile(profiles):
+def get_profiles(sim_type,run,profiles):
+    """
+    Prints available profiles for a specific simulation
+    """
+    data = pluto_loader(sim_type,run,"all") #NOTE pl should be faster than pc
+    var_choice = data["var_choice"]
+    vars = data["vars"]["data_0"]
+
+    for var in var_choice[:-1]: # doesn't include SimTime as it has no size
+        if vars[var].size == 1:
+            avail_vars = var_choice
+            avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
+
     keys = list(profiles.keys())
-    # sleep(0.5)
+
     print("Available profiles:")
-    for i, profile in enumerate(profiles):
-        print(f"{i}: {profile}, {profiles[profile]}")
-        sys.stdout.flush()
+    for i, prof in enumerate(keys):
+        vars_set = set(avail_vars)
+        prof_set = set(profiles[prof])
+        common = vars_set & prof_set
+
+        if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
+            print(f"{i}: {prof}, {profiles[prof]}")
+            sys.stdout.flush()
+
+    return keys
+
+def select_profile(sim_type,run,profiles):
+    keys = get_profiles(sim_type,run,profiles)
 
     while True:
         choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
@@ -174,14 +201,11 @@ def select_profile(profiles):
         else:
             print("Invalid input. Please enter a valid number or 'q' to quit.")
 
-def pluto_load_profile(sim_type,sel_runs,all = 0):
+def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
 
     sel = 0 if sel_runs is None else 1
 
-    # profile_choice = select_profile(profiles)
-    # if profile_choice:
-    #     print(f"Selected profile {profile_choice}:", profiles[profile_choice])
-
+    #TODO could be in config to load following save tree?
     run_dirs = os.path.join(plutodir, "Simulations", sim_type)
     all_runs = [
         d for d in os.listdir(run_dirs) if os.path.isdir(os.path.join(run_dirs, d))
@@ -198,15 +222,31 @@ def pluto_load_profile(sim_type,sel_runs,all = 0):
     # Assign a profile number for each run (supports duplicates)
     profile_choices = defaultdict(list)  # Change from a single variable to defaultdict(list)
 
-    if not all:
+    if sel_prof is None: #use if usr input multiple profiles, diff per run
+        if not all:
+            for run in run_names:
+                profile_choice = select_profile(sim_type,run,profiles)
+                profile_choices[run].append(profile_choice)  # Appends profile to list
+                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+
+        elif all:
+                profile_choice = "all"
+                print(f"Selected profile {profiles[profile_choice]} for all runs")
+                print("\n")
+    
+    if sel_prof is not None: #use if want one profile across all runs
         for run in run_names:
-            profile_choice = select_profile(profiles)
+            get_profiles(sim_type,run,profiles)
+            profile_choice = sel_prof
             profile_choices[run].append(profile_choice)  # Appends profile to list
-            print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
-    elif all:
-            profile_choice = "all"
-            print(f"Selected profile {profiles[profile_choice]} for all runs")
-            print("\n")
+
+            try:
+                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+
+            except KeyError:
+                raise KeyError(f"{profile_choice} is not an available profile")
+
+
 
     return {'run_names':run_names,'profile_choices':profile_choices}
 
