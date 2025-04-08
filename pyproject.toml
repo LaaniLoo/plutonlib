@@ -39,7 +39,7 @@ plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "maste
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.3"  # Must match [project] version
+version = "0.2.4"  # Must match [project] version
 version_files = [
     "pyproject.toml:project.version",  # Explicit path
     "pyproject.toml:tool.commitizen.version",  # Sync both

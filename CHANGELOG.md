@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.2.4 (2025-04-08)
+
+### Fix
+
+- **plot.py/load.py**: bug fixes and optimisation
+
 ## [v0.2.3] - 2025-04-07
 
 ### 🐛 Bug Fixes
