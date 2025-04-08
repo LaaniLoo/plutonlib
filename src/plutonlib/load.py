@@ -16,8 +16,9 @@ from astropy import units as u
 from collections import defaultdict 
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 
-def pluto_loader(sim_type, run_name, profile_choice):
+def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     """
     Loads simulation data from a specified Pluto simulation.
 
@@ -41,41 +42,47 @@ def pluto_loader(sim_type, run_name, profile_choice):
         - d_files: contains a list of the available data files for the sim
     """
     vars = defaultdict(list) # Stores variables for each D_file
-    non_vars = []
     vars_extra = []
 
     var_choice = profiles[profile_choice]
-
+    # print("Var Choice:", var_choice)
     wdir = os.path.join(plutodir, "Simulations", sim_type, run_name)
 
     #NOTE USE FOR LAST OUTPUT ONLY
-    nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
+    # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
+
     n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
-    # D = pk.io.pload(nlinf["nlast"], w_dir=wdir)
+    d_files = [f"data_{i}" for i in range(n_outputs + 1)]
 
-    # Load all available data files, change d_all from 0,1 for 0th output NOTE excludes 0th
-    d_all = {f"data_{output}": pk_io.pload(output, w_dir=wdir) for output in range(0,n_outputs + 1)} # Loads all available data files
-    d_files = list(d_all.keys()) # list of data files as keys
-    # print("Loaded files:",d_files) 
+    data_0 = pk_io.pload(0,wdir)
+    geometry = data_0.geometry #gets the geometry of the first file = fast
 
-    for d_file in d_files:
-        vars[d_file] = {} # not defaultdict(list) as would double list
+    loaded_vars = [v for v in var_choice if hasattr(data_0, v)]
+    # print("Loaded Vars:", loaded_vars)
+    non_vars = set(var_choice) - set(loaded_vars)
 
-        # Validate variable names and store by var_name
-        for var_name in var_choice:
-            if hasattr(d_all[d_file], var_name):  # Check first file, store by name NOTE
-                vars[d_file][var_name] = (getattr(d_all[d_file], var_name))
+    if non_vars:
+        print(f"Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
+        print("\n")
 
-            elif var_name not in non_vars: #if sim doesnt have var, elif for first file otherwise print lots, checks flagged vars
-                if not hasattr(d_all[d_files[0]], var_name): 
-                    print(f"Simulation {run_name} Doesn't Contain", var_name)
-                    print("\n")
-                    non_vars.append(var_name)
 
-    var_choice = [x for x in var_choice if x not in non_vars] #removes vars not in sim
-    vars_extra.append(d_all[d_files[0]].geometry) # gets the geo of the sim, always loads first file
+    def load_file(output_num):
+        data = pk_io.pload(output_num, w_dir=wdir)
+        return output_num, {v: getattr(data, v) for v in loaded_vars}
 
-    return {"vars": vars, "var_choice": var_choice,"vars_extra": vars_extra,"d_files": d_files, "nlinf": nlinf}
+    # Parallel load all files
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(load_file, range(n_outputs + 1))
+        
+        # Process results in completion order
+        for output_num, file_data in results:
+            vars[f"data_{output_num}"] = file_data
+    
+
+    var_choice = [v for v in var_choice if v not in non_vars]
+    vars_extra.append(geometry) # gets the geo of the sim, always loads first file
+
+    return {"vars": vars, "var_choice": var_choice,"vars_extra": vars_extra,"d_files": d_files} #"nlinf": nlinf
 
 def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     """
@@ -105,7 +112,7 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     vars_dict = loaded_data["vars"]
     var_choice = loaded_data["var_choice"] # chosen vars at the chosen profile
     sim_coord = loaded_data["vars_extra"][0] #gets the coordinate sys of the current sim
-    vars
+    
     
     vars_si = defaultdict(dict)
 
@@ -167,6 +174,9 @@ def get_profiles(sim_type,run,profiles):
         if vars[var].size == 1:
             avail_vars = var_choice
             avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
+
+    else:
+        avail_vars = var_choice
 
     keys = list(profiles.keys())
 
@@ -242,6 +252,7 @@ def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
 
             try:
                 print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+                print("\n")
 
             except KeyError:
                 raise KeyError(f"{profile_choice} is not an available profile")
@@ -304,8 +315,6 @@ def pluto_sim_info(sim_type,sel_runs = None): #TODO Stellar wind is symm so inde
         print("\n")
 
     return {"coord_shape": coord_shape}
-
-
 
 
 

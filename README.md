@@ -1,6 +1,7 @@
 
 # Features:
-* Get data from PLUTO simulations (through the use of plutokore)
+* Get data from PLUTO simulations (through the use of [plutokore](https://github.com/pmyates/plutokore))
+* Load and convert .dbl files to SI units
 * Plot 2D and 3D colour maps, 1D slice plots across all simulation files
 * Find peaks for a variable of interest
 
