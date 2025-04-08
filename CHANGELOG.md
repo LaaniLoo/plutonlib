@@ -2,11 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.2.4 (2025-04-08)
+## [v0.2.4] - 2025-04-08
 
-### Fix
+### Documentation
 
-- **plot.py/load.py**: bug fixes and optimisation
+
+- *(CHANGELOG.md)* fixed changelog
+
+
+
+### 🐛 Bug Fixes
+
+
+- *(plot.py/load.py)* bug fixes and optimisation
+
+* used ThreadPoolExecutor for load.py, restructured how arrays are loaded for speed
+* fixed axis bugs in plot.py\n 
+* all plot functions now use PlotData() class for loading and handling vars
+
+
+### Other
+
+
+- *(general)* version 0.2.3 → 0.2.4
+
 
 ## [v0.2.3] - 2025-04-07
 
