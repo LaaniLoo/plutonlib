@@ -103,7 +103,6 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     dict
         Dictionary containing:
         - vars_si: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
-        - CGS_code_units: dictionary of the normalization value, units in CGS/SI and other important labels
         - var_choice: List of variable names corresponding to the selected profile.
         - d_files: contains a list of the available data files for the sim
     """
@@ -116,23 +115,21 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     
     vars_si = defaultdict(dict)
 
-    # coord_shape = vars_dict[d_files[0]]["x2"].shape[0] #size of x2 dimension, not sure why x2, used for time linspace
-    t_array = []
-    sel_coord = coord_systems[sim_coord]
 
-    CGS_code_units = {
-        "x1": [1.496e13, (u.cm), u.m, "x1", f"{sel_coord[0]}"],
-        "x2": [1.496e13, (u.cm), u.m, "x2", f"{sel_coord[1]}"],
-        "x3": [1.496e13, (u.cm), u.m, "x3", f"{sel_coord[2]}"],
-        "rho": [1.673e-24, (u.gram / u.cm**3), u.kg / u.m**3, "Density"],
-        "prs": [1.673e-14, (u.dyn / u.cm**2), u.Pa, "Pressure"],
-        "vx1": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[0]}_Velocity"],
-        "vx2": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[1]}_Velocity"],
-        "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
-        "T": [1.203e02, (u.K), u.K, "Temperature"],
-        "t_s": [1.496e08, (u.s),u.s, "Time"],
-        "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
-    }
+    # CGS_code_units = {
+    #     "x1": [1.496e13, (u.cm), u.m, "x1", f"{sel_coord[0]}"],
+    #     "x2": [1.496e13, (u.cm), u.m, "x2", f"{sel_coord[1]}"],
+    #     "x3": [1.496e13, (u.cm), u.m, "x3", f"{sel_coord[2]}"],
+    #     "rho": [1.673e-24, (u.gram / u.cm**3), u.kg / u.m**3, "Density"],
+    #     "prs": [1.673e-14, (u.dyn / u.cm**2), u.Pa, "Pressure"],
+    #     "vx1": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[0]}_Velocity"],
+    #     "vx2": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[1]}_Velocity"],
+    #     "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
+    #     "T": [1.203e02, (u.K), u.K, "Temperature"],
+    #     "t_s": [1.496e08, (u.s),u.s, "Time"],
+    #     "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
+    # }
+
 
     # Process each file and variable
 
@@ -140,27 +137,16 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
         for var_name in var_choice:
             # if var_name not in vars_dict[d_file]: 
             #     continue  # Skip missing variables
-                
-            raw_data = vars_dict[d_file][var_name]
-            
-            # Finding simtime
-            if var_name == "SimTime":
-                t_var = "t_yr"  #NOTE use "t_s" for seconds
-                norm = CGS_code_units[t_var][0] # Normalize by the value given by pluto
-                t_array.append(raw_data * norm)
-                conv_val = np.asarray(t_array) #TODO fix this later, make as array earlier
 
-            elif var_name:
-                # Standard unit conversion
-                norm = CGS_code_units[var_name][0]
-                conv_val = (raw_data * norm * CGS_code_units[var_name][1]).si.value #converts the units as well as normalize 
-            
-            vars_si[d_file][var_name] = conv_val
+            raw_data =  vars_dict[d_file][var_name]
+
+            conv_vals = pc.value_norm_conv(sim_coord,var_name,d_files,raw_data) #converts the raw pluto array
+            vars_si[d_file][var_name] = conv_vals["cgs"] if var_name == "SimTime" else conv_vals["si"] #NOTE keep SimTime as yrs for now
     
 
 
 
-    return {"vars_si": vars_si, "CGS_code_units": CGS_code_units, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord}
+    return {"vars_si": vars_si, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord}
 
 def get_profiles(sim_type,run,profiles):
     """

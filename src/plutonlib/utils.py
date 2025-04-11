@@ -15,7 +15,7 @@ def py_reload(module):
     importlib.reload(module)
 
     # print(time.ctime(os.path.getmtime(f"{module_name}.py"))) # Checks last modification time
-    print(time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
+    print(f"{module_name} Last Saved:",time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
 
 def list_subdirectories(directory):
     """Return a list of subdirectories in the given directory."""
@@ -62,14 +62,12 @@ def choose_directory(start_dir):
     return current_dir
 
 def setup_dir(start_dir):
-    # SETTING DIR
-    # Specify the initial directory to start navigation
-    # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/"
 
     # Let the user select the directory (printing of subdirectories is handled inside the function)
     save_dir = choose_directory(start_dir)
 
     print(f"Final selected directory: {save_dir}")
+    print("\n")
 
     return save_dir
 

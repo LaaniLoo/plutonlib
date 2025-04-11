@@ -16,8 +16,8 @@ All notable changes to this project will be documented in this file.
 
 - *(plot.py/load.py)* bug fixes and optimisation
 
-* used ThreadPoolExecutor for load.py, restructured how arrays are loaded for speed
-* fixed axis bugs in plot.py\n 
+* used ThreadPoolExecutor for load.py specifically pluto_loader(), restructured how arrays are loaded for speed
+* fixed axis bugs in plot.py
 * all plot functions now use PlotData() class for loading and handling vars
 
 

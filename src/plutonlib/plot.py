@@ -135,104 +135,6 @@ def cmap_base(pdata = None, **kwargs):
                 fontsize=14
             )
 
-def plot_extras_old(pdata = None, **kwargs):
-    """
-    Adds extra plotting functions for plotting Pluto simulations.
-
-    Parameters:
-    -----------
-    profile_choice : int
-        Index selecting a profile from predefined variable lists.
-    sim_type : str
-        Type of simulation to load (e.g., "hydro", "mhd").
-    run_name : str
-        Name of the specific simulation run.
-    t : int, optional
-        Flag to determine if the plot should be grouped. Default is 0 (ungrouped).
-    **kwargs : dict
-        Additional keyword arguments for future extensibility (not currently used).
-
-    Returns:
-    --------
-    dict
-        Dictionary containing:
-        - f: matplotlib.figure.Figure or None
-        - a: matplotlib.axes.Axes or None
-        - c_maps: list of matplotlib.colors.Colormap
-        - cbar_labels: list of str
-        - labels: list of str
-    """
-
-    if pdata is None:
-        pdata = PlotData(**kwargs)
-
-    if pdata.extras and pdata.extras.get("_last_d_file") == pdata.d_file:
-        return pdata.extras
-    
-
-    cbar_labels = []
-    c_map_names = []
-    c_maps = []
-    labels = []
-    coord_labels = []
-    xy_labels = []
-    title_other = []
-
-
-    #Gets last timestep if req
-    # nlinf = loaded_data["nlinf"]
-    # print("Last timestep info:", nlinf)
-
-    conv_data = pl.pluto_conv(pdata.sim_type, pdata.run,pdata.profile_choice ) 
-    pdata.var_choice = conv_data["var_choice"]
-    CGS_code_units = conv_data["CGS_code_units"]
-
-    #assigning x,y,z etc labels
-    for var_name in pdata.var_choice[0:2]: 
-        coord_labels.append(CGS_code_units[var_name][4])
-        xy_labels.append(f"{CGS_code_units[var_name][4]} [{CGS_code_units[var_name][2]}]")  
-
-    #assigning cbar and title labs from rho prs etc
-    for var_name in pdata.var_choice[2:4]: 
-        cbar_labels.append(CGS_code_units[var_name][3]+ " " + f"[{(CGS_code_units[var_name][2]).to_string('latex')}]")
-        labels.append(CGS_code_units[var_name][3])
-
-    #assigning title if jet: two vars per subplot
-    if pdata.sim_type in ("Jet"):
-        title = f"{pdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
-        title_other.append(title)
-
-    #assigning title if other: one var per subplot
-    if pdata.sim_type in ("Stellar_Wind"):
-        title_L = f"{pdata.sim_type} {labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
-        title_R = f"{pdata.sim_type} {labels[1]} Across {coord_labels[0]}/{coord_labels[1]} ({pdata.run}, {pdata.d_file})"
-        title_other.append([title_L,title_R])
-
-    if "vel" in pdata.profile_choice.lower(): #velocity profiles have different colour maps if profile_choice % 2 == 0:
-        # c_map_names = ['inferno','viridis']
-        c_map_names = ["inferno", "hot"]
-
-    elif "rho" in pdata.profile_choice.lower(): #dens/prs profiles have different colour maps
-        # c_map_names = ["inferno", "hot"]
-        c_map_names = ['inferno','viridis']
-
-
-    #assigning colour maps
-    for i in range(len(c_map_names)):
-        c_maps.append(mpl.colormaps[c_map_names[i]]) #https://matplotlib.org/stable/users/explain/colors/colormaps.html
-
-    pdata.extras = {
-        "c_maps": c_maps, 
-        "cbar_labels": cbar_labels, 
-        "labels": labels, 
-        "coord_labels": coord_labels, 
-        "xy_labels": xy_labels, 
-        "title_other": title_other,
-        "_last_d_file": pdata.d_file #saves last data file, used to regenerate pdata.extras if changes
-        }
-        
-    return pdata.extras
-
 def plot_extras(pdata = None, **kwargs):
     """
     Adds extra plotting functions for plotting Pluto simulations.
@@ -283,17 +185,24 @@ def plot_extras(pdata = None, **kwargs):
 
     conv_data = pl.pluto_conv(pdata.sim_type, pdata.run,pdata.profile_choice ) 
     pdata.var_choice = conv_data["var_choice"]
-    CGS_code_units = conv_data["CGS_code_units"]
+
+    pluto_units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files) #units dict
 
     #assigning x,y,z etc labels
     for var_name in ["x1","x2","x3"]: 
-        coord_labels.append(CGS_code_units[var_name][4])
-        xy_labels[var_name] = (f"{CGS_code_units[var_name][4]} [{CGS_code_units[var_name][2]}]")  
+        coord_label = pluto_units[var_name]["coord_name"]
+        coord_units = (pluto_units[var_name]["si"]).to_string('latex')
+
+        coord_labels.append(coord_label)
+        xy_labels[var_name] = (f"{coord_label} [{coord_units}]")  
 
     #assigning cbar and title labs from rho prs etc
-    for var_name in pdata.var_choice[2:4]: 
-        cbar_labels.append(CGS_code_units[var_name][3]+ " " + f"[{(CGS_code_units[var_name][2]).to_string('latex')}]")
-        labels.append(CGS_code_units[var_name][3])
+    for var_name in pdata.var_choice[2:4]:
+        var_label = pluto_units[var_name]["var_name"]
+        var_units = (pluto_units[var_name]["si"]).to_string('latex')
+
+        cbar_labels.append(var_label + " " + f"[{var_units}]")
+        labels.append(var_label)
 
     #assigning title if jet: two vars per subplot
     if pdata.sim_type in ("Jet"):
@@ -460,8 +369,7 @@ def plotter(sel_coords,sel_vars,sim_type = None,run_name = None,sel_d_file = Non
 
     #load in data
     conv_data = pl.pluto_conv(pdata.sim_type, pdata.run, "all")
-    CGS_code_units = conv_data["CGS_code_units"]
-    # loaded_data = pl.pluto_loader(pdata.sim_type, pdata.run, pdata.profile_choice)
+    pluto_units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files) #units dict
 
     pdata.d_files = conv_data["d_files"] if sel_d_file is None else sel_d_file
     pdata.var_choice = conv_data["var_choice"]
@@ -475,7 +383,7 @@ def plotter(sel_coords,sel_vars,sim_type = None,run_name = None,sel_d_file = Non
         xy_labels = extras_data["xy_labels"]
         title = extras_data["title_other"][0]
 
-        for coord in sel_coords:
+        for coord in sel_coords: #TODO possibly use zip? 
             for var_name in sel_vars:
                 sel_var = pdata.vars[d_file][var_name]
                 sel_coord = pdata.vars[d_file][coord]
@@ -485,27 +393,33 @@ def plotter(sel_coords,sel_vars,sim_type = None,run_name = None,sel_d_file = Non
                 var_profile = calc_var_prof(pdata)
                 var_sliced = sel_var[var_profile]
 
-                title_str = f"{pdata.sim_type} {CGS_code_units[var_name][3]}"
+                coord_label = pluto_units[var_name]["coord_name"]
+                coord_units = pluto_units[var_name]["si"]
+                var_label = pluto_units[var_name]["var_name"]
+                var_units = (pluto_units[var_name]["si"]).to_string('latex')
+
+
+                title_str = f"{pdata.sim_type} {var_label}"
                 ax = axes[plot_idx]
 
                 if 'xlim' in kwargs: # xlim kwarg to change x limits
                     ax.set_xlim(kwargs['xlim']) 
             
                 ax.set_title(
-                    f"{title_str} vs {CGS_code_units[coord][4]} ({pdata.run}, {d_file})"
+                    f"{title_str} vs {coord_label} ({pdata.run}, {d_file})"
                 )
                 ax.set_xlabel(f"{xy_labels[coord]}")
 
 
                 if var_name in ("vx1", "vx2"):
                     ax.set_ylabel(
-                        f"{CGS_code_units[var_name][3]} [{CGS_code_units[var_name][2]}]"
+                        f"{var_label} [{var_units}]"
                     )
                     ax.plot(sel_coord, var_sliced)
 
                 else: #pressure or dens is logspace
                     ax.set_ylabel(
-                        f"log₁₀({CGS_code_units[var_name][3]} [{CGS_code_units[var_name][2]}])"
+                        f"log₁₀({var_label} [{var_units}])"
                     )
                     ax.plot(sel_coord, np.log10(var_sliced))
 
@@ -588,8 +502,13 @@ def graph_peaks(sel_coord,sel_var,sim_type = None, run_name = None,pdata = None)
     pdata.sel_coord = sel_coord
     pdata.sel_var = sel_var
 
-    coord_units = conv_data["CGS_code_units"][sel_coord][2]
-    var_units = conv_data["CGS_code_units"][sel_var][2]
+    pluto_units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files) #units dict
+    coord_units = pluto_units[sel_coord]["si"]
+    var_units = (pluto_units[sel_var]["si"]).to_string('latex')
+
+    # coord_units = conv_data["CGS_code_units"][sel_coord][2]
+    # var_units = conv_data["CGS_code_units"][sel_var][2]
+
 
     var_peak_ind = defaultdict(list)
     peak_info = []
@@ -665,7 +584,8 @@ def plot_peaks(sel_coord,sel_var,sim_type = None, run_name = None,pdata = None):
     pdata.d_files = conv_data["d_files"]
     pdata.vars = conv_data["vars_si"]
 
-    units = conv_data["CGS_code_units"]
+    units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files)["pluto_units"] #units dict
+
 
     d_file = pdata.d_files[-1]
     vars_last = pdata.vars[d_file]
@@ -704,7 +624,7 @@ def plot_time_prog(sel_coord,sel_var,sim_type = None, run_name = None,pdata = No
     pdata.vars = conv_data["vars_si"]
 
     #plot showing all peaks found by scipy
-    units = conv_data["CGS_code_units"]
+    units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files)["pluto_units"] #units dict
     d_file_last = pdata.d_files[-1]
 
     xlab = f"SimTime [{units["t_yr"][1]}]"
