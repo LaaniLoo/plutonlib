@@ -1,0 +1,467 @@
+import plutonlib.utils as pu
+import plutonlib.config as pc
+import plutonlib.load as pl
+import plutonlib.plot as pp
+ 
+
+import numpy as np
+import scipy as sp
+
+import matplotlib.pyplot as plt
+
+from collections import defaultdict 
+
+from IPython.display import display, Latex
+import inspect
+
+
+def calc_var_prof(sdata,pdata=None,sel_var=None,sel_coord = None):
+    """
+    automatically calculates the required array slice for an array of >=2 dimensions
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+
+    vars_last = sdata.get_vars(sdata.d_last)
+    pdata.sel_coord = "x1" #NOTE pre set vars
+    # ndim = vars_last[pdata.sel_var].ndim
+    ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
+
+    if ndim >2:
+        try:
+            x_mid = len(vars_last["x1"])//2 
+            y_mid = len(vars_last["x2"])//2 
+            z_mid = len(vars_last["x3"])//2 
+        except KeyError:
+            raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
+        
+        slice_map = { #slices in shape of coord
+        "x1": (slice(None), y_mid, z_mid),
+        "x2": (x_mid, slice(None), z_mid),
+        "x3": (x_mid, y_mid, slice(None))
+        }
+
+    else:
+        slice_map = { #slices in shape of coord
+        "x1": (slice(None), 0),
+        "x2": (0, slice(None)),
+        }
+
+    var_profile = slice_map[pdata.sel_coord]
+
+    return var_profile
+
+#---Peak Finding---#
+def peak_findr(sel_coord,sel_var,sdata,pdata = None):
+    """
+    Calculates the max values of an array and their location, e.g. use to find max values of x2 for vx2 to find jet radius
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+
+    # pdata.vars = conv_data["vars_si"]
+    pdata.d_files = sdata.d_files
+    pdata.sel_coord = sel_coord
+    pdata.sel_var = sel_var
+
+    radius = []
+    peak_info = []
+    peak_var = []
+    locs = []
+
+    var_profile = calc_var_prof(sdata,pdata)
+    for d_file in pdata.d_files:
+        var = sdata.get_vars(d_file)
+
+
+        var_sliced = var[sel_var][var_profile]
+        max_loc = np.where(var_sliced == np.max(var_sliced)) #index location of max variable val
+
+        locs.append(max_loc[0])
+
+        coord_array = var[sel_coord]   
+        # var_array = var[sel_var] 
+
+        peak_info.append(f"{d_file} Radius: {coord_array[max_loc][0]:.2e} m, {sel_var}: {var_sliced[max_loc][0]:.2e}")
+        peak_var.append(var_sliced[max_loc][0])
+        radius.append(coord_array[max_loc][0])
+
+    return {"peak_info": peak_info,"radius": radius, "peak_var": peak_var,"locs": locs } 
+
+def graph_peaks(sel_coord,sel_var,sdata,pdata = None): #TODO Put in peak findr 
+    """Follows a similar process to peak_findr() except it uses scipy signal peak finding, good for visual representation"""
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+    #load data
+    pdata.d_files = sdata.d_files
+    pdata.sel_coord = sel_coord
+    pdata.sel_var = sel_var
+
+    coord_units = (sdata.get_var_info(sel_coord)["si"]).to_string('latex')
+    var_units = (sdata.get_var_info(sel_var)["si"]).to_string('latex')
+
+    var_peak_ind = defaultdict(list)
+    peak_info = []
+    peak_vars = []
+    peak_coords = []
+    
+    var_profile = calc_var_prof(sdata,pdata)
+    for d_file in pdata.d_files: #find graphical peaks across all data files
+
+        var = sdata.get_vars(d_file)[sel_var]
+        coord =  sdata.get_vars(d_file)[sel_coord]
+        var_sliced = var[var_profile]
+
+        var_peak_ind[d_file], _ = sp.signal.find_peaks(var_sliced)
+
+        if np.any(var_peak_ind[d_file]):  # Only print if peaks exist 
+            peak_vars.append(var_sliced[var_peak_ind[d_file][-1]])
+            peak_coords.append(coord[var_peak_ind[d_file][-1]])
+
+            #NOTE not sure what 
+            peak_var = var_sliced[var_peak_ind[d_file][-1]]
+            peak_coord = coord[var_peak_ind[d_file][-1]]
+
+            peak_info.append(f"{d_file}: {sel_coord} = {peak_coord:.2e} {coord_units} {sel_var} = {peak_var:.2e} {var_units}")
+            # peak_info.append(f"{d_file}: {sel_coord} = {peak_coords[i]:.2e} {coord_units} {sel_var} = {peak_vars[i]:.2e} {var_units}")
+
+        else:
+            print(f"No peaks found in {d_file}")
+
+    return {"var_peak_ind": var_peak_ind,"var_sliced": var_sliced,"peak_coords": peak_coords, "peak_vars": peak_vars, "peak_info":peak_info}
+
+def all_graph_peaks(sel_coord,sel_var,sdata,pdata = None): #NOTE used for plotting same alg as peak_findr
+    """A version of peak_findr() used for plotting, but includes all peak values """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+    #load data
+    pdata.d_files = sdata.d_files
+    pdata.sel_coord = sel_coord
+    pdata.sel_var = sel_var
+
+    var_peak_ind = defaultdict(list)
+    peak_vars = []
+    peak_coords = []
+    
+    # for d_file in d_files: #find graphical peaks across all data files
+    d_file = pdata.d_files[-1]
+    var = sdata.get_vars(d_file)[sel_var]
+    coord = sdata.get_vars(d_file)[sel_coord]
+
+    var_profile = calc_var_prof(sdata,pdata)  
+    var_sliced = var[var_profile]
+
+    var_peak_ind, _ = sp.signal.find_peaks(var_sliced)
+
+    if np.any(var_peak_ind):  # Only print if peaks exist 
+        peak_vars = var_sliced[var_peak_ind]
+        peak_coords = coord[var_peak_ind]
+
+
+    else:
+        print(f"No peaks found in {d_file}")
+
+    return {"var_peak_ind": var_peak_ind,"var_sliced": var_sliced,"peak_coords": peak_coords, "peak_vars": peak_vars}
+
+def plot_peaks(sel_coord,sel_var,sdata,pdata = None): #TODO doesn't work for stelar wind rho
+    """Plots the peaks found by all_graph_peaks()"""
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+    #load data
+    pdata.d_files = sdata.d_files
+
+    # units = pc.get_pluto_units(conv_data["sim_coord"],pdata.d_files)["pluto_units"] #units dict
+
+
+    d_file = pdata.d_files[-1]
+    vars_last = sdata.get_vars(d_file)
+    peak_data = all_graph_peaks(sel_coord,sel_var,sdata=sdata,pdata=pdata)
+    var_sliced = peak_data["var_sliced"]
+    peak_coords = peak_data["peak_coords"]
+    peak_vars = peak_data["peak_vars"]
+
+    # print("var_prof:", type(var_prof), "peak_vars:", type(peak_vars))
+    is_log = sel_var in ('rho','prs')
+    base_plot_data = np.log10(var_sliced) if is_log else var_sliced
+    peak_plot_data = np.log10(peak_vars) if is_log else peak_vars
+
+    xlab = f"{sdata.get_var_info(sel_coord)["coord_name"]} [{sdata.get_var_info(sel_coord)["si"]}]"
+    ylab = f"log10({sdata.get_var_info(sel_var)["var_name"]}) [{sdata.get_var_info(sel_var)["si"]}]" if is_log else f"{sdata.get_var_info(sel_var)["var_name"]} [{sdata.get_var_info(sel_var)["si"]}]"
+    label = f"Peak {ylab}"
+    title = f"{sdata.sim_type} Peak {ylab} Across {xlab}"
+
+
+    f,a = plt.subplots()
+    a.plot(vars_last[sel_coord],base_plot_data) # base plot
+    a.plot(peak_coords,peak_plot_data,"x",label= label)
+    a.legend()
+    a.set_xlabel(xlab)
+    a.set_ylabel(ylab)
+    a.set_title(title)
+    pdata.fig = plt.gcf()  
+    pp.plot_save(sdata,pdata,custom=1)
+
+def plot_time_prog(sel_coord,sel_var,sdata,pdata = None):
+    """
+    Plots the calculated radius of a sim, e.g. jet radius across SimTime
+    * Jet: graph_peaks() for plotting
+    * Stellar_Wind: peak_finder() for plotting
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+
+    #load data
+    pdata.d_files = sdata.d_files
+
+    #plot showing all peaks found by scipy
+    d_file_last = pdata.d_files[-1]
+
+    xlab = f"SimTime [{sdata.get_var_info("SimTime")["cgs"]}]"
+    ylab = f"{sdata.get_var_info(sel_coord)["coord_name"]}-Radius [{sdata.get_var_info(sel_coord)["si"]}]"
+    title = f"{sdata.sim_type} {ylab} across {xlab}"
+
+    t_yr = sdata.get_vars(d_file_last)["SimTime"]
+    r = []
+
+
+    if sdata.sim_type == "Jet":
+        peak_data = graph_peaks(sel_coord,sel_var,pdata=pdata) 
+        var_peak_ind = peak_data["var_peak_ind"]
+
+
+        for d_file in pdata.d_files:
+            coord = sdata.get_vars(d_file)[sel_coord]
+
+            if np.any(var_peak_ind[d_file]):
+                r.append(coord[var_peak_ind[d_file]][-1])
+            else:
+                r.append(0)
+
+    elif sdata.sim_type == "Stellar_Wind":
+        peak_data = peak_findr(sel_coord,sel_var,sdata=sdata,pdata=pdata) 
+        r = peak_data["radius"]
+
+    f,a = plt.subplots()
+    a.plot(t_yr, r, color = "darkorchid") # base plot
+    a.set_xlabel(xlab)
+    a.set_ylabel(ylab)
+    a.set_title(title)
+
+    a.legend(["Radius"])
+    a.plot(t_yr,r,"x", label = pdata.d_files)
+    for i, d_file in enumerate(pdata.d_files):
+        a.annotate(i, (t_yr[i], r[i]), textcoords="offset points", xytext=(1,1), ha='right')
+    pdata.fig = plt.gcf()  
+    pp.plot_save(sdata,pdata,custom=1)
+
+#---Energy, Density, Radius Calculations---#
+def calc_energy(sdata,pdata=None,type = "sim",plot=0):
+    """
+    Calculates the Q value for a simulation given its density and velocity
+    * type = "sim": calculates the observed value using simulation values
+    * type = "calc": calculates the theoretical value using calculated density from calc_density()
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+    
+    # eqn = '$Q_{jet} = \\frac{1}{2}4\\pi r_s^2 \\rho(r_s) V^3_s$'
+    # display(Latex(eqn))
+
+    peak_data = peak_findr("x2","vx2",sdata=sdata,pdata=pdata) #NOTE USE OF PREDET VARS
+    radius = peak_data["radius"] # calculated shell radii at SimTime from max vx2
+    vel = peak_data["peak_var"] # corresponding velocity at the above radii 
+    locs = peak_data["locs"] #index location where max occurs
+
+    q_jet = []
+
+    if type == "sim": #calculates using simulated values
+        rho = []
+        profile = calc_var_prof(sdata,pdata)
+
+        for loc, d_file in zip(locs,sdata.d_files):
+
+            rho_slice = sdata.get_vars(d_file)["rho"][profile]
+            rho.append(rho_slice[loc])
+
+        for i in range(len(sdata.d_files)):
+            value = 0.5*4*np.pi*(radius[i]**2)*rho[i]*(vel[i]**3)
+            
+            # print(f"Q_Jet = {value[0]:.2e}")
+            q_jet.append(value[0])
+
+    if type == "calc": #calculates using theoretical values of rho
+        rho_calc = calc_density(sdata)
+
+        for i in range(len(sdata.d_files)):
+            value = 0.5*4*np.pi*(radius[i]**2)*rho_calc[i]*(vel[i]**3)
+
+            # print(f"Q_Jet = {value:.2e}")
+            q_jet.append(value)
+
+    if plot:
+        t = sdata.get_vars(sdata.d_last)["SimTime"]
+
+        eqn = '$Q_{jet} = \\frac{1}{2}4\\pi r_s^2 \\rho(r_s) V^3_s$'
+        display(Latex(eqn))
+
+        plt.figure()
+        plt.title("Plot of Energy vs SimTime")
+        plt.plot(t,q_jet,label = "$Q_{jet}$")
+        # plt.plot(t,rt_sim,label = "r(t)")
+        plt.ylabel("Jet Energy [J]")
+        plt.xlabel("SimTime [yr]")
+        plt.legend()
+
+        pdata.fig = plt.gcf()  
+        pp.plot_save(sdata,pdata,custom=1)
+
+    else:
+        return q_jet
+
+def calc_radius(sdata,plot =1 ,pdata = None):
+    """
+    Calculates the radius as a function of time using calc_energy()
+    * has both simulated and calculated values 
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+        sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+
+
+    rt_sim, rt_calc = [], []
+    rho_0 = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+
+    t = sdata.get_vars(sdata.d_last)["SimTime"]
+
+    q_jet_sim = calc_energy(sdata,pdata,"sim")
+    q_jet_calc = calc_energy(sdata,pdata,"calc")
+
+    for i in range(len(t)):
+        sim = ((q_jet_sim[i]/rho_0)**(1/5))*(t[i]**(3/5)) #simulated values
+        calc = ((q_jet_calc[i]/rho_0)**(1/5))*(t[i]**(3/5)) #calculated values
+        # print(f"R(t) = {calc:.2e}")
+        rt_sim.append(sim)
+        rt_calc.append(calc)
+    
+    returns = {
+        "rt_sim": rt_sim,
+        "rt_calc": rt_calc,
+        "t": t
+    }
+
+    if plot:
+        eqn = '$R(t) = K({\\frac{Q_{jet}}{\\rho_0}})^{1/5}\\cdot t^{3/5}$'
+        display(Latex(eqn))
+
+        plt.figure()
+        plt.title("Plot of calculated/simulated R(t) vs SimTime")
+        plt.plot(t,rt_calc,label = "calc r(t)")
+        plt.plot(t,rt_sim,label = "r(t)")
+        plt.ylabel("radius [m]")
+        plt.xlabel("SimTime [yr]")
+        plt.legend()
+
+        pdata.fig = plt.gcf()  
+        pp.plot_save(sdata,pdata,custom=1)
+
+    else:
+        return returns
+
+def calc_radial_vel(sdata,plot = 1,pdata = None):
+    """
+    Calculates the radial velocity using its own calculated value of radius, r_0 and v_wind
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+
+    r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
+    v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]
+    rho_norm = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+
+    v_r = []
+    d_last = sdata.d_files[-1]
+
+    ndim = sdata.get_vars(d_last)["rho"].ndim
+    r = np.sqrt((sdata.get_vars(d_last)["x1"]**2)+(sdata.get_vars(d_last)["x2"]**2)+(sdata.get_vars(d_last)["x3"]**2))
+
+
+    for i in range(len(r)):
+            v_r = np.append(v_r,np.tanh((r[i]/r_0/0.1))*v_wind)
+
+    returns = {
+            "r": r,
+            "v_r": v_r 
+    }
+
+    if plot:
+        plt.figure()
+        plt.title("Plot of v(r) vs r")
+        plt.xlabel("r vector (m)")
+        plt.ylabel("v(r)")
+        plt.plot(r,v_r)
+
+        pdata.fig = plt.gcf()  
+        pp.plot_save(sdata,pdata,custom=1)
+
+    else:
+        return returns
+    
+def calc_density(sdata,plot = 1,pdata = None):
+    """
+    Calculates the density values using the radial velocity from calc_radial_vel() as well as r_0 and v_wind
+    """
+    if pdata is None:
+        pdata = pp.PlotData()
+
+    r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
+    v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]
+    rho_norm = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+
+    v_r_data =calc_radial_vel(sdata,plot=0)
+    v_r = v_r_data["v_r"]
+    r = v_r_data["r"]
+    
+    calc = (v_wind*(r_0**2))/(v_r*(r**2))
+    rho_calc = calc*rho_norm
+    rho_sim = sdata.get_vars(sdata.d_last)["rho"]
+    profile = calc_var_prof(sdata) #NOTE not sure why x1/vx1
+
+    returns = {
+        "rho_calc": rho_calc,
+        "rho_sim": rho_sim[profile],
+        "r": r
+    }
+    if plot:
+        eqn = '$\\rho = \\frac{V_{wind} r_0^2}{v(r) r^2}$'
+        display(Latex(eqn))
+
+        plt.figure()
+        plt.title("calculated vs simulated densities")
+        plt.plot(r,np.log10(rho_sim[profile]), label = "rho")
+        plt.plot(r,np.log10(rho_calc), label = "rho_calc")
+        plt.ylabel("log_10(density [kgm^-3])")
+        plt.xlabel("radius [m]")
+        plt.legend()
+
+        pdata.fig = plt.gcf()  
+        pp.plot_save(sdata,pdata,custom=1)
+
+    else:    
+        return returns
+
+
+
