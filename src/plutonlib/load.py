@@ -1,6 +1,9 @@
 import plutonlib.utils as pu
+import plutonlib.plot as pp 
+
 import plutonlib.config as pc
 import sys
+import time
 
 profiles = pc.profiles
 coord_systems = pc.coord_systems
@@ -18,6 +21,231 @@ from collections import defaultdict
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+class SimulationData:
+    """First attempt at using a class to load and access all simulation data"""
+    def __init__(self, sim_type=None, run=None, profile_choice=None,auto_load = True, **kwargs):
+        self.sim_type = sim_type
+        self.run = run
+        self.profile_choice = profile_choice or self._select_profile()
+
+        self._raw_data = None
+        self._conv_data = None
+        self._units = None
+        self._geometry = None
+        self._d_files = None
+        self._d_file = None
+        self._var_choice = None 
+
+        self.d_last = self.d_files[-1] #last datafile
+    
+        # Metadata
+        self.load_time = None
+        self.__dict__.update(kwargs)
+
+        if auto_load:
+            self.load_all()
+
+    def _select_profile(self):
+        """if None is used as a profile choice, will show available profiles etc..."""
+        if self.run is None:
+            raise ValueError("run name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
+            
+        print("profile_choice is None, using pluto_load_profile to select profile")
+        run_data = pluto_load_profile(self.sim_type,self.run,None)
+        return run_data['profile_choices'][self.run][0] #loads the run names and selected profiles for runs
+        
+    def load_all(self):
+        self.load_raw()
+        self.load_conv()
+        self.load_units()
+    
+    def load_raw(self):
+        start = time.time() #for load time
+
+        self._raw_data = pluto_loader(self.sim_type,self.run,self.profile_choice)
+        self._d_files = self._raw_data['d_files']
+        self._var_choice = self._raw_data['var_choice']
+        self._geometry = self._raw_data['vars_extra'][0]
+        self.load_time = time.time() - start
+
+    def load_conv(self):
+        if self._raw_data is None:
+            self.load_raw()
+        
+        self._conv_data = pluto_conv(self.sim_type, self.run,self.profile_choice)
+    
+    def load_units(self):
+        if self._conv_data is None:
+            self.load_conv()
+        
+        self._units = pc.get_pluto_units(self._geometry,self._d_files)
+    
+    @property
+    def raw_data(self):
+        if self._raw_data is None:
+            self.load_raw()
+        return self._raw_data
+
+    @property
+    def conv_data(self):
+        if self._conv_data is None:
+            self.load_conv()
+        return self._conv_data
+
+    @property
+    def units(self):
+        if self._units is None:
+            self.load_units()
+        return self._units
+
+    @property
+    def geometry(self):
+        if self._geometry is None:
+            self.load_raw()
+        return self._geometry
+
+    @property
+    def d_files(self):
+        if self._d_files is None:
+            self.load_raw()
+        return self._d_files
+
+    @property
+    def var_choice(self):
+        if self._var_choice is None:
+            self.load_raw()
+        return self._var_choice
+
+    def get_vars(self,d_file=None,system = 'si'):
+        target_file = d_file #maybe [-1]
+
+        if system == 'si':
+            return self.conv_data['vars_si'][target_file]
+        else:
+            raise ValueError("system must be 'si' or 'cgs'")
+
+    def get_var_info(self,var_name):
+        var_info = self.units.get(var_name)
+
+        if not var_info:
+            raise KeyError(f"No unit info for variable {var_name}")
+        
+        return var_info
+
+    def reload(self):
+        """Force reload all data"""
+        self._raw_data = None
+        self._conv_data = None
+        self._units = None
+        self.load_all()
+        return self
+
+#---Profile Loading---#
+def get_profiles(sim_type,run,profiles):
+    """
+    Prints available profiles for a specific simulation
+    """
+    data = pluto_loader(sim_type,run,"all") #NOTE pl should be faster than pc
+    var_choice = data["var_choice"]
+    vars = data["vars"]["data_0"]
+
+    for var in var_choice[:-1]: # doesn't include SimTime as it has no size
+        if vars[var].size == 1:
+            avail_vars = var_choice
+            avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
+
+    else:
+        avail_vars = var_choice
+
+    keys = list(profiles.keys())
+
+    print("Available profiles:")
+    for i, prof in enumerate(keys):
+        vars_set = set(avail_vars)
+        prof_set = set(profiles[prof])
+        common = vars_set & prof_set
+
+        if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
+            print(f"{i}: {prof}, {profiles[prof]}")
+            sys.stdout.flush()
+
+    return keys
+
+def select_profile(sim_type,run,profiles):
+    """Uses user input to select a profile"""
+    keys = get_profiles(sim_type,run,profiles)
+
+    while True:
+        choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
+        if choice.lower() == "q":
+            print("Selection cancelled.")
+            return None  # Return None if the user quits
+
+        if choice.isdigit():
+            choice = int(choice)
+
+            if 0 <= int(choice) < len(profiles):
+                return keys[choice]
+            else:
+                print(f"Invalid choice. Please enter a number between 0 and {len(profiles) - 1}.")
+        else:
+            print("Invalid input. Please enter a valid number or 'q' to quit.")
+
+def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
+    """
+    Uses get_profiles and select_profiles to store the selected profile/s across run/s in the profile_choices variable
+    * Use if need to gather a dict of runs each with a specific profile
+    """
+    sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
+    sel = 0 if sel_runs is None else 1
+
+    #TODO could be in config to load following save tree?
+    run_dirs = os.path.join(plutodir, "Simulations", sim_type)
+    all_runs = [
+        d for d in os.listdir(run_dirs) if os.path.isdir(os.path.join(run_dirs, d))
+    ]
+
+    # used to selected if plotting all subdirs or select runs
+    if sel == 0:
+        run_names = all_runs
+        print(f"Subdirectories:, {run_names}")
+
+    elif sel == 1:
+        run_names = sel_runs
+
+    # Assign a profile number for each run (supports duplicates)
+    profile_choices = defaultdict(list)  # Change from a single variable to defaultdict(list)
+
+    if sel_prof is None: #use if usr input multiple profiles, diff per run
+        if not all:
+            for run in run_names:
+                profile_choice = select_profile(sim_type,run,profiles)
+                profile_choices[run].append(profile_choice)  # Appends profile to list
+                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+
+        elif all:
+                profile_choice = "all"
+                print(f"Selected profile {profiles[profile_choice]} for all runs")
+                print("\n")
+    
+    if sel_prof is not None: #use if want one profile across all runs
+        for run in run_names:
+            get_profiles(sim_type,run,profiles)
+            profile_choice = sel_prof
+            profile_choices[run].append(profile_choice)  # Appends profile to list
+
+            try:
+                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+                print("\n")
+
+            except KeyError:
+                raise KeyError(f"{profile_choice} is not an available profile")
+
+
+
+    return {'run_names':run_names,'profile_choices':profile_choices}
+
+#---Loading Files---#
 def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     """
     Loads simulation data from a specified Pluto simulation.
@@ -140,7 +368,7 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
 
             raw_data =  vars_dict[d_file][var_name]
 
-            conv_vals = pc.value_norm_conv(sim_coord,var_name,d_files,raw_data) #converts the raw pluto array
+            conv_vals = pc.value_norm_conv(var_name,d_files,raw_data) #converts the raw pluto array
             vars_si[d_file][var_name] = conv_vals["cgs"] if var_name == "SimTime" else conv_vals["si"] #NOTE keep SimTime as yrs for now
     
 
@@ -148,106 +376,10 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
 
     return {"vars_si": vars_si, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord}
 
-def get_profiles(sim_type,run,profiles):
-    """
-    Prints available profiles for a specific simulation
-    """
-    data = pluto_loader(sim_type,run,"all") #NOTE pl should be faster than pc
-    var_choice = data["var_choice"]
-    vars = data["vars"]["data_0"]
 
-    for var in var_choice[:-1]: # doesn't include SimTime as it has no size
-        if vars[var].size == 1:
-            avail_vars = var_choice
-            avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
-
-    else:
-        avail_vars = var_choice
-
-    keys = list(profiles.keys())
-
-    print("Available profiles:")
-    for i, prof in enumerate(keys):
-        vars_set = set(avail_vars)
-        prof_set = set(profiles[prof])
-        common = vars_set & prof_set
-
-        if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
-            print(f"{i}: {prof}, {profiles[prof]}")
-            sys.stdout.flush()
-
-    return keys
-
-def select_profile(sim_type,run,profiles):
-    keys = get_profiles(sim_type,run,profiles)
-
-    while True:
-        choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
-        if choice.lower() == "q":
-            print("Selection cancelled.")
-            return None  # Return None if the user quits
-
-        if choice.isdigit():
-            choice = int(choice)
-
-            if 0 <= int(choice) < len(profiles):
-                return keys[choice]
-            else:
-                print(f"Invalid choice. Please enter a number between 0 and {len(profiles) - 1}.")
-        else:
-            print("Invalid input. Please enter a valid number or 'q' to quit.")
-
-def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
-
-    sel = 0 if sel_runs is None else 1
-
-    #TODO could be in config to load following save tree?
-    run_dirs = os.path.join(plutodir, "Simulations", sim_type)
-    all_runs = [
-        d for d in os.listdir(run_dirs) if os.path.isdir(os.path.join(run_dirs, d))
-    ]
-
-    # used to selected if plotting all subdirs or select runs
-    if sel == 0:
-        run_names = all_runs
-        print(f"Subdirectories:, {run_names}")
-
-    elif sel == 1:
-        run_names = sel_runs
-
-    # Assign a profile number for each run (supports duplicates)
-    profile_choices = defaultdict(list)  # Change from a single variable to defaultdict(list)
-
-    if sel_prof is None: #use if usr input multiple profiles, diff per run
-        if not all:
-            for run in run_names:
-                profile_choice = select_profile(sim_type,run,profiles)
-                profile_choices[run].append(profile_choice)  # Appends profile to list
-                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
-
-        elif all:
-                profile_choice = "all"
-                print(f"Selected profile {profiles[profile_choice]} for all runs")
-                print("\n")
-    
-    if sel_prof is not None: #use if want one profile across all runs
-        for run in run_names:
-            get_profiles(sim_type,run,profiles)
-            profile_choice = sel_prof
-            profile_choices[run].append(profile_choice)  # Appends profile to list
-
-            try:
-                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
-                print("\n")
-
-            except KeyError:
-                raise KeyError(f"{profile_choice} is not an available profile")
-
-
-
-    return {'run_names':run_names,'profile_choices':profile_choices}
-
+#---Debug---#
 def pluto_sim_info(sim_type,sel_runs = None): #TODO Stellar wind is symm so indexing wont work
+    """WIP function to load and debug simulation info"""
     run_data = pluto_load_profile(sim_type, sel_runs,all = 1)
     run_names = run_data['run_names'] #loads the run names and selected profiles for runs
     coord_shape = defaultdict(list)
