@@ -2,12 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.0] - 2025-04-22
+
+### 🚀 Features
+
+
+- *(load.py)* add SimulationData class
+
+added SimulationData class: used to load converted,raw and units data from pluto_loader, pluto_conv and get_pluto_units
+
+- *(analysis.py)* added analysis.py
+
+added an analysis.py, contains: calc_var_prof, all peak finding functions, plot_time_prog. Now with 4 new functions: calc_energy,calc_radius,calc_radial_vel and calc_density
+
+
+### 🐛 Bug Fixes
+
+
+- *(plot.py)* changed PlotData class
+
+PlotData is now used for storing d_files from sdata.d_files, sel_var,sel_coord,plotting vars as pdata.vars (assigned from sdata.get_vars(d_file), and figs etc
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.2.5 → 0.3.0
+
+
 ## [v0.2.5] - 2025-04-11
 
 ### Documentation
 
 
-- *(general)* update changelog for v0.2.5
+- *(general)* update changelog for v0.2.4
+
+
+- *(general)* update changelog for v0.2.4
 
 
 
