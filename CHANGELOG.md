@@ -2,12 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [] - 1970-01-01
+## [v0.2.5] - 2025-04-11
 
 ### Documentation
 
 
-- *(general)* update changelog for v0.2.4
+- *(general)* update changelog for v0.2.5
 
 
 
@@ -18,11 +18,12 @@ All notable changes to this project will be documented in this file.
 
 Added the two functions: get_pluto_units() and value_norm_conv() into config.py. This replaces CGS_code_units in load.py, get_pluto_units() returns a dict like CGS_.. but now uses keys instead of indexes e.g. `"x1": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"}`. value_norm_conv() does all the conversion that pluto_conv did but can handle any np array as raw_data, and can convert the norm values into si or cgs to avoid unit-conversion errors.
 
-## v0.2.5 (2025-04-11)
 
-### Fix
+### Other
 
-- **config.py/load.py**: changed normalisation and conversion of units
+
+- *(general)* version 0.2.4 → 0.2.5
+
 
 ## [v0.2.4] - 2025-04-08
 
