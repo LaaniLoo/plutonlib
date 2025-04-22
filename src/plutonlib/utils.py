@@ -1,9 +1,11 @@
+import plutonlib.config as pc
+
 import os
 import time
 import sys
 from time import sleep
 import importlib
-
+from glob import glob 
 
 def py_reload(module):
     if isinstance(module,str):
@@ -14,8 +16,17 @@ def py_reload(module):
     module = importlib.import_module(module_name) #, package=None
     importlib.reload(module)
 
-    # print(time.ctime(os.path.getmtime(f"{module_name}.py"))) # Checks last modification time
     print(f"{module_name} Last Saved:",time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
+
+def py_reload_all():
+    for f in glob(pc.src_path + '/*.py'):
+        py_file = f.split("/")[3]
+        module_name = "plutonlib." + py_file.split(".py")[0]
+
+        module = importlib.import_module(module_name) #, package=None
+        importlib.reload(module)
+
+        print(f"{module_name} Last Saved:",time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
 
 def list_subdirectories(directory):
     """Return a list of subdirectories in the given directory."""

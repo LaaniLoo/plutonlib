@@ -3,7 +3,7 @@ from astropy import units as u
 import numpy as np
 
 start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
-
+src_path = r'plutonlib/src/plutonlib'
 plutodir = os.environ["PLUTO_DIR"]
 
 profiles = {
@@ -42,19 +42,19 @@ def get_pluto_units(sim_coord,d_files):
     "vx2": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[1]}_Velocity"},
     "vx3": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[2]}_Velocity"},
     "T": {"norm": 1.203e02, "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-
-    "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time"}, #NOTE not needed as below can be converted to si for seconds
+    # "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time"}, #NOTE not needed as below can be converted to si for seconds
     "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
     }
     
     return pluto_units 
 
-def value_norm_conv(sim_coord,var_name,d_files,raw_data = None,self = 0):
+def value_norm_conv(var_name,d_files,raw_data = None, self = 0):
     """
     gets value from get_pluto_units to convert to SI or CGS
     """
 
-    pluto_units = get_pluto_units(sim_coord,d_files)
+    pluto_units = get_pluto_units("CARTESIAN",d_files) #NOTE I don't think it needs sim_coord so left as CARTESIAN
+
     cgs_unit =  pluto_units[var_name]["cgs"]
     si_unit = pluto_units[var_name]["si"]
     norm = pluto_units[var_name]["norm"]
