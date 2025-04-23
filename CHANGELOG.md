@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [] - 1970-01-01
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
+
+### 🐛 Bug Fixes
+
+
+- *(config.py)* fixed start_dir
+
+start_dir can be set as an env var or plutonlib_output folder will be created in current wd
+
 ## [v0.3.0] - 2025-04-22
 
 ### 🚀 Features
