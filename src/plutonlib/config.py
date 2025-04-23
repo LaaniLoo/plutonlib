@@ -2,7 +2,18 @@ import os
 from astropy import units as u
 import numpy as np
 
-start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
+# start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
+try: #Checks if PLUTON_START_DIR is an env var
+    start_dir = os.environ["PLUTON_START_DIR"]
+except KeyError: #if not env var creates a plutonlib_output folder in current wd
+    new_dir = os.path.join(os.getcwd(),"plutonlib_output")
+    is_dir = os.path.isdir(new_dir)
+
+    start_dir = new_dir if is_dir is True else os.makedirs(new_dir)
+
+    print(f"environment variable PLUTON_START_DIR not found, setting save location as {start_dir}")
+    print(f"Creating plutonlib_output folder in {os.getcwd()}") if is_dir else None
+
 src_path = r'plutonlib/src/plutonlib'
 plutodir = os.environ["PLUTO_DIR"]
 
