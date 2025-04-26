@@ -18,7 +18,14 @@ from collections import defaultdict
 save_dir = pu.setup_dir(pc.start_dir) #set the save dir using the setup function and start location found in config
 
 class PlotData:
-    """First attempt at using a class to load and access all plot data"""
+    """
+    Class used to store data that needs to be accessed btwn multiple plotting functions e.g. 
+    * matplotlib figures: fig
+    * matplotlib axes: axes
+    * plot_extras returns: extras
+    * data files from SimulationData: d_files
+    * function args for vars and coords: sel_var, sel_coord
+    """
     def __init__(self,d_file = None, **kwargs):
         self.d_file = d_file 
 
@@ -49,7 +56,7 @@ def subplot_base(sdata, pdata = None,d_files = None): #sets base subplots determ
         pdata = PlotData()
 
 
-    pdata.d_files = d_files if d_files is not None else sdata.d_files
+    pdata.d_files = d_files if d_files is not None else sdata.d_files #TODO this should be changed to be handled out of p or s
     sim_type = sdata.sim_type
     # Validate we have files to plot
     if not sdata.d_files:
@@ -135,7 +142,8 @@ def plot_extras(sdata,pdata = None, **kwargs):
             coord_labels.append(coord_label)
             xy_labels[var_name] = (f"{coord_label} [{coord_units}]")  
 
-        #TODO add rest of labels else:
+        #TODO add rest of labels,
+        # else:
         #     print("else:", var_name)
 
     #assigning cbar and title labs from rho prs etc
@@ -196,7 +204,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
     
     #Simple error in case of wrong profile
     if len(sdata.var_choice) >4:
-        raise TypeError(f"sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled")
+        raise TypeError(f"sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
 
     #error if selected wrong profile and in 2D
     y_shape = sdata.get_vars(sdata.d_last)[sdata.var_choice[1]].shape
@@ -283,10 +291,6 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     xy_labels = extras_data["xy_labels"]
     title = extras_data["title_other"][0]
 
-    # Plot suptitle, not sure if req
-    # fig = pdata.fig
-    # st = fig.suptitle("suptitle", fontsize="x-large")
-
     ax = pdata.axes[idx] #get ax from PlotData class
     ax.set_aspect("equal")
 
@@ -318,13 +322,13 @@ def plot_save(sdata,pdata=None,custom=0,file_type = "png", **kwargs):
             filename =f"{save_dir}/{sdata.sim_type}_{current_func_name}_plot.{file_type}"
 
         else:
-            filename = f"{save_dir}/{sdata.sim_type}_{sdata.run}_plot.{file_type}"
+            filename = f"{save_dir}/{sdata.sim_type}_{sdata.run}_{sdata.profile_choice}_plot.{file_type}"
 
         pdata.fig.savefig(filename, bbox_inches='tight')
         print(f"Saved to {filename}")
-
+        
 #---Plotting Functions---#
-def plot_sim(sdata,sim_type=None,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = None,**kwargs):
+def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = None,**kwargs):
     """
     Plots the current simulation as either a L-R symmetrical colour map for rho/prs or vx1/vx2 (e.g. for jet) 
     or as separate colour map plots for each var 
@@ -334,11 +338,12 @@ def plot_sim(sdata,sim_type=None,sel_d_files = None,sel_runs = None,sel_prof = N
     if pdata is None:
         pdata = PlotData(**kwargs)
 
-
+    #TODO make a class or function or something to streamline this
     sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-
     sdata.run = sel_runs if sel_runs else [sdata.run]
+    sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
+
     run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run,sel_prof)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
 
@@ -351,7 +356,7 @@ def plot_sim(sdata,sim_type=None,sel_d_files = None,sel_runs = None,sel_prof = N
 
         pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        pdata.axes, pdata.fig = subplot_base(sdata,pdata)
+        pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files)
 
         # Jet only needs to iterate  over d_file
         if sdata.sim_type in ("Jet"):
@@ -383,7 +388,7 @@ def plot_sim(sdata,sim_type=None,sel_d_files = None,sel_runs = None,sel_prof = N
 
         plot_save(sdata,pdata) # make sure is indent under run_names so that it saves multiple runs
 
-def plotter(sel_coords,sel_vars,sdata,sel_d_file = None,pdata = None,**kwargs):
+def plotter(sel_coords,sel_vars,sdata,sel_d_files = None,pdata = None,**kwargs):
     """
     Plots 1D slices of selected variables from Pluto simulations.
     """
@@ -393,9 +398,13 @@ def plotter(sel_coords,sel_vars,sdata,sel_d_file = None,pdata = None,**kwargs):
 
     sel_coords = [sel_coords] if sel_coords and not isinstance(sel_coords,list) else sel_coords
     sel_vars = [sel_vars] if sel_vars and not isinstance(sel_vars,list) else sel_vars
-    pdata.d_files = sdata.d_files if sel_d_file is None else sel_d_file
+    sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
+    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files
 
-    axes, fig = subplot_base(sdata,pdata) #,d_files=pdata.d_files
+    # print(f"Selected files: {pdata.d_files}")
+    # print(f"All files in sdata: {sdata.d_files}")
+
+    axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files) #,d_files=pdata.d_files
     plot_idx = 0  # Keep track of which subplot index we are using
 
     for d_file in pdata.d_files: # plot across all files
@@ -411,7 +420,7 @@ def plotter(sel_coords,sel_vars,sdata,sel_d_file = None,pdata = None,**kwargs):
 
                 pdata.sel_coord = coord
                 pdata.sel_var = var_name
-                var_profile = pa.calc_var_prof(sdata,pdata)
+                var_profile = pa.calc_var_prof(sdata,coord)
                 var_sliced = sel_var[var_profile]
 
                 coord_label = sdata.get_var_info(coord)["coord_name"]
