@@ -20,40 +20,47 @@ from collections import defaultdict
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+import inspect
+
 
 class SimulationData:
     """First attempt at using a class to load and access all simulation data"""
     def __init__(self, sim_type=None, run=None, profile_choice=None,auto_load = True, **kwargs):
         self.sim_type = sim_type
         self.run = run
-        self.profile_choice = profile_choice or self._select_profile()
+        self.profile_choice = profile_choice or self._select_profile() # arg or function to select
 
+        # Data 
         self._raw_data = None
         self._conv_data = None
+        self._all_conv_data = None
+
+        # Extra
         self._units = None
         self._geometry = None
+
+        # Files
         self._d_files = None
         self._d_file = None
-        self._var_choice = None 
 
-        self.d_last = self.d_files[-1] #last datafile
-    
+        # Vars
+        self._var_choice = None 
+        self.coord_names = ["x1","x2","x3"] #for convenience 
+        # self._coords
+
         # Metadata
         self.load_time = None
         self.__dict__.update(kwargs)
 
+        #Print warnings only when assigning sdata?
+        called_func = inspect.stack()[1].function
+        if called_func == "<module>":
+            self.get_warnings() 
+
         if auto_load:
             self.load_all()
 
-    def _select_profile(self):
-        """if None is used as a profile choice, will show available profiles etc..."""
-        if self.run is None:
-            raise ValueError("run name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
-            
-        print("profile_choice is None, using pluto_load_profile to select profile")
-        run_data = pluto_load_profile(self.sim_type,self.run,None)
-        return run_data['profile_choices'][self.run][0] #loads the run names and selected profiles for runs
-        
+    #---Loading Data---#
     def load_all(self):
         self.load_raw()
         self.load_conv()
@@ -68,18 +75,95 @@ class SimulationData:
         self._geometry = self._raw_data['vars_extra'][0]
         self.load_time = time.time() - start
 
-    def load_conv(self):
+    def load_conv(self,profile=None):
         if self._raw_data is None:
             self.load_raw()
         
-        self._conv_data = pluto_conv(self.sim_type, self.run,self.profile_choice)
-    
+        profile = profile or self.profile_choice
+        loaded_data =pluto_conv(self.sim_type, self.run,profile)
+
+        self._conv_data = loaded_data
+
+        if profile == "all": #failsafe to load all data if req
+            self._all_conv_data = loaded_data
+
     def load_units(self):
         if self._conv_data is None:
             self.load_conv()
-        
+                
         self._units = pc.get_pluto_units(self._geometry,self._d_files)
     
+
+    #---Accessing SimulationData---#
+    def get_vars(self,d_file=None,system = 'si'): #NOTE d_file was None not sure about that
+        """Loads only arrays specified by vars in profile_choice"""
+        target_file = d_file or self.d_last
+        # print(target_file) #debug above
+
+        if system == 'si':
+            return self.conv_data['vars_si'][target_file]
+        else:
+            raise ValueError("system must be 'si' or 'cgs'")
+    
+    def get_all_vars(self,d_file=None,system = "si"):
+        """Loads all available arrays"""
+        target_file = d_file or self.d_last
+        # print(target_file) #debug above
+
+        if system == 'si':
+            return self.all_conv_data['vars_si'][target_file]
+        else:
+            raise ValueError("system must be 'si' or 'cgs'")
+    
+    def get_coords(self,d_file=None):
+        """Just gets the x,y,z arrays as needed"""
+        target_file = d_file or self.d_last
+
+        conv_data = self.all_conv_data['vars_si'][target_file]
+
+        coords = {
+            "x1": conv_data["x1"],
+            "x2": conv_data["x2"],
+            "x3": conv_data["x3"]
+        }
+
+        return coords
+
+    def get_var_info(self,var_name):
+        """Gets coordinate name, unit, norm value etc"""
+        var_info = self.units.get(var_name)
+
+        if not var_info:
+            raise KeyError(f"No unit info for variable {var_name}")
+        
+        return var_info
+
+    def get_warnings(self):
+        """Prints any warnings from loading process"""
+        warnings = self.conv_data['warnings']
+        for warning in warnings:
+            print(warning)
+    
+    #---Other---#
+    def reload(self):
+        """Force reload all data"""
+        self._raw_data = None
+        self._conv_data = None
+        self._units = None
+        self.load_all()
+        return self
+    
+    def _select_profile(self):
+        """if None is used as a profile choice, will show available profiles etc..."""
+        if self.run is None:
+            raise ValueError("run name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
+            
+        print("profile_choice is None, using pluto_load_profile to select profile")
+        run_data = pluto_load_profile(self.sim_type,self.run,None)
+        return run_data['profile_choices'][self.run][0] #loads the run names and selected profiles for runs
+
+
+    #---Properties---#
     @property
     def raw_data(self):
         if self._raw_data is None:
@@ -92,6 +176,12 @@ class SimulationData:
             self.load_conv()
         return self._conv_data
 
+    @property
+    def all_conv_data(self):
+        if self._all_conv_data is None:
+            self.load_conv(profile="all")  # Loads all profile
+        return self._all_conv_data
+        
     @property
     def units(self):
         if self._units is None:
@@ -109,36 +199,17 @@ class SimulationData:
         if self._d_files is None:
             self.load_raw()
         return self._d_files
+    
+    @property
+    def d_last(self):
+        return self.d_files[-1]
 
     @property
     def var_choice(self):
         if self._var_choice is None:
             self.load_raw()
         return self._var_choice
-
-    def get_vars(self,d_file=None,system = 'si'):
-        target_file = d_file #maybe [-1]
-
-        if system == 'si':
-            return self.conv_data['vars_si'][target_file]
-        else:
-            raise ValueError("system must be 'si' or 'cgs'")
-
-    def get_var_info(self,var_name):
-        var_info = self.units.get(var_name)
-
-        if not var_info:
-            raise KeyError(f"No unit info for variable {var_name}")
-        
-        return var_info
-
-    def reload(self):
-        """Force reload all data"""
-        self._raw_data = None
-        self._conv_data = None
-        self._units = None
-        self.load_all()
-        return self
+    
 
 #---Profile Loading---#
 def get_profiles(sim_type,run,profiles):
@@ -271,9 +342,11 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     """
     vars = defaultdict(list) # Stores variables for each D_file
     vars_extra = []
+    warnings = []
 
     var_choice = profiles[profile_choice]
     # print("Var Choice:", var_choice)
+
     wdir = os.path.join(plutodir, "Simulations", sim_type, run_name)
 
     #NOTE USE FOR LAST OUTPUT ONLY
@@ -287,12 +360,12 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
 
     loaded_vars = [v for v in var_choice if hasattr(data_0, v)]
     # print("Loaded Vars:", loaded_vars)
+
     non_vars = set(var_choice) - set(loaded_vars)
 
-    if non_vars:
-        print(f"Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
-        print("\n")
 
+    if non_vars: 
+        warnings.append(f"Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
 
     def load_file(output_num):
         data = pk_io.pload(output_num, w_dir=wdir)
@@ -310,7 +383,7 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     var_choice = [v for v in var_choice if v not in non_vars]
     vars_extra.append(geometry) # gets the geo of the sim, always loads first file
 
-    return {"vars": vars, "var_choice": var_choice,"vars_extra": vars_extra,"d_files": d_files} #"nlinf": nlinf
+    return {"vars": vars, "var_choice": var_choice,"vars_extra": vars_extra,"d_files": d_files,"warnings": warnings} #"nlinf": nlinf
 
 def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     """
@@ -339,25 +412,8 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     vars_dict = loaded_data["vars"]
     var_choice = loaded_data["var_choice"] # chosen vars at the chosen profile
     sim_coord = loaded_data["vars_extra"][0] #gets the coordinate sys of the current sim
-    
-    
+    warnings = loaded_data["warnings"] #loads any warning messages about vars
     vars_si = defaultdict(dict)
-
-
-    # CGS_code_units = {
-    #     "x1": [1.496e13, (u.cm), u.m, "x1", f"{sel_coord[0]}"],
-    #     "x2": [1.496e13, (u.cm), u.m, "x2", f"{sel_coord[1]}"],
-    #     "x3": [1.496e13, (u.cm), u.m, "x3", f"{sel_coord[2]}"],
-    #     "rho": [1.673e-24, (u.gram / u.cm**3), u.kg / u.m**3, "Density"],
-    #     "prs": [1.673e-14, (u.dyn / u.cm**2), u.Pa, "Pressure"],
-    #     "vx1": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[0]}_Velocity"],
-    #     "vx2": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[1]}_Velocity"],
-    #     "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
-    #     "T": [1.203e02, (u.K), u.K, "Temperature"],
-    #     "t_s": [1.496e08, (u.s),u.s, "Time"],
-    #     "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
-    # }
-
 
     # Process each file and variable
 
@@ -367,18 +423,20 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
             #     continue  # Skip missing variables
 
             raw_data =  vars_dict[d_file][var_name]
-
             conv_vals = pc.value_norm_conv(var_name,d_files,raw_data) #converts the raw pluto array
-            vars_si[d_file][var_name] = conv_vals["cgs"] if var_name == "SimTime" else conv_vals["si"] #NOTE keep SimTime as yrs for now
-    
 
+            if var_name == "SimTime":
+                # adds both time in years and seconds as keys, SimTime defaults to yr
+                vars_si[d_file][var_name] = conv_vals["cgs"]
+                vars_si[d_file]["SimTime_s"] = conv_vals["si"]
 
+            else:
+                vars_si[d_file][var_name] = conv_vals["si"]
 
-    return {"vars_si": vars_si, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord}
-
+    return {"vars_si": vars_si, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord,"warnings": warnings}
 
 #---Debug---#
-def pluto_sim_info(sim_type,sel_runs = None): #TODO Stellar wind is symm so indexing wont work
+def pluto_sim_info(sim_type,sel_runs = None): #NOTE NOT USED NEEDS UPDATING
     """WIP function to load and debug simulation info"""
     run_data = pluto_load_profile(sim_type, sel_runs,all = 1)
     run_names = run_data['run_names'] #loads the run names and selected profiles for runs
