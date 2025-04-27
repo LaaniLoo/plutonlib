@@ -4,4 +4,4 @@ from . import plot
 from . import config
 from . import analysis
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
