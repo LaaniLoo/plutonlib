@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"] #, "hatch-vcs"
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "plutonlib"
-version = "0.2.2"
+version = "0.3.0"
 # dynamic = ["version"]
 description = ""
 readme = "README.md"
@@ -41,13 +41,15 @@ plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "maste
 name = "cz_conventional_commits"
 version = "0.3.0"  # Must match [project] version
 version_files = [
-    "pyproject.toml:project.version",  # Explicit path
-    "pyproject.toml:tool.commitizen.version",  # Sync both
-    "plutonlib/__init__.py:__version__"
+    "pyproject.toml:project.version",
+    "pyproject.toml:tool.commitizen.version",
+    "src/plutonlib/__init__.py:__version__",  # Updated path
+    "src/plutonlib/_version.py:__version__"   # Alternative option
 ]
 tag_format = "v$version"
-update_changelog_on_bump = true
+update_changelog_on_bump = false
 major_version_zero = true
+use_editor = true 
 
 [project.urls]
 Homepage = "https://github.com/LaaniLoo/plutonlib"
@@ -56,3 +58,9 @@ Homepage = "https://github.com/LaaniLoo/plutonlib"
 [tool.hatch.build.targets.wheel]
 packages = ["src/plutonlib"]
 
+[tool.hatch.version]
+source = "vcs"  # Uses git tags for versioning
+pattern = "v(?P<version>.+)"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/plutonlib/_version.py"  # Or __init__.py

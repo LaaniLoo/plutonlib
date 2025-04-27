@@ -15,7 +15,7 @@ See `pyproject.toml`.
 Can be installed by cloning the git repo and navigating to it, then installed using the following command.
 
 ```
-pip install .
+pip install . 
 ```
 
 You can also use an "editable" install (any changes you make to files under `src/plutonlib` are visible without having to re-install the package) by passing the `-e` flag to `pip install`.
@@ -31,5 +31,10 @@ You can also use an "editable" install (any changes you make to files under `src
   * Used to store the `start_dir` variable which is the starting location for a save point, e.g. navigating outside WSL or to a different drive, 
   * load the PLUTO_DIR env var 
   * contains set profiles and coord systems used by `load`
+  * contains all units and variables defined by PLUTO with relevant units and normalization 
 * `plot`
   * can plot 2D/3D colour maps, 1D slices for any variable profile or .dbl data file, can also find max values/graphical peaks
+* `analysis`
+  * peak finding: graphical and numerical
+  * plotting peaks
+  * energy, density, velocity etc. calculations

@@ -3,16 +3,20 @@ from astropy import units as u
 import numpy as np
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
+
+#TODO env_var or config file??
 try: #Checks if PLUTON_START_DIR is an env var
-    start_dir = os.environ["PLUTON_START_DIR"]
+    start_dir = os.environ["PLUTONLIB_START_DIR"]
 except KeyError: #if not env var creates a plutonlib_output folder in current wd
     new_dir = os.path.join(os.getcwd(),"plutonlib_output")
     is_dir = os.path.isdir(new_dir)
 
     start_dir = new_dir if is_dir is True else os.makedirs(new_dir)
 
-    print(f"environment variable PLUTON_START_DIR not found, setting save location as {start_dir}")
+    print("\n")
+    print(f"environment variable PLUTONLIB_START_DIR not found, setting save location as {start_dir}")
     print(f"Creating plutonlib_output folder in {os.getcwd()}") if is_dir else None
+    # print("\n")
 
 src_path = r'plutonlib/src/plutonlib'
 plutodir = os.environ["PLUTO_DIR"]
@@ -53,7 +57,7 @@ def get_pluto_units(sim_coord,d_files):
     "vx2": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[1]}_Velocity"},
     "vx3": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[2]}_Velocity"},
     "T": {"norm": 1.203e02, "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    # "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time"}, #NOTE not needed as below can be converted to si for seconds
+    "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"}, #NOTE not needed as below can be converted to si for seconds
     "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
     }
     
@@ -87,3 +91,18 @@ def value_norm_conv(var_name,d_files,raw_data = None, self = 0):
     }
 
     return returns
+
+#---OLD CGS UNITS---#
+# CGS_code_units = {
+#     "x1": [1.496e13, (u.cm), u.m, "x1", f"{sel_coord[0]}"],
+#     "x2": [1.496e13, (u.cm), u.m, "x2", f"{sel_coord[1]}"],
+#     "x3": [1.496e13, (u.cm), u.m, "x3", f"{sel_coord[2]}"],
+#     "rho": [1.673e-24, (u.gram / u.cm**3), u.kg / u.m**3, "Density"],
+#     "prs": [1.673e-14, (u.dyn / u.cm**2), u.Pa, "Pressure"],
+#     "vx1": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[0]}_Velocity"],
+#     "vx2": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[1]}_Velocity"],
+#     "vx3": [1.000e05, (u.cm / u.s), u.m / u.s, f"{sel_coord[2]}_Velocity"],
+#     "T": [1.203e02, (u.K), u.K, "Temperature"],
+#     "t_s": [1.496e08, (u.s),u.s, "Time"],
+#     "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
+# }
