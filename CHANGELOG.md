@@ -10,6 +10,24 @@ All notable changes to this project will be documented in this file.
 - *(general)* update changelog
 
 
+- *(general)* update changelog
+
+
+
+### 🚀 Features
+
+
+- *(analysis.py)* log-log for plot_time_prog, fixes
+
+* can now add type = "log" into plot_time_prog, will produce a log-log plot with the calculated slope.
+  * cleaned up analysis functions, can now use Jet for calculations, removed pdata dependencies.
+
+- *(load.py)* SimulationData added get_all_vars,get_coords,fixes/warnings
+
+* get_all_vars: auto loads profile = "all"
+  * get_coords: gets a dict of just x-arrays @d_last or d_file
+  * original warnings from pluto_loader about non_vars now only prints for __init__
+
 
 ### 🐛 Bug Fixes
 
@@ -17,6 +35,10 @@ All notable changes to this project will be documented in this file.
 - *(config.py)* fixed start_dir
 
 start_dir can be set as an env var or plutonlib_output folder will be created in current wd
+
+- *(plot.py)* bug fixes and error handling
+
+Fixed bug where sel_prof would run profile select function. Added some basic error handling in plot helpers to check data is formatted correctly
 
 ## [v0.3.0] - 2025-04-22
 
