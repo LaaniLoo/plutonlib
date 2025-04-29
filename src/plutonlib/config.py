@@ -20,6 +20,7 @@ except KeyError: #if not env var creates a plutonlib_output folder in current wd
 
 src_path = r'plutonlib/src/plutonlib'
 plutodir = os.environ["PLUTO_DIR"]
+sim_dir = os.path.join(plutodir, "Simulations")
 
 profiles = {
     "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "SimTime"],
@@ -106,3 +107,19 @@ def value_norm_conv(var_name,d_files,raw_data = None, self = 0):
 #     "t_s": [1.496e08, (u.s),u.s, "Time"],
 #     "t_yr": [4.744e00, (u.yr), u.s, "Time "], 
 # }
+
+#---Sim data tree structure---#
+# In pluto-master
+# Simulations
+# ├── Jet
+# │   ├── Assn_hllc
+# │   │   ├── data.0000.dbl
+# │   │   ├── data.0001.dbl
+# │   │   ├── data.0002.dbl
+# │   │   ├── data.0003.dbl
+# │   │   ├── data.0004.dbl
+# │   │   ├── data.0005.dbl
+# │   │   ├── data.0006.dbl
+# │   │   ├── dbl.out
+# │   │   ├── grid.out
+# │   │   └── restart.out
