@@ -5,8 +5,13 @@ bump_release() {
     if [[ "$push" == "y" ]]; then
         cz bump
         git tag
+    fi
+
+    read -p "Ready to push? (verify tag) [y = yes, n = no]: " ready
+    if [[ "$ready" == "y" ]]; then
         git push origin main --tags
     fi
+
 }
 
 cd ~/plutonlib
