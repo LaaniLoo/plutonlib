@@ -15,15 +15,17 @@ from collections import defaultdict
 from IPython.display import display, Latex
 import inspect
 
+def find_nearest(array, value):
+    """Find closes value in array"""
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return {"idx":idx, "value": array[idx]}
 
-def calc_var_prof(sdata,sel_coord):
+def calc_var_prof(sdata,sel_coord,**kwargs):
     """
     automatically calculates the required array slice for an array of >=2 dimensions
     """
-
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
-
-
+    # sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name=sdata.subdir_name)
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
@@ -42,14 +44,31 @@ def calc_var_prof(sdata,sel_coord):
         }
 
     else:
+
+        #TODO add 3d case if statement
+        # used to slice at custom index or specified value
+        if 'value' in kwargs:
+            idx = find_nearest(sdata.get_coords()[sel_coord],kwargs['value'])['idx']
+
+        elif 'idx' in kwargs:
+            idx = kwargs['idx']
+
+        else:
+            print('Neither idx or value kwargs were given: slicing at idx = 0')
+            idx = 0
+
         slice_map = { #slices in shape of coord
-        "x1": (slice(None), 0),
-        "x2": (0, slice(None)),
+        "x1": (slice(None), idx),
+        "x2": (idx, slice(None)),
         }
 
     var_profile = slice_map[sel_coord]
 
-    return var_profile
+
+    returns = {
+        "var_profile": var_profile,"coord_sliced":sdata.get_coords()[sel_coord][idx]
+    }
+    return returns
 
 #---Peak Finding---#
 def peak_findr(sel_coord,sel_var,sdata):
@@ -57,14 +76,14 @@ def peak_findr(sel_coord,sel_var,sdata):
     Calculates the max values of an array and their location, e.g. use to find max values of x2 for vx2 to find jet radius
     """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     radius = []
     peak_info = []
     peak_var = []
     locs = []
 
-    var_profile = calc_var_prof(sdata,sel_coord)
+    var_profile = calc_var_prof(sdata,sel_coord)["var_profile"]
     for d_file in sdata.d_files:
         var = sdata.get_vars(d_file)
 
@@ -85,7 +104,7 @@ def peak_findr(sel_coord,sel_var,sdata):
 def graph_peaks(sel_coord,sel_var,sdata): #TODO Put in peak findr 
     """Follows a similar process to peak_findr() except it uses scipy signal peak finding, good for visual representation"""
     
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     coord_units = (sdata.get_var_info(sel_coord)["si"]).to_string('latex')
     var_units = (sdata.get_var_info(sel_var)["si"]).to_string('latex')
@@ -95,7 +114,7 @@ def graph_peaks(sel_coord,sel_var,sdata): #TODO Put in peak findr
     peak_vars = []
     peak_coords = []
     
-    var_profile = calc_var_prof(sdata,sel_coord)
+    var_profile = calc_var_prof(sdata,sel_coord)["var_profile"]
     for d_file in sdata.d_files: #find graphical peaks across all data files
 
         var = sdata.get_vars(d_file)[sel_var]
@@ -122,7 +141,7 @@ def graph_peaks(sel_coord,sel_var,sdata): #TODO Put in peak findr
 def all_graph_peaks(sel_coord,sel_var,sdata): #NOTE used for plotting same alg as peak_findr
     """A version of peak_findr() used for plotting, but includes all peak values """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     var_peak_ind = defaultdict(list)
     peak_vars = []
@@ -148,7 +167,7 @@ def all_graph_peaks(sel_coord,sel_var,sdata): #NOTE used for plotting same alg a
 def plot_peaks(sel_coord,sel_var,sdata): #TODO doesn't work for stelar wind rho
     """Plots the peaks found by all_graph_peaks()"""
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     vars_last = sdata.get_vars(sdata.d_last)
     peak_data = all_graph_peaks(sel_coord,sel_var,sdata=sdata) #NOTE all goes wrong with graph_peaks, something to do with d_files
@@ -189,7 +208,7 @@ def get_jet_length_dim(sdata):
 
 def tprog_phelper(sel_coord,r,sdata,type):
     """ Helper function for plot_time_prog, handles plotting assignment"""
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
     var_info = sdata.get_var_info(sel_coord)
 
     xlab = f"SimTime [{sdata.get_var_info("SimTime")["cgs"]}]"
@@ -236,6 +255,7 @@ def tprog_phelper(sel_coord,r,sdata,type):
 
         f,a = plt.subplots()
         a.plot(t_yr, r, color = "orange") # base plot
+        a.plot((r**(0.6)),r,colour = "hotpink",label = 'test')
         a.set_xlabel(xlab)
         a.set_ylabel(ylab)
         a.set_title(title)
@@ -260,7 +280,7 @@ def plot_time_prog(sel_coord,sdata,type="def"): #NOTE removed sel_var as it shou
     * Stellar_Wind: peak_finder() for plotting
     """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
     r = []
 
 
@@ -299,7 +319,7 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
     * type = "calc": calculates the theoretical value using calculated density from calc_density()
     """
     
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     peak_data = peak_findr("x2","vx2",sdata=sdata) #NOTE USE OF PREDET VARS
     radius = peak_data["radius"] # calculated shell/jet radii at SimTime from max vx2
@@ -310,7 +330,7 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
 
     if type == "sim": #calculates using simulated values
         rho = []
-        profile = calc_var_prof(sdata,sel_coord)
+        profile = calc_var_prof(sdata,sel_coord)["var_profile"]
 
         for loc, d_file in zip(locs,sdata.d_files):
 
@@ -357,7 +377,7 @@ def calc_radius(sdata,plot =0):
     Calculates the radius as a function of time using calc_energy()
     * has both simulated and calculated values 
     """
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     rt_sim, rt_calc = [], []
     rho_0 = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
@@ -445,7 +465,7 @@ def calc_density(sdata,sel_coord = "x2",plot = 0):
     Calculates the density values using the radial velocity from calc_radial_vel() as well as r_0 and v_wind
     """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run,profile_choice="all",auto_load = False)
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run=sdata.run_name,profile_choice="all",dir_str = sdata.dir_str)
 
     r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
     v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]
@@ -458,7 +478,7 @@ def calc_density(sdata,sel_coord = "x2",plot = 0):
     calc = (v_wind*(r_0**2))/(v_r*(r**2))
     rho_calc = calc*rho_norm
     rho_sim = sdata.get_vars(sdata.d_last)["rho"]
-    profile = calc_var_prof(sdata,sel_coord) 
+    profile = calc_var_prof(sdata,sel_coord)["var_profile"]
 
     returns = {
         "rho_calc": rho_calc,
