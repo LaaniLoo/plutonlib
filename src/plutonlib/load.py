@@ -1,34 +1,40 @@
 import plutonlib.utils as pu
 import plutonlib.plot as pp 
-
 import plutonlib.config as pc
-import sys
-import time
 
 profiles = pc.profiles
 coord_systems = pc.coord_systems
 plutodir = pc.plutodir
 
-import os
-import numpy as np
-
 import plutokore.io as pk_io
 from plutokore.simulations import get_output_count as pk_sim_count
 
+import numpy as np
 from astropy import units as u
 from collections import defaultdict 
 
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 import inspect
+import os
 
 
 class SimulationData:
-    """First attempt at using a class to load and access all simulation data"""
-    def __init__(self, sim_type=None, run=None, profile_choice=None,auto_load = True, **kwargs):
+    """
+    Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
+    converted/raw data, units and var info
+    """
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False, **kwargs):
         self.sim_type = sim_type
-        self.run = run
+        self.run_name = run_name
         self.profile_choice = profile_choice or self._select_profile() # arg or function to select
+
+        # Saving 
+        self.subdir_name = subdir_name
+        self.alt_dir = os.path.join(pc.start_dir,subdir_name) if self.subdir_name else None #used if want to skip setup_dir
+        # self.save_dir = self._select_dir() #saves save_dir 
+        self._save_dir = None
 
         # Data 
         self._raw_data = None
@@ -42,6 +48,8 @@ class SimulationData:
         # Files
         self._d_files = None
         self._d_file = None
+        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type))
+
 
         # Vars
         self._var_choice = None 
@@ -49,13 +57,16 @@ class SimulationData:
         # self._coords
 
         # Metadata
-        self.load_time = None
-        self.__dict__.update(kwargs)
-
         #Print warnings only when assigning sdata?
         called_func = inspect.stack()[1].function
         if called_func == "<module>":
             self.get_warnings() 
+
+        self.load_time = None
+        self.__dict__.update(kwargs)
+        self.dir_log = None
+
+
 
         if auto_load:
             self.load_all()
@@ -69,7 +80,7 @@ class SimulationData:
     def load_raw(self):
         start = time.time() #for load time
 
-        self._raw_data = pluto_loader(self.sim_type,self.run,self.profile_choice)
+        self._raw_data = pluto_loader(self.sim_type,self.run_name,self.profile_choice)
         self._d_files = self._raw_data['d_files']
         self._var_choice = self._raw_data['var_choice']
         self._geometry = self._raw_data['vars_extra'][0]
@@ -80,7 +91,7 @@ class SimulationData:
             self.load_raw()
         
         profile = profile or self.profile_choice
-        loaded_data =pluto_conv(self.sim_type, self.run,profile)
+        loaded_data =pluto_conv(self.sim_type, self.run_name,profile)
 
         self._conv_data = loaded_data
 
@@ -140,9 +151,16 @@ class SimulationData:
 
     def get_warnings(self):
         """Prints any warnings from loading process"""
+        print(f"{pu.bcolors.WARNING}WARNING: run is now run_name and dir_str is subdir_name")
         warnings = self.conv_data['warnings']
+
+        if self.alt_dir:
+            dir_log = f"Final selected save directory: {self.save_dir}"
+            print(dir_log)
+
         for warning in warnings:
             print(warning)
+
     
     #---Other---#
     def reload(self):
@@ -155,14 +173,47 @@ class SimulationData:
     
     def _select_profile(self):
         """if None is used as a profile choice, will show available profiles etc..."""
-        if self.run is None:
-            raise ValueError("run name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
+        if self.run_name is None:
+            raise ValueError("run_name name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
             
         print("profile_choice is None, using pluto_load_profile to select profile")
-        run_data = pluto_load_profile(self.sim_type,self.run,None)
-        return run_data['profile_choices'][self.run][0] #loads the run names and selected profiles for runs
+        run_data = pluto_load_profile(self.sim_type,self.run_name,None)
+        return run_data['profile_choices'][self.run_name][0] #loads the run_name names and selected profiles for runs
 
+    def _select_dir(self):
+        """If no specified directory string (subdir_name) to join to start_dir -> run_name setup_dir"""
 
+        if self.alt_dir is None: #not alt dir -> run_name setup
+            return  pu.setup_dir(pc.start_dir)
+        
+        elif self.alt_dir: #alt dir is specified 
+            if os.path.isdir(self.alt_dir): #valid dir -> assign 
+                return self.alt_dir
+
+            else: #isn't a valid dir -> run_name _create_dir()
+                return self._create_dir()
+
+    def _create_dir(self):
+        new_dir = self.alt_dir
+        sys.stdout.flush()
+        print(f"{self.subdir_name} is not a valid folder in start_dir: Would you like to create the dir {new_dir}?")
+
+        save = None 
+        while save not in (0,1):
+            try:
+                save = int(input("Create directory? [1/0]"))
+            except ValueError:
+                print("Invalid input, please enter 1 (yes) or 0 (no).")  
+
+        if save:
+            print(f"Creating {new_dir}")
+            os.makedirs(new_dir)
+            return new_dir
+        
+        elif not save:
+            print("Cancelling operation")
+            raise(AttributeError(f"Please specify a directory in {pc.start_dir}"))
+        
     #---Properties---#
     @property
     def raw_data(self):
@@ -181,7 +232,13 @@ class SimulationData:
         if self._all_conv_data is None:
             self.load_conv(profile="all")  # Loads all profile
         return self._all_conv_data
-        
+    
+    @property
+    def save_dir(self):
+        if self._save_dir is None:
+            self._save_dir = self._select_dir()
+        return self._save_dir
+
     @property
     def units(self):
         if self._units is None:
@@ -209,14 +266,17 @@ class SimulationData:
         if self._var_choice is None:
             self.load_raw()
         return self._var_choice
-    
+
+#------------------------#
+#       functions    
+#------------------------#
 
 #---Profile Loading---#
-def get_profiles(sim_type,run,profiles):
+def get_profiles(sim_type,run_name,profiles):
     """
     Prints available profiles for a specific simulation
     """
-    data = pluto_loader(sim_type,run,"all") #NOTE pl should be faster than pc
+    data = pluto_loader(sim_type,run_name,"all") #NOTE pl should be faster than pc
     var_choice = data["var_choice"]
     vars = data["vars"]["data_0"]
 
@@ -242,9 +302,9 @@ def get_profiles(sim_type,run,profiles):
 
     return keys
 
-def select_profile(sim_type,run,profiles):
+def select_profile(sim_type,run_name,profiles):
     """Uses user input to select a profile"""
-    keys = get_profiles(sim_type,run,profiles)
+    keys = get_profiles(sim_type,run_name,profiles)
 
     while True:
         choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
@@ -264,7 +324,7 @@ def select_profile(sim_type,run,profiles):
 
 def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
     """
-    Uses get_profiles and select_profiles to store the selected profile/s across run/s in the profile_choices variable
+    Uses get_profiles and select_profiles to store the selected profile/s across run_name/s in the profile_choices variable
     * Use if need to gather a dict of runs each with a specific profile
     """
     sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
@@ -284,15 +344,15 @@ def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
     elif sel == 1:
         run_names = sel_runs
 
-    # Assign a profile number for each run (supports duplicates)
+    # Assign a profile number for each run_name (supports duplicates)
     profile_choices = defaultdict(list)  # Change from a single variable to defaultdict(list)
 
-    if sel_prof is None: #use if usr input multiple profiles, diff per run
+    if sel_prof is None: #use if usr input multiple profiles, diff per run_name
         if not all:
-            for run in run_names:
-                profile_choice = select_profile(sim_type,run,profiles)
-                profile_choices[run].append(profile_choice)  # Appends profile to list
-                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+            for run_name in run_names:
+                profile_choice = select_profile(sim_type,run_name,profiles)
+                profile_choices[run_name].append(profile_choice)  # Appends profile to list
+                print(f"Selected profile {profile_choice} for run_name {run_name}: {profiles[profile_choice]}")
 
         elif all:
                 profile_choice = "all"
@@ -300,13 +360,13 @@ def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
                 print("\n")
     
     if sel_prof is not None: #use if want one profile across all runs
-        for run in run_names:
-            get_profiles(sim_type,run,profiles)
+        for run_name in run_names:
+            get_profiles(sim_type,run_name,profiles)
             profile_choice = sel_prof
-            profile_choices[run].append(profile_choice)  # Appends profile to list
+            profile_choices[run_name].append(profile_choice)  # Appends profile to list
 
             try:
-                print(f"Selected profile {profile_choice} for run {run}: {profiles[profile_choice]}")
+                print(f"Selected profile {profile_choice} for run_name {run_name}: {profiles[profile_choice]}")
                 print("\n")
 
             except KeyError:
@@ -365,7 +425,7 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
 
 
     if non_vars: 
-        warnings.append(f"Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
+        warnings.append(f"{pu.bcolors.WARNING}Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
 
     def load_file(output_num):
         data = pk_io.pload(output_num, w_dir=wdir)
@@ -439,16 +499,16 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
 def pluto_sim_info(sim_type,sel_runs = None): #NOTE NOT USED NEEDS UPDATING
     """WIP function to load and debug simulation info"""
     run_data = pluto_load_profile(sim_type, sel_runs,all = 1)
-    run_names = run_data['run_names'] #loads the run names and selected profiles for runs
+    run_names = run_data['run_names'] #loads the run_name names and selected profiles for runs
     coord_shape = defaultdict(list)
     # pluto_load_data = pluto_loader(sim_type,run_names[0],profile_choices[run_names[0]][0])
     # d_files = pluto_load_data["d_files"]
 
 
-    for run in run_names:
+    for run_name in run_names:
         var_shape = []
         coord_join = []
-        data = pluto_conv(sim_type,run,"all")
+        data = pluto_conv(sim_type,run_name,"all")
         d_files = data["d_files"]
         var_dict = data["vars_si"]
         var_choice = data["var_choice"]
@@ -458,10 +518,10 @@ def pluto_sim_info(sim_type,sel_runs = None): #NOTE NOT USED NEEDS UPDATING
         coords = var_choice[:3]
         vars = var_choice[3:]
 
-        title_string = f"Run {run}: geometry = {geo} "
+        title_string = f"run_name {run_name}: geometry = {geo} "
         print(title_string)
         print("-"*len(title_string))
-        print(f"Available data files for {run}: {d_files}")
+        print(f"Available data files for {run_name}: {d_files}")
         d = var_dict[d_files[0]]
 
         for i, var in enumerate(vars):
@@ -469,17 +529,17 @@ def pluto_sim_info(sim_type,sel_runs = None): #NOTE NOT USED NEEDS UPDATING
             var_shape.append(d[var].shape)
 
             if i < len(coords):
-                coord_shape[run].append(d[coords[i]].shape)
+                coord_shape[run_name].append(d[coords[i]].shape)
                 
 
-            if coord_shape[run][-1:][0][0] == 1: #removes last if small
-                coord_shape[run] = coord_shape[run][:-1]
+            if coord_shape[run_name][-1:][0][0] == 1: #removes last if small
+                coord_shape[run_name] = coord_shape[run_name][:-1]
                 coords = coords[:-1]
 
 
 
-        coord_join.append(tuple(cs[0] for cs in coord_shape[run]))
-        # coord_join = [(coord_shape[run][0][0],coord_shape[run][1][0])]
+        coord_join.append(tuple(cs[0] for cs in coord_shape[run_name]))
+        # coord_join = [(coord_shape[run_name][0][0],coord_shape[run_name][1][0])]
         print(f"{coords} shape: {coord_join}")
 
 
