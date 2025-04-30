@@ -36,25 +36,6 @@ dependencies = [
 [tool.hatch.dependencies]
 plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" }
 
-
-[tool.commitizen]
-name = "cz_conventional_commits"
-version = "0.3.0"  # Must match [project] version
-version_files = [
-    "pyproject.toml:project.version",
-    "pyproject.toml:tool.commitizen.version",
-    "src/plutonlib/__init__.py:__version__",  # Updated path
-    "src/plutonlib/_version.py:__version__"   # Alternative option
-]
-tag_format = "v$version"
-update_changelog_on_bump = false
-major_version_zero = true
-use_editor = true 
-
-[project.urls]
-Homepage = "https://github.com/LaaniLoo/plutonlib"
-
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/plutonlib"]
 
@@ -64,3 +45,23 @@ pattern = "v(?P<version>.+)"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/plutonlib/_version.py"  # Or __init__.py
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.4.0"  # Must match [project] version
+version_files = [
+    "pyproject.toml:project.version",
+    "pyproject.toml:tool.commitizen.version",
+    "src/plutonlib/__init__.py:__version__",  # Updated path
+    "src/plutonlib/_version.py:__version__"   # Alternative option
+]
+changelog_file = "CHANGELOG.md"
+changelog_format = "cliff"  # Explicitly specify cliff format
+changelog_hook = "git cliff --output CHANGELOG.md"
+tag_format = "v$version"
+update_changelog_on_bump = false
+major_version_zero = true
+use_editor = true 
+
+[project.urls]
+Homepage = "https://github.com/LaaniLoo/plutonlib"

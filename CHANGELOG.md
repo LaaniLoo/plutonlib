@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 - *(general)* update changelog
 
 
+- *(general)* update changelog
+
+
 
 ### 🚀 Features
 
@@ -38,7 +41,14 @@ start_dir can be set as an env var or plutonlib_output folder will be created in
 
 - *(plot.py)* bug fixes and error handling
 
-Fixed bug where sel_prof would run profile select function. Added some basic error handling in plot helpers to check data is formatted correctly
+fixed bug where sel_prof would run profile select function. Added some basic error handling in plot helpers to check data is formatted correctly
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
 
 ## [v0.3.0] - 2025-04-22
 

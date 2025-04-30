@@ -7,6 +7,17 @@ from time import sleep
 import importlib
 from glob import glob 
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 def py_reload(module):
     if isinstance(module,str):
         module_name = module
@@ -45,7 +56,8 @@ def choose_directory(start_dir):
             break
 
         # sleep(0.5)
-        print(f"Current directory: {current_dir}")
+        print("Running setup_dir...")
+        print(f"Starting directory: {current_dir}")
         print('\n')
         sys.stdout.flush()
         print("Subdirectories:")
@@ -77,8 +89,7 @@ def setup_dir(start_dir):
     # Let the user select the directory (printing of subdirectories is handled inside the function)
     save_dir = choose_directory(start_dir)
 
-    print(f"Final selected directory: {save_dir}")
-    print("\n")
+    print(f"Final selected save directory: {save_dir}")
 
     return save_dir
 

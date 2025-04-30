@@ -4,7 +4,7 @@ import numpy as np
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
-#TODO env_var or config file??
+#TODO env_var or config file?
 try: #Checks if PLUTON_START_DIR is an env var
     start_dir = os.environ["PLUTONLIB_START_DIR"]
 except KeyError: #if not env var creates a plutonlib_output folder in current wd
