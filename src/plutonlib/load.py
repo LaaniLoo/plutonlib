@@ -181,7 +181,7 @@ class SimulationData:
         return run_data['profile_choices'][self.run_name][0] #loads the run_name names and selected profiles for runs
 
     def _select_dir(self):
-        """If no specified directory string (subdir_name) to join to start_dir -> run_name setup_dir"""
+        """If no specified directory string (subdir_name) to join to start_dir -> run_name is used with pc.setup_dir """
 
         if self.alt_dir is None: #not alt dir -> run_name setup
             return  pu.setup_dir(pc.start_dir)
