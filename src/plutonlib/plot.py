@@ -40,7 +40,7 @@ class PlotData:
         self.__dict__.update(kwargs)
 
 #---Plot Helper Functions---#
-def subplot_base(sdata, pdata = None,d_files = None): #sets base subplots determined by number of data_files
+def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplots determined by number of data_files
     """
     Sets up and calculates the number of required subplots
 
@@ -77,8 +77,14 @@ def subplot_base(sdata, pdata = None,d_files = None): #sets base subplots determ
     cols = 3 
     rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
 
-    figsize_width = min(7 * cols, 21)  # Cap maximum width
-    figsize_height = 7 * rows
+    # overwrite base fig size of 7 with kwarg
+    if 'fig_resize' in kwargs:
+        base_size = kwargs['fig_resize']
+    else:
+        base_size = 7
+
+    figsize_width = min(base_size * cols, 21)  # Cap maximum width
+    figsize_height = base_size * rows
 
     pdata.fig, axes = plt.subplots(rows, cols, figsize=(figsize_width, figsize_height),constrained_layout = True) 
     pdata.axes = axes.flatten() #note that axes is assigned to pdata when flattened
@@ -202,7 +208,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
     
     #Simple error in case of wrong profile
     if len(sdata.var_choice) >4:
-        raise TypeError(f"sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
+        raise TypeError(f"{pu.bcolors.WARNING}sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
 
     #error if selected wrong profile and in 2D
     y_shape = sdata.get_vars(sdata.d_last)[sdata.var_choice[1]].shape
@@ -212,7 +218,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
     # If being called by self:
     if pdata.axes is None:
         logging.warning("pdata.axes is None, calling subplot_base to assign")
-        pdata.axes, pdata.fig = subplot_base(sdata)
+        pdata.axes, pdata.fig = subplot_base(sdata,**kwargs)
         for d_file in sdata.d_files:
             pdata.vars = sdata.get_vars(d_file)
 
@@ -253,13 +259,36 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
             # Apply log scale if density or pressure
             is_log = var_name in ('rho', 'prs')
+            is_vel = var_name in ('vx1','vx2')
+
             vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+            v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
+            # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
+            #                                   vmin=-5000, vmax=5000.0, base=10)
+
             
             # Determine plot side and colormap
             if i % 2 == 0:  # Even index vars on right
-                im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=extras["c_maps"][i])
+                #,vmin = -5000, vmax = 5000
+                im = ax.pcolormesh(
+                    pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data, 
+                    cmap=extras["c_maps"][i],
+                    # norm = norm
+                    vmin = v_min_max[0],
+                    vmax =  v_min_max[1]
+                    )
             else:           # Odd index vars on left (flipped)
-                im = ax.pcolormesh(-1 * pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=extras["c_maps"][i])
+                im = ax.pcolormesh(
+                    -1 * pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data, 
+                    cmap=extras["c_maps"][i],
+                    # norm = norm
+                    vmin =  v_min_max[0],
+                    vmax =  v_min_max[1]
+                    )
                 
             # Add colorbar with appropriate label
             cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
@@ -282,7 +311,7 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     # If being called by self:
     if pdata.axes is None:
         logging.warning("pdata.axes is None, calling subplot_base to assign")
-        pdata.axes, pdata.fig = subplot_base(sdata)
+        pdata.axes, pdata.fig = subplot_base(sdata,**kwargs)
         for d_file in sdata.d_files:
             pdata.vars = sdata.get_vars(d_file)
 
@@ -301,6 +330,13 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     else:
         ax.set_title(f"{title}")
 
+def plot_axlim(ax,kwargs):
+    if 'xlim' in kwargs: # xlim kwarg to change x limits
+        ax.set_xlim(kwargs['xlim']) 
+
+    if 'ylim' in kwargs: # xlim kwarg to change x limits
+        ax.set_ylim(kwargs['ylim']) 
+
 def plot_save(sdata,pdata=None,custom=0,**kwargs):
     """
     Saves generated figure as png default
@@ -315,7 +351,12 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
     file_type = kwargs["file_type"] if 'file_type' in kwargs else "png"
     print("Note: saving as pdf takes a while...") if file_type == "pdf" else None
 
-    save = input(f"Save plot for {sdata.run_name}? [1 = Yes, 0 = No, 2 = Custom label]:")
+    if 'save_ovr' in kwargs:
+        save = kwargs['save_ovr'] #overwrite value to skip loop
+    
+    else:
+        save = input(f"Save plot for {sdata.run_name}? [1 = Yes, 0 = No, 2 = Custom label]:")
+
     if save == "1":
         if custom:
             caller_frame = inspect.currentframe().f_back
@@ -367,7 +408,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
         pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files)
+        pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
         # Jet only needs to iterate  over d_file
         if sdata.sim_type in ("Jet"):
@@ -377,6 +418,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
                 plot_label(sdata,pdata,idx)
                 cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
+                plot_axlim(pdata.axes[idx],kwargs)
 
 
         # Stellar_Wind needs to iterate  over d_file and var name 
@@ -394,8 +436,11 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                     # Plot each variable in its own subplot
                     cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
                     plot_label(sdata,pdata,plot_idx)
+                    plot_axlim(pdata.axes[plot_idx],kwargs)
+
                     plot_idx += 1
         
+
 
         plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
 
@@ -411,10 +456,7 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
     pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files
 
-    # # print(f"Selected files: {pdata.d_files}")
-    # # print(f"All files in sdata: {sdata.d_files}")
-
-    axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files) #,d_files=pdata.d_files
+    axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs) #,d_files=pdata.d_files
     plot_idx = 0  # Keep track of which subplot index we are using
 
     for d_file in pdata.d_files: # plot across all files
@@ -445,9 +487,8 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         title_str = f"{sdata.sim_type} {var_label}"
         ax = axes[plot_idx]
 
-        if 'xlim' in kwargs: # xlim kwarg to change x limits
-            ax.set_xlim(kwargs['xlim']) 
-    
+        plot_axlim(ax,kwargs)
+            
         ax.set_title(
             f"{title_str} vs {coord_label} ({sdata.run_name}, {d_file})"
         )
