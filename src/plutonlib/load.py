@@ -4,7 +4,8 @@ import plutonlib.config as pc
 
 profiles = pc.profiles
 coord_systems = pc.coord_systems
-plutodir = pc.plutodir
+PLUTODIR = pc.plutodir
+
 
 import plutokore.io as pk_io
 from plutokore.simulations import get_output_count as pk_sim_count
@@ -25,7 +26,7 @@ class SimulationData:
     Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
     converted/raw data, units and var info
     """
-    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False, **kwargs):
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False):
         self.sim_type = sim_type
         self.run_name = run_name
         self.profile_choice = profile_choice or self._select_profile() # arg or function to select
@@ -48,8 +49,9 @@ class SimulationData:
         # Files
         self._d_files = None
         self._d_file = None
-        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type))
-
+        self.avail_sims = os.listdir(pc.sim_dir)
+        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else print(f"{pu.bcolors.WARNING}Skipping avail_runs")
+        self.wdir =  os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else print(f"{pu.bcolors.WARNING}Skipping wdir")
 
         # Vars
         self._var_choice = None 
@@ -63,7 +65,7 @@ class SimulationData:
             self.get_warnings() 
 
         self.load_time = None
-        self.__dict__.update(kwargs)
+        # self.__dict__.update(kwargs)
         self.dir_log = None
 
 
@@ -151,16 +153,36 @@ class SimulationData:
 
     def get_warnings(self):
         """Prints any warnings from loading process"""
-        print(f"{pu.bcolors.WARNING}WARNING: run is now run_name and dir_str is subdir_name")
-        warnings = self.conv_data['warnings']
+        #---General Warnings---#
+        # print(f"{pu.bcolors.WARNING}WARNING: run is now run_name") 
+
+        #---self and file related warnings---#
+        warn_sim = f"please select an available simulation type from \n{self.avail_sims}"
+        warn_run = f"please select an available {self.sim_type} simulation from \n{self.avail_runs}"
+        is_wdir = os.path.isdir(self.wdir)
+
+        if not self.sim_type:
+            raise ValueError(f"{pu.bcolors.WARNING}Invalid sim_type, {warn_sim}")
+
+        if not self.run_name:
+            raise ValueError(f"{pu.bcolors.WARNING}Invalid run_name, {warn_run}")
+        
+        if not is_wdir:
+            raise ValueError(f"{pu.bcolors.WARNING}{self.wdir} doesn't contain the run {self.run_name}, {warn_run}")
 
         if self.alt_dir:
             dir_log = f"Final selected save directory: {self.save_dir}"
             print(dir_log)
 
+        #--Other--# 
+        warnings = self.conv_data['warnings']
         for warning in warnings:
             print(warning)
+        print(pu.bcolors.ENDC) #ends yellow warning colour 
 
+    def d_sel(self,slice,start = 0):
+        """Slices d_files to the number specified -> e.g. give me first 3 elements of d_files"""
+        return self.d_files[start:slice]
     
     #---Other---#
     def reload(self):
@@ -174,7 +196,7 @@ class SimulationData:
     def _select_profile(self):
         """if None is used as a profile choice, will show available profiles etc..."""
         if self.run_name is None:
-            raise ValueError("run_name name is None, IMPLEMENT RUN_NAMES FROM p_l_f")
+            raise ValueError("run_name and profile_choice are None, IMPLEMENT RUN_NAMES FROM p_l_f")
             
         print("profile_choice is None, using pluto_load_profile to select profile")
         run_data = pluto_load_profile(self.sim_type,self.run_name,None)
@@ -331,7 +353,7 @@ def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
     sel = 0 if sel_runs is None else 1
 
     #TODO could be in config to load following save tree?
-    run_dirs = os.path.join(plutodir, "Simulations", sim_type)
+    run_dirs = os.path.join(PLUTODIR, "Simulations", sim_type)
     all_runs = [
         d for d in os.listdir(run_dirs) if os.path.isdir(os.path.join(run_dirs, d))
     ]
@@ -407,7 +429,8 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     var_choice = profiles[profile_choice]
     # print("Var Choice:", var_choice)
 
-    wdir = os.path.join(plutodir, "Simulations", sim_type, run_name)
+    # wdir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
+    wdir = SimulationData(sim_type, run_name, profile_choice).wdir
 
     #NOTE USE FOR LAST OUTPUT ONLY
     # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
