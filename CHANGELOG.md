@@ -2,9 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.2] - 2025-05-13
+## [0.4.3] - 2025-05-19
+
+### 🐛 Bug Fixes
+
+
+- *(config.py)* error handling
+
+Added some error handling for env vars and required directories
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+## [v0.4.2] - 2025-05-13
 
 ### Documentation
+
+
+- *(general)* update changelog
 
 
 - *(general)* update changelog
@@ -33,6 +52,9 @@ Added `sdata.d_sel(slice,start)` in `SimulationData`, used to quickly slice d_fi
 
 
 - *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.4.1 → 0.4.2
 
 
 ## [v0.4.1] - 2025-04-30
