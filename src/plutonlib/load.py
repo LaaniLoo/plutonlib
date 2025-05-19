@@ -7,7 +7,8 @@ coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
 
-import plutokore.io as pk_io
+# import plutokore.io as pk_io
+import plutonlib.plutokore_io as pk_io
 from plutokore.simulations import get_output_count as pk_sim_count
 
 import numpy as np
