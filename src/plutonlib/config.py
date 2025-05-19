@@ -2,6 +2,8 @@ import os
 from astropy import units as u
 import numpy as np
 
+import plutonlib.utils as pu
+
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
 #TODO env_var or config file?
@@ -14,13 +16,22 @@ except KeyError: #if not env var creates a plutonlib_output folder in current wd
     start_dir = new_dir if is_dir is True else os.makedirs(new_dir)
 
     print("\n")
-    print(f"environment variable PLUTONLIB_START_DIR not found, setting save location as {start_dir}")
+    print(f"{pu.bcolors.WARNING}environment variable PLUTONLIB_START_DIR not found, setting save location as {start_dir}")
     print(f"Creating plutonlib_output folder in {os.getcwd()}") if is_dir else None
     # print("\n")
 
 src_path = r'plutonlib/src/plutonlib'
-plutodir = os.environ["PLUTO_DIR"]
-sim_dir = os.path.join(plutodir, "Simulations")
+
+try: #Checks for PLUTO_DIR env var
+    plutodir = os.environ["PLUTO_DIR"]
+except KeyError:
+    print(f'{pu.bcolors.WARNING}PLUTO_DIR env var not found, please set the location of the PLUTO code')
+
+
+if os.path.isdir(os.path.join(plutodir, "Simulations")): #if simulation dir doesn't exist 
+    sim_dir = os.path.join(plutodir, "Simulations")
+else:
+    raise FileNotFoundError(f"{pu.bcolors.WARNING} Simulation directory not found, needs to be in PLUTO_DIR ({plutodir}), see sim_save.sh")
 
 profiles = {
     "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "SimTime"],
