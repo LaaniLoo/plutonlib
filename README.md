@@ -8,6 +8,12 @@
 # Requirements
 See `pyproject.toml`.
 
+Some environment variables may be required to load data,
+* `PLUTONLIB_START_DIR` (not required): used as starting directory for python output.
+  * e.g. `PLUTONLIB_START_DIR='/mnt/g/My Drive/Honours S4E (2025)/Notebooks/'`
+* `PLUTO_DIR` (required): master directory of the PLUTO code.
+* e.g. `PLUTO_DIR=/home/alain/pluto-master`
+
 # Installing
 
 ## pip package manager (recommended)

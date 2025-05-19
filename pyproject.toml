@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [tool.hatch.dependencies]
-plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" }
+plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" } #check if can git clone with SSH key without prompts
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plutonlib"]
@@ -48,7 +48,7 @@ version-file = "src/plutonlib/_version.py"  # Or __init__.py
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.4.2"  # Must match [project] version
+version = "0.4.3"  # Must match [project] version
 version_files = [
     "pyproject.toml:project.version",
     "pyproject.toml:tool.commitizen.version",
