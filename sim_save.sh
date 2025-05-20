@@ -20,17 +20,17 @@ printf "\n"
 read -p "Enter Current Simulation Name: " CUR_SIM
 SAVE_DIR="${SIM_DIR}/${CUR_SIM}"
 mkdir -p "$SAVE_DIR" # Make sure the /Jet folder exists
-
-read -p "Enter Simulation Run Name: " RUN_NAME
-RUN_DIR="$SAVE_DIR/$RUN_NAME" # Create new <run_name> directory based on the simulation run name
-mkdir -p "$RUN_DIR"
-cp job_submit.sh "$RUN_DIR/job_submit.sh"
+cp job_submit.sh "$SAVE_DIR/job_submit.sh"
 
 # Check if there are any files to copy
 if [ -z "$(find "$TEMP_DIR" -maxdepth 1 -type f)" ]; then
     echo "No files to copy in $TEMP_DIR. Exiting."
     exit 1
 fi
+
+read -p "Enter Simulation Run Name: " RUN_NAME
+RUN_DIR="$SAVE_DIR/$RUN_NAME" # Create new <run_name> directory based on the simulation run name
+mkdir -p "$RUN_DIR"
 
 # Copy everything in /Simulations/Temp? except the simulation folder itself (e.g., Jet)
 rsync -av "$TEMP_DIR/" "$RUN_DIR/"
