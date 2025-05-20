@@ -1,6 +1,8 @@
 import plutonlib.utils as pu
 import plutonlib.plot as pp 
 import plutonlib.config as pc
+from plutonlib.colours import pcolours
+
 
 profiles = pc.profiles
 coord_systems = pc.coord_systems
@@ -51,8 +53,8 @@ class SimulationData:
         self._d_files = None
         self._d_file = None
         self.avail_sims = os.listdir(pc.sim_dir)
-        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else print(f"{pu.bcolors.WARNING}Skipping avail_runs")
-        self.wdir =  os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else print(f"{pu.bcolors.WARNING}Skipping wdir")
+        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else print(f"{pcolours.WARNING}Skipping avail_runs")
+        self.wdir =  os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else print(f"{pcolours.WARNING}Skipping wdir")
 
         # Vars
         self._var_choice = None 
@@ -155,7 +157,7 @@ class SimulationData:
     def get_warnings(self):
         """Prints any warnings from loading process"""
         #---General Warnings---#
-        # print(f"{pu.bcolors.WARNING}WARNING: run is now run_name") 
+        # print(f"{pcolours.WARNING}WARNING: run is now run_name") 
 
         #---self and file related warnings---#
         warn_sim = f"please select an available simulation type from \n{self.avail_sims}"
@@ -163,13 +165,13 @@ class SimulationData:
         is_wdir = os.path.isdir(self.wdir)
 
         if not self.sim_type:
-            raise ValueError(f"{pu.bcolors.WARNING}Invalid sim_type, {warn_sim}")
+            raise ValueError(f"{pcolours.WARNING}Invalid sim_type, {warn_sim}")
 
         if not self.run_name:
-            raise ValueError(f"{pu.bcolors.WARNING}Invalid run_name, {warn_run}")
+            raise ValueError(f"{pcolours.WARNING}Invalid run_name, {warn_run}")
         
         if not is_wdir:
-            raise ValueError(f"{pu.bcolors.WARNING}{self.wdir} doesn't contain the run {self.run_name}, {warn_run}")
+            raise ValueError(f"{pcolours.WARNING}{self.wdir} doesn't contain the run {self.run_name}, {warn_run}")
 
         if self.alt_dir:
             dir_log = f"Final selected save directory: {self.save_dir}"
@@ -179,7 +181,7 @@ class SimulationData:
         warnings = self.conv_data['warnings']
         for warning in warnings:
             print(warning)
-        print(pu.bcolors.ENDC) #ends yellow warning colour 
+        print(pcolours.ENDC) #ends yellow warning colour 
 
     def d_sel(self,slice,start = 0):
         """Slices d_files to the number specified -> e.g. give me first 3 elements of d_files"""
@@ -449,7 +451,7 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
 
 
     if non_vars: 
-        warnings.append(f"{pu.bcolors.WARNING}Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
+        warnings.append(f"{pcolours.WARNING}Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
 
     def load_file(output_num):
         data = pk_io.pload(output_num, w_dir=wdir)

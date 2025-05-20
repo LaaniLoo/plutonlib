@@ -2,7 +2,7 @@ import plutonlib.utils as pu
 import plutonlib.config as pc
 import plutonlib.load as pl
 import plutonlib.plot as pp
- 
+from plutonlib.colours import pcolours 
 
 import numpy as np
 import scipy as sp
@@ -377,7 +377,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
         #TODO fix below assignment -> fix peak_findr 
         coord_dim = sel_coord.strip("x")
         sel_var = "vx" + coord_dim #NOTE peak_findr DOES care which var is used, set to vel?
-        print(f"{pu.bcolors.WARNING}Note: stellar wind only works for velocity components setting sel_var = {sel_var}")
+        print(f"{pcolours.WARNING}Note: stellar wind only works for velocity components setting sel_var = {sel_var}")
 
         peak_data = peak_findr(sel_coord,sel_var,sdata=sdata) 
         r = peak_data["radius"]

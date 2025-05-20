@@ -2,6 +2,7 @@ import plutonlib.utils as pu
 import plutonlib.config as pc
 import plutonlib.load as pl
 import plutonlib.analysis as pa
+from plutonlib.colours import pcolours
 
 import numpy as np
 import scipy as sp
@@ -208,7 +209,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
     
     #Simple error in case of wrong profile
     if len(sdata.var_choice) >4:
-        raise TypeError(f"{pu.bcolors.WARNING}sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
+        raise TypeError(f"{pcolours.WARNING}sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
 
     #error if selected wrong profile and in 2D
     y_shape = sdata.get_vars(sdata.d_last)[sdata.var_choice[1]].shape
