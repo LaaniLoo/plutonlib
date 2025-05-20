@@ -20,6 +20,7 @@ printf "\n"
 read -p "Enter Current Simulation Name: " CUR_SIM
 SAVE_DIR="${SIM_DIR}/${CUR_SIM}"
 mkdir -p "$SAVE_DIR" # Make sure the /Jet folder exists
+cp job_submit.sh "$SAVE_DIR/job_submit.sh"
 
 # Check if there are any files to copy
 if [ -z "$(find "$TEMP_DIR" -maxdepth 1 -type f)" ]; then
