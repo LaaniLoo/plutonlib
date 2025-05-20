@@ -2,7 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.3] - 2025-05-19
+## [0.4.4] - 2025-05-20
+
+### 🐛 Bug Fixes
+
+
+- *(all)* fix circular import error
+
+pu.bcolors was causing a circular error in config.py, created colours.py to fix
+
+## [v0.4.3] - 2025-05-19
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🐛 Bug Fixes
 
@@ -16,6 +32,9 @@ Added some error handling for env vars and required directories
 
 
 - *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.4.2 → 0.4.3
 
 
 ## [v0.4.2] - 2025-05-13
