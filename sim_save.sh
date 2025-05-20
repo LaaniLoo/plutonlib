@@ -7,13 +7,14 @@ SIM_LOC=$(realpath -m "$USER_INPUT")
 
 SIM_DIR="$SIM_LOC/Simulations"
 TEMP_DIR="$SIM_DIR/Temp"
+LOG_DIR="$TEMP_DIR/Log"
 BKP_DIR="$SIM_DIR/bkp" #backup sims 
 
-mkdir -p "$SIM_DIR" "$TEMP_DIR" "$BKP_DIR"
+mkdir -p "$SIM_DIR" "$TEMP_DIR" "$BKP_DIR" "$LOG_DIR"
 
 
 echo "Moving to $SIM_DIR"
-printf "Current Structure: " && ls $SIM_DIR
+printf "Current Structure: " && ls "$SIM_DIR"
 
 printf "\n"
 read -p "Enter Current Simulation Name: " CUR_SIM
@@ -44,6 +45,9 @@ else
 fi
 
 # Delete only the files in /Simulations/
-find "$TEMP_DIR" -maxdepth 1 -type f -exec rm {} +
+# find "$TEMP_DIR" -maxdepth 1 -type d -exec rm {} +
+find "$TEMP_DIR" -mindepth 1 -not -path "$LOG_DIR" -exec rm -rf {} +
+
+
 
 echo "Simulation copied to $RUN_DIR"
