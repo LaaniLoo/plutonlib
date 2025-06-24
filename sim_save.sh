@@ -33,21 +33,23 @@ RUN_DIR="$SAVE_DIR/$RUN_NAME" # Create new <run_name> directory based on the sim
 mkdir -p "$RUN_DIR"
 
 # Copy everything in /Simulations/Temp? except the simulation folder itself (e.g., Jet)
-rsync -av "$TEMP_DIR/" "$RUN_DIR/"
+# rsync -av "$TEMP_DIR/" "$RUN_DIR/"
+mv "$TEMP_DIR"/* "$RUN_DIR/"
 
-if [ -z "$( ls -A "$BKP_DIR" )" ]; then
-   rsync -a "$TEMP_DIR/" "$BKP_DIR/"
+# BACKUP DIR WHEN COPYING
+# if [ -z "$( ls -A "$BKP_DIR" )" ]; then
+#    rsync -a "$TEMP_DIR/" "$BKP_DIR/"
 
-else
-   echo "Overwriting existing backup"
-   find "$BKP_DIR" -maxdepth 1 -type f -exec rm {} +
-   rsync -a "$TEMP_DIR/" "$BKP_DIR/"
+# else
+#    echo "Overwriting existing backup"
+#    find "$BKP_DIR" -maxdepth 1 -type f -exec rm {} +
+#    rsync -a "$TEMP_DIR/" "$BKP_DIR/"
 
-fi
+# fi
 
-# Delete only the files in /Simulations/
-# find "$TEMP_DIR" -maxdepth 1 -type d -exec rm {} +
-find "$TEMP_DIR" -mindepth 1 -not -path "$LOG_DIR" -exec rm -rf {} +
+# # Delete only the files in /Simulations/
+# # find "$TEMP_DIR" -maxdepth 1 -type d -exec rm {} +
+# find "$TEMP_DIR" -mindepth 1 -not -path "$LOG_DIR" -exec rm -rf {} +
 
 
 

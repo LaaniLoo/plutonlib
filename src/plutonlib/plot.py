@@ -294,7 +294,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
             # Add colorbar with appropriate label
             cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
             cbar.set_label(
-                f"Log10({extras["cbar_labels"][i]})" if is_log else extras["cbar_labels"][i],
+                f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
                 fontsize=14
             )
 

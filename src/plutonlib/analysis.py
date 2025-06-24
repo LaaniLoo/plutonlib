@@ -203,8 +203,8 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
     base_plot_data = np.log10(var_sliced) if is_log else var_sliced
     peak_plot_data = np.log10(peak_vars) if is_log else peak_vars
 
-    xlab = f"{sdata.get_var_info(sel_coord)["coord_name"]} [{sdata.get_var_info(sel_coord)["si"]}]"
-    ylab = f"log10({sdata.get_var_info(sel_var)["var_name"]}) [{sdata.get_var_info(sel_var)["si"]}]" if is_log else f"{sdata.get_var_info(sel_var)["var_name"]} [{sdata.get_var_info(sel_var)["si"]}]"
+    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['si']}]"
+    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['si']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['si']}]"
     label = f"Peak {ylab}"
     title = f"{sdata.sim_type} Peak {ylab} Across {xlab}"
 
@@ -242,8 +242,8 @@ def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stela
     base_plot_data = np.log10(var_sliced) if is_log else var_sliced
     peak_plot_data = np.log10(trough_vars) if is_log else trough_vars
 
-    xlab = f"{sdata.get_var_info(sel_coord)["coord_name"]} [{sdata.get_var_info(sel_coord)["si"]}]"
-    ylab = f"log10({sdata.get_var_info(sel_var)["var_name"]}) [{sdata.get_var_info(sel_var)["si"]}]" if is_log else f"{sdata.get_var_info(sel_var)["var_name"]} [{sdata.get_var_info(sel_var)["si"]}]"
+    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['si']}]"
+    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['si']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['si']}]"
     label = f"trough {ylab}"
     title = f"{sdata.sim_type} trough {ylab} Across {xlab}"
 
@@ -281,8 +281,8 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
     var_info = sdata.get_var_info(sel_coord)
 
-    xlab = f"SimTime [{sdata.get_var_info("SimTime")["cgs"]}]"
-    ylab = f"{var_info["coord_name"]}-Radius [{var_info["si"]}]"
+    xlab = f"SimTime [{sdata.get_var_info('SimTime')['cgs']}]"
+    ylab = f"{var_info['coord_name']}-Radius [{var_info['si']}]"
     title = f"{sdata.sim_type} {ylab} across {xlab}"
 
     t_yr = sdata.get_vars(sdata.d_last)["SimTime"]
@@ -291,10 +291,10 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     if sdata.sim_type == "Jet":
         longest_array = get_jet_length_dim(sdata) # used to avoid confusion btwn jet length and width
         measurement = "length" if sel_coord == longest_array else "width"
-        legend_base = f"{sdata.sim_type} {var_info["coord_name"]}-Radius ({measurement})" #names legend based on width or length
+        legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius ({measurement})" #names legend based on width or length
 
     elif sdata.sim_type == "Stellar_Wind":
-        legend_base = f"{sdata.sim_type} {var_info["coord_name"]}-Radius"
+        legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius"
     
     if type == "def": #default type plot
         f,a = plt.subplots()

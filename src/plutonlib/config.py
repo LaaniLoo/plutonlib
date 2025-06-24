@@ -5,7 +5,6 @@ from plutonlib.colours import pcolours
 import os
 from astropy import units as u
 import numpy as np
-
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
 #TODO env_var or config file?

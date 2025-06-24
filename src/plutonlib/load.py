@@ -8,10 +8,14 @@ profiles = pc.profiles
 coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
-
-# import plutokore.io as pk_io
-import plutonlib.plutokore_io as pk_io
+# Native plutokore support
+import plutokore.io as pk_io
 from plutokore.simulations import get_output_count as pk_sim_count
+# from pk_sim import get_output_count as pk_sim_count
+
+# importing src files??
+# import plutonlib.plutokore_io as pk_io
+# import plutonlib.plutokore_simulations as pk_sim
 
 import numpy as np
 from astropy import units as u

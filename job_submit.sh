@@ -1,12 +1,11 @@
 #!/bin/bash -l
-#PBS -lselect=1:ncpus=28:mpiprocs=28
-#PBS -lwalltime=1:00:00
-#PBS -N pluto-simulation
+#PBS -lselect=40:ncpus=28:mpiprocs=28
+#PBS -lwalltime=48:00:00
 #PBS -m abe
 #PBS -M alainm@utas.edu.au
 
 cd $PBS_O_WORKDIR
 
-module load intel impi hdf5
+module load HDF5 OpenMPI/4.1.5-GCC-12.3.0-pbs
 
-mpiexec ./pluto -i pluto.ini -maxtime 19.5
+mpirun -mca io ^ompio ./pluto -i pluto.ini -maxtime 47.5
