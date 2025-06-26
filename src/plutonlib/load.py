@@ -311,7 +311,7 @@ class SimulationData:
 #------------------------#
 
 #---Profile Loading---#
-def get_profiles(sim_type,run_name,profiles,load_outputs=0):
+def get_profiles(sim_type,run_name,profiles):
     """
     Prints available profiles for a specific simulation
     """

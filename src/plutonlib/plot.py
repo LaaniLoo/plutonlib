@@ -55,7 +55,13 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
         pdata = PlotData()
 
 
-    pdata.d_files = d_files if d_files is not None else sdata.d_files #TODO this should be changed to be handled out of p or s
+    # pdata.d_files = d_files if d_files is not None else sdata.d_files #TODO this line is useful but breaks for sdata
+    pdata.d_files = d_files if d_files is not None else getattr(sdata, 'd_files', [])
+
+    #DEBUG
+    # print(f"in subplot_base (called by {inspect.currentframe().f_back.f_code.co_name}):", pdata.d_files)
+
+
     sim_type = sdata.sim_type
     # Validate we have files to plot
     if not sdata.d_files:
@@ -454,13 +460,15 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
         sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,load_outputs=loaded_outputs)
 
+        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        if loaded_outputs is not None:
-            pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
+        # if loaded_outputs is not None:
+        #     pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
 
-        elif loaded_outputs is None:
-            pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+        # elif loaded_outputs is None:
+        #     pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
+            
 
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
