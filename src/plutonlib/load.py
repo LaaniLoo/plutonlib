@@ -415,7 +415,7 @@ def pluto_load_profile(sim_type,sel_runs,sel_prof,all = 0):
     return {'run_names':run_names,'profile_choices':profile_choices}
 
 #---Loading Files---#
-def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
+def pluto_loader_MT(sim_type, run_name, profile_choice,max_workers = None):
     """
     Loads simulation data from a specified Pluto simulation.
 
@@ -490,6 +490,75 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     vars_extra.append(geometry) # gets the geo of the sim, always loads first file
 
     return {"vars": vars, "var_choice": var_choice,"vars_extra": vars_extra,"d_files": d_files,"warnings": warnings} #"nlinf": nlinf
+
+def pluto_loader(sim_type, run_name, profile_choice):
+    """
+    Loads simulation data from a specified Pluto simulation.
+
+    Parameters:
+    -----------
+    sim_type : str
+        Type of simulation to load (e.g., "Jet", "Stellar_Wind") #NOTE see config for saving structure.
+    run_name : str
+        Name of the specific simulation file to load e.g. "default".
+    profile_choice : str
+        Index selecting a profile from predefined variable lists (#NOTE found in config.py):
+        - "2d_rho_prs": ["x1", "x2", "rho", "prs"]
+
+    Returns:
+    --------
+    dict
+        Dictionary containing:
+        - vars: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
+        - var_choice: List of variable names corresponding to the selected profile.
+        - vars_extra: contains the geometry of the sim
+        - d_files: contains a list of the available data files for the sim
+    """
+    vars = defaultdict(list) # Stores variables for each D_file
+    vars_extra = []
+    warnings = []
+    
+    var_choice = profiles[profile_choice]
+    # print("Var Choice:", var_choice)
+
+    # wdir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
+    wdir = SimulationData(sim_type, run_name, profile_choice).wdir
+
+    #NOTE USE FOR LAST OUTPUT ONLY
+    # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
+
+    # for dbl files:
+    # n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
+
+    # for h5 files:
+    n_outputs = pk_sim_count(sim_path=Path(wdir), data_type="double") # grabs number of data output files, might need datatype
+
+    d_files = [f"data_{i}" for i in range(n_outputs + 1)]
+
+    data_0 = pk_io.pload(0, w_dir=wdir) #datatype="hdf5"
+    geometry = data_0.geometry #gets the geometry of the first file = fast
+
+    loaded_vars = [v for v in var_choice if hasattr(data_0, v)]
+    # print("Loaded Vars:", loaded_vars)
+
+    non_vars = set(var_choice) - set(loaded_vars)
+
+    if non_vars:
+        warnings.append(f"{pcolours.WARNING}Simulation {run_name} doesn't contain: {', '.join(non_vars)}")
+
+    def load_file(output_num):
+        data = pk_io.pload(output_num, w_dir=wdir)
+        return output_num, {v: getattr(data, v) for v in loaded_vars}
+
+    # Serial load all files (safe for cluster/Jupyter use)
+    for i in range(n_outputs + 1):
+        output_num, file_data = load_file(i)
+        vars[f"data_{output_num}"] = file_data
+
+    var_choice = [v for v in var_choice if v not in non_vars]
+    vars_extra.append(geometry) # gets the geo of the sim, always loads first file
+
+    return {"vars": vars, "var_choice": var_choice, "vars_extra": vars_extra, "d_files": d_files, "warnings": warnings} #"nlinf": nlinf
 
 def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
     """
