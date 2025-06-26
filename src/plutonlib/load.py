@@ -429,6 +429,9 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
         - vars_extra: contains the geometry of the sim
         - d_files: contains a list of the available data files for the sim
     """
+    pk_io.pload.datatype = "hdf5"
+    print(f"{pcolours.WARNING}Hotfix: setting datatype to hdf5")
+
     vars = defaultdict(list) # Stores variables for each D_file
     vars_extra = []
     warnings = []
