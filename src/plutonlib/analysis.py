@@ -25,7 +25,9 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
     """
     automatically calculates the required array slice for an array of >=2 dimensions
     """
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+
+    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name,load_outputs=loaded_outputs)
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
