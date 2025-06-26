@@ -311,11 +311,11 @@ class SimulationData:
 #------------------------#
 
 #---Profile Loading---#
-def get_profiles(sim_type,run_name,profiles):
+def get_profiles(sim_type,run_name,profiles,load_outputs=0):
     """
     Prints available profiles for a specific simulation
     """
-    data = pluto_loader(sim_type,run_name,"all") #NOTE pl should be faster than pc
+    data = pluto_loader(sim_type,run_name,"all",load_outputs=0) #NOTE pl should be faster than pc #NOTE loads 0th output for speed?
     var_choice = data["var_choice"]
     vars = data["vars"]["data_0"]
 

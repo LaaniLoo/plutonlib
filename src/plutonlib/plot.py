@@ -405,9 +405,20 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     for run in run_names:
         sdata.run_name = run
         sdata.profile_choice = profile_choices[run][0]
-        sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,sdata.load_outputs)
 
-        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+        loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+        print(f"loaded {sdata.load_outputs} outputs")
+
+        sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,load_outputs=loaded_outputs)
+
+
+        if loaded_outputs is not None:
+            pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
+            print("sdata.load_outputs is not None")
+        elif loaded_outputs is None:
+            pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+            print("sdata.load_outputs is None")
+
 
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
@@ -455,7 +466,11 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
     # sel_coords = [sel_coords] if sel_coords and not isinstance(sel_coords,list) else sel_coords
     # sel_vars = [sel_vars] if sel_vars and not isinstance(sel_vars,list) else sel_vars
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files
+
+    if sdata.load_outputs is not None:
+        pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
+    else:
+        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
     axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs) #,d_files=pdata.d_files
     plot_idx = 0  # Keep track of which subplot index we are using
