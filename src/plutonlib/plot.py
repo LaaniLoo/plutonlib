@@ -405,7 +405,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     for run in run_names:
         sdata.run_name = run
         sdata.profile_choice = profile_choices[run][0]
-        sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name)
+        sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,sdata.load_outputs)
 
         pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
