@@ -637,7 +637,9 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
         vars[f"data_{output_num}"] = file_data
 
         #DEBUG
-        warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
+        # warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
+        print(f"{pcolours.WARNING}loaded data_{output_num}")
+
 
     var_choice = [v for v in var_choice if v not in non_vars]
     vars_extra.append(geometry) # gets the geo of the sim, always loads first file
