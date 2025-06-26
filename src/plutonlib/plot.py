@@ -270,7 +270,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
             if pdata.vars[var_name].ndim == 3:
                 slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                vars_data = np.log10(pdata.vars[var_name][slice_idx,:,:].T) if is_log else pdata.vars[var_name][slice_idx,:,:].T 
+                vars_data = np.log10(pdata.vars[var_name][slice_idx,:,:]) if is_log else pdata.vars[var_name][slice_idx,:,:] 
             
             else:
                 vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
@@ -308,54 +308,6 @@ def cmap_base(sdata,pdata = None, **kwargs):
                 f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
                 fontsize=14
             )
-    
-    # if sim_type in ("Jet"):
-    #     for i, var_name in enumerate(plot_vars):
-    #         if var_name not in pdata.vars:
-    #             print(f"Warning: Variable {var_name} not found, skipping")
-    #             continue
-
-    #         # Handle 3D data
-            # if pdata.vars[var_name].ndim == 3:
-            #     slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-            #     # var_data = pdata.vars[var_name][:,:,slice_idx]
-            #     var_data = pdata.vars[var_name][:,slice_idx,:]
-
-    #         else:
-    #             var_data = pdata.vars[var_name]
-
-    #         # Apply transformations
-    #         is_log = var_name in ('rho', 'prs')
-    #         is_vel = var_name in ('vx1','vx2')
-    #         vars_data = np.log10(var_data.T) if is_log else var_data.T
-            
-    #         # Set dynamic min/max for colorbar
-    #         v_min_max = [-2500, 2500] if is_vel else [
-    #             np.nanpercentile(vars_data, 1),
-    #             np.nanpercentile(vars_data, 99)
-    #         ]
-
-    #         # Mirror left side for odd indices
-    #         x_coord = (-1 if i % 2 else 1) * pdata.vars[sdata.var_choice[0]]
-    #         y_coord = pdata.vars[sdata.var_choice[1]]
-            
-    #         # Create plot with automatic shading
-    #         im = ax.pcolormesh(
-    #             x_coord,
-    #             y_coord,
-    #             vars_data,
-    #             cmap=extras["c_maps"][i],
-    #             shading='auto',  # Handles dimension mismatches
-    #             vmin=v_min_max[0],
-    #             vmax=v_min_max[1]
-    #         )
-
-    #         # Add colorbar
-    #         cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
-    #         cbar.set_label(
-    #             f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-    #             fontsize=14
-    #         )
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
