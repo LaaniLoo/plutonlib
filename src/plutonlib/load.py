@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import plutonlib.utils as pu
 import plutonlib.plot as pp 
 import plutonlib.config as pc
@@ -9,13 +11,20 @@ coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
 # Native plutokore support
-import plutokore.io as pk_io
-from plutokore.simulations import get_output_count as pk_sim_count
-# from pk_sim import get_output_count as pk_sim_count
+# import plutokore.io as pk_io
 
 # importing src files??
-# import plutonlib.plutokore_io as pk_io
-# import plutonlib.plutokore_simulations as pk_sim
+from plutonlib.plutokore_src import plutokore_io as pk_io
+
+#for dbl:
+# from plutokore.simulations import get_output_count as pk_sim_count
+
+#for hdf5:
+from plutokore.simulations import get_hdf5_output_count as pk_sim_count
+# from pk_sim import get_output_count as pk_sim_count
+
+
+
 
 import numpy as np
 from astropy import units as u
@@ -429,7 +438,6 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
         - vars_extra: contains the geometry of the sim
         - d_files: contains a list of the available data files for the sim
     """
-    pk_io.pload.datatype = "hdf5"
     print(f"{pcolours.WARNING}Hotfix: setting datatype to hdf5")
 
     vars = defaultdict(list) # Stores variables for each D_file
@@ -445,10 +453,15 @@ def pluto_loader(sim_type, run_name, profile_choice,max_workers = None):
     #NOTE USE FOR LAST OUTPUT ONLY
     # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
 
-    n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
+    # for dbl files:
+    # n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
+
+    # for h5 files:
+    n_outputs = pk_sim_count(sim_path = Path(wdir),data_type="double") # grabs number of data output files, might need datatype
+
     d_files = [f"data_{i}" for i in range(n_outputs + 1)]
 
-    data_0 = pk_io.pload(0,wdir)
+    data_0 = pk_io.pload(0,wdir) #datatype="hdf5"
     geometry = data_0.geometry #gets the geometry of the first file = fast
 
     loaded_vars = [v for v in var_choice if hasattr(data_0, v)]

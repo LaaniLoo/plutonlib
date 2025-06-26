@@ -26,6 +26,10 @@ pip install .
 
 You can also use an "editable" install (any changes you make to files under `src/plutonlib` are visible without having to re-install the package) by passing the `-e` flag to `pip install`.
 
+```
+pip install -e .
+```
+
 # Module overview
 
 * `utils` 
