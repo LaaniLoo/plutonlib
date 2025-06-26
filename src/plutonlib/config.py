@@ -5,6 +5,9 @@ from plutonlib.colours import pcolours
 import os
 from astropy import units as u
 import numpy as np
+import configparser
+from pathlib import Path 
+
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
 #TODO env_var or config file?
@@ -60,18 +63,43 @@ def get_pluto_units(sim_coord,d_files):
 
     #TODO assign from config etc?
     #key: norm, CGS, SI, var_name?, formatted coord in sys
+    # pluto_units = {
+    # "x1": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
+    # "x2": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
+    # "x3": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
+    # "rho": {"norm": 1.673e-24, "cgs": (u.gram / u.cm**3), "si": (u.kg / u.m**3), "var_name": "Density"},
+    # "prs": {"norm": 1.673e-14, "cgs": (u.dyn / u.cm**2), "si": u.Pa, "var_name": "Pressure"},
+    # "vx1": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[0]}_Velocity"},
+    # "vx2": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[1]}_Velocity"},
+    # "vx3": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[2]}_Velocity"},
+    # "T": {"norm": 1.203e02, "cgs": u.K, "si": u.K, "var_name": "Temperature"},
+    # "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"}, #NOTE not needed as below can be converted to si for seconds
+    # "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
+    # }
+
+
+    # Read norm values from ini file
+    cur_dir = Path(__file__).resolve().parent          # directory containing this .py
+    ini_path = cur_dir / "pluto_units.ini"   
+
+    config = configparser.ConfigParser()
+    config.optionxform = str
+    config.read(ini_path)
+    # print(f"Read {ini_path}")
+    norm_values = {k: float(v) for k, v in config["normalisations"].items()}
+
     pluto_units = {
-    "x1": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
-    "x2": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
-    "x3": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
-    "rho": {"norm": 1.673e-24, "cgs": (u.gram / u.cm**3), "si": (u.kg / u.m**3), "var_name": "Density"},
-    "prs": {"norm": 1.673e-14, "cgs": (u.dyn / u.cm**2), "si": u.Pa, "var_name": "Pressure"},
-    "vx1": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[0]}_Velocity"},
-    "vx2": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[1]}_Velocity"},
-    "vx3": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[2]}_Velocity"},
-    "T": {"norm": 1.203e02, "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"}, #NOTE not needed as below can be converted to si for seconds
-    "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
+    "x1": {"norm": norm_values["x1"], "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
+    "x2": {"norm": norm_values["x2"], "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
+    "x3": {"norm": norm_values["x3"], "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
+    "rho": {"norm": norm_values["rho"], "cgs": u.g / u.cm**3, "si": u.kg / u.m**3, "var_name": "Density"},
+    "prs": {"norm": norm_values["prs"], "cgs": u.dyn / u.cm**2, "si": u.Pa, "var_name": "Pressure"},
+    "vx1": {"norm": norm_values["vx1"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[0]}_Velocity"},
+    "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
+    "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
+    "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
+    "SimTime_s": {"norm": np.linspace(0, norm_values["SimTime_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
+    "SimTime": {"norm": np.linspace(0, norm_values["SimTime"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
     }
     
     return pluto_units 
