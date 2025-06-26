@@ -405,36 +405,32 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     for run in run_names:
         sdata.run_name = run
         sdata.profile_choice = profile_choices[run][0]
-
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-        print(f"loaded {sdata.load_outputs} outputs")
-
         sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,load_outputs=loaded_outputs)
 
 
         if loaded_outputs is not None:
             pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
-            print("sdata.load_outputs is not None")
+
         elif loaded_outputs is None:
             pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
-            print("sdata.load_outputs is None")
 
 
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
         # Jet only needs to iterate  over d_file
-        if sdata.sim_type in ("Jet"):
-            for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
-                pdata.d_file = d_file
-                pdata.vars = sdata.get_vars(d_file)
+        # if sdata.sim_type in ("Jet"):
+        #     for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+        #         pdata.d_file = d_file
+        #         pdata.vars = sdata.get_vars(d_file)
 
-                plot_label(sdata,pdata,idx)
-                cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
-                plot_axlim(pdata.axes[idx],kwargs)
+        #         plot_label(sdata,pdata,idx)
+        #         cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
+        #         plot_axlim(pdata.axes[idx],kwargs)
 
 
         # Stellar_Wind needs to iterate  over d_file and var name 
-        if sdata.sim_type in ("Stellar_Wind"):
+        if sdata.sim_type in ("Jet"):
             plot_vars = sdata.var_choice[2:]
             plot_idx = 0 #only way to index plot per var 
 
