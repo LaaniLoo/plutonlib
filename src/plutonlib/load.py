@@ -610,12 +610,22 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     if load_outputs == None:
         load_outputs = n_outputs
 
-    if load_outputs > n_outputs:
+    if isinstance(load_outputs,int) and load_outputs > n_outputs:
         raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
 
-    all_d_files = [f"data_{i}" for i in range(n_outputs + 1)]
-    data_0 = pk_io.pload(0, w_dir=wdir) #datatype="hdf5"
-    d_files = all_d_files[:load_outputs+1]
+    #OLD 
+    # all_d_files = [f"data_{i}" for i in range(n_outputs + 1)]
+    # d_files = all_d_files[:load_outputs+1]
+
+    data_0 = pk_io.pload(0, w_dir=wdir) 
+
+    # Handle list of indices
+    if isinstance(load_outputs, list):
+        d_files = [f"data_{i}" for i in load_outputs if i <= n_outputs]
+    elif load_outputs is not None:  # Original behavior for integer
+        d_files = [f"data_{i}" for i in range(min(load_outputs, n_outputs) + 1)]
+    else:  # Load all
+        d_files = [f"data_{i}" for i in range(n_outputs + 1)]
 
     geometry = data_0.geometry #gets the geometry of the first file = fast
 
@@ -631,15 +641,23 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
         data = pk_io.pload(output_num, w_dir=wdir)
         return output_num, {v: getattr(data, v) for v in loaded_vars}
 
-    # Serial load all files (safe for cluster/Jupyter use)
-    for i in range(load_outputs + 1):
-        output_num, file_data = load_file(i)
-        vars[f"data_{output_num}"] = file_data
+    if isinstance(load_outputs,int):
+        for i in range(load_outputs + 1):
+            output_num, file_data = load_file(i)
+            vars[f"data_{output_num}"] = file_data
 
-        #DEBUG
-        warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
-        # print(f"{pcolours.WARNING}loaded data_{output_num}")
+            #DEBUG
+            warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
+            # print(f"{pcolours.WARNING}loaded data_{output_num}")
 
+    elif isinstance(load_outputs,list):
+        for i in load_outputs:
+            output_num, file_data = load_file(i)
+            vars[f"data_{output_num}"] = file_data
+
+            #DEBUG
+            warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
+            # print(f"{pcolours.WARNING}loaded data_{output_num}")
 
     var_choice = [v for v in var_choice if v not in non_vars]
     vars_extra.append(geometry) # gets the geo of the sim, always loads first file

@@ -36,14 +36,14 @@ else:
 
 profiles = {
     "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "SimTime"],
-    "2d_rho_prs": ["x1", "x2", "rho", "prs"],
-    "2d_vel": ["x1", "x2", "vx1", "vx2"],
-
+    
+    "xy_rho_prs": ["x1", "x2", "rho", "prs"],
+    "xz_rho_prs": ["x1", "x3", "rho", "prs"],
     "yz_rho_prs": ["x2", "x3", "rho", "prs"],
-    "yz_vel": ["x2", "x3", 'vx2','vx3'],
 
-    "xz_rho_prs": ['x1','x3','rho','prs'],
+    "xy_vel": ["x1", "x2", "vx1", "vx2"],
     "xz_vel": ['x1','x3','vx1','vx3'],
+    "yz_vel": ["x2", "x3", 'vx2','vx3'],
 }
 
 coord_systems = {

@@ -460,13 +460,13 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
         sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,load_outputs=loaded_outputs)
 
-        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+        # pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        # if loaded_outputs is not None:
-        #     pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
-
-        # elif loaded_outputs is None:
-        #     pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+        # Handle list selection
+        if isinstance(loaded_outputs, list):
+            pdata.d_files = [f"data_{i}" for i in loaded_outputs if f"data_{i}" in sdata.d_files]
+        else:
+            pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files
 
             
 
