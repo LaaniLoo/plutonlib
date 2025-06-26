@@ -313,7 +313,9 @@ def cmap_base(sdata,pdata = None, **kwargs):
             # Handle 3D data
             if pdata.vars[var_name].ndim == 3:
                 slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                var_data = pdata.vars[var_name][:,:,slice_idx]
+                # var_data = pdata.vars[var_name][:,:,slice_idx]
+                var_data = pdata.vars[var_name][:,slice_idx,:]
+
             else:
                 var_data = pdata.vars[var_name]
 
