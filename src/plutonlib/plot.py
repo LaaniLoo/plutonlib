@@ -269,8 +269,9 @@ def cmap_base(sdata,pdata = None, **kwargs):
             is_vel = var_name in ('vx1','vx2')
 
             if pdata.vars[var_name].ndim == 3:
-                slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                vars_data = np.log10(pdata.vars[var_name][:,:,slice_idx].T) if is_log else pdata.vars[var_name][:,:,slice_idx].T 
+                # slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
+                var_profile = pa.calc_var_prof(sdata,"x3")["var_profile"]
+                vars_data = np.log10(pdata.vars[var_name][var_profile].T) if is_log else pdata.vars[var_name][var_profile].T 
             
             else:
                 vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
