@@ -270,7 +270,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
             if pdata.vars[var_name].ndim == 3:
                 slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:].T) if is_log else pdata.vars[var_name][:,slice_idx,:].T 
+                vars_data = np.log10(pdata.vars[var_name][:,:,slice_idx].T) if is_log else pdata.vars[var_name][:,:,slice_idx].T 
             
             else:
                 vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
