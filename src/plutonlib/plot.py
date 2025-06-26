@@ -257,100 +257,105 @@ def cmap_base(sdata,pdata = None, **kwargs):
             cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
 
     #used for plotting jet, #NOTE was on line 235
-    # if sim_type in ("Jet"):
-    #     for i, var_name in enumerate(plot_vars):
-    #         if var_name not in sdata.get_vars(sdata.d_files[-1]): #TODO Change to an error
-    #             print(f"Warning: Variable {var_name} not found in data, skipping")
-    #             continue
-
-
-    #         # Apply log scale if density or pressure
-    #         is_log = var_name in ('rho', 'prs')
-    #         is_vel = var_name in ('vx1','vx2')
-
-    #         vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
-    #         v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
-    #         # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
-    #         #                                   vmin=-5000, vmax=5000.0, base=10)
-
-            
-    #         # Determine plot side and colormap
-    #         if i % 2 == 0:  # Even index vars on right
-    #             #,vmin = -5000, vmax = 5000
-    #             im = ax.pcolormesh(
-    #                 pdata.vars[sdata.var_choice[0]], 
-    #                 pdata.vars[sdata.var_choice[1]], 
-    #                 vars_data, 
-    #                 cmap=extras["c_maps"][i],
-    #                 # norm = norm
-    #                 vmin = v_min_max[0],
-    #                 vmax =  v_min_max[1]
-    #                 )
-    #         else:           # Odd index vars on left (flipped)
-    #             im = ax.pcolormesh(
-    #                 -1 * pdata.vars[sdata.var_choice[0]], 
-    #                 pdata.vars[sdata.var_choice[1]], 
-    #                 vars_data, 
-    #                 cmap=extras["c_maps"][i],
-    #                 # norm = norm
-    #                 vmin =  v_min_max[0],
-    #                 vmax =  v_min_max[1]
-    #                 )
-                
-    #         # Add colorbar with appropriate label
-    #         cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
-    #         cbar.set_label(
-    #             f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-    #             fontsize=14
-    #         )
-    
     if sim_type in ("Jet"):
         for i, var_name in enumerate(plot_vars):
-            if var_name not in pdata.vars:
-                print(f"Warning: Variable {var_name} not found, skipping")
+            if var_name not in sdata.get_vars(sdata.d_files[-1]): #TODO Change to an error
+                print(f"Warning: Variable {var_name} not found in data, skipping")
                 continue
 
-            # Handle 3D data
-            if pdata.vars[var_name].ndim == 3:
-                slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                # var_data = pdata.vars[var_name][:,:,slice_idx]
-                var_data = pdata.vars[var_name][:,slice_idx,:]
 
-            else:
-                var_data = pdata.vars[var_name]
-
-            # Apply transformations
+            # Apply log scale if density or pressure
             is_log = var_name in ('rho', 'prs')
             is_vel = var_name in ('vx1','vx2')
-            vars_data = np.log10(var_data.T) if is_log else var_data.T
-            
-            # Set dynamic min/max for colorbar
-            v_min_max = [-2500, 2500] if is_vel else [
-                np.nanpercentile(vars_data, 1),
-                np.nanpercentile(vars_data, 99)
-            ]
 
-            # Mirror left side for odd indices
-            x_coord = (-1 if i % 2 else 1) * pdata.vars[sdata.var_choice[0]]
-            y_coord = pdata.vars[sdata.var_choice[1]]
+            if pdata.vars[var_name].ndim == 3:
+                slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
+                vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:].T) if is_log else pdata.vars[var_name][:,slice_idx,:].T 
             
-            # Create plot with automatic shading
-            im = ax.pcolormesh(
-                x_coord,
-                y_coord,
-                vars_data,
-                cmap=extras["c_maps"][i],
-                shading='auto',  # Handles dimension mismatches
-                vmin=v_min_max[0],
-                vmax=v_min_max[1]
-            )
+            else:
+                vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+            v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
+            # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
+            #                                   vmin=-5000, vmax=5000.0, base=10)
 
-            # Add colorbar
-            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
+
+            # Determine plot side and colormap
+            if i % 2 == 0:  # Even index vars on right
+                #,vmin = -5000, vmax = 5000
+                im = ax.pcolormesh(
+                    pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data, 
+                    cmap=extras["c_maps"][i],
+                    # norm = norm
+                    vmin = v_min_max[0],
+                    vmax =  v_min_max[1]
+                    )
+            else:           # Odd index vars on left (flipped)
+                im = ax.pcolormesh(
+                    -1 * pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data, 
+                    cmap=extras["c_maps"][i],
+                    # norm = norm
+                    vmin =  v_min_max[0],
+                    vmax =  v_min_max[1]
+                    )
+                
+            # Add colorbar with appropriate label
+            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
             cbar.set_label(
                 f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
                 fontsize=14
             )
+    
+    # if sim_type in ("Jet"):
+    #     for i, var_name in enumerate(plot_vars):
+    #         if var_name not in pdata.vars:
+    #             print(f"Warning: Variable {var_name} not found, skipping")
+    #             continue
+
+    #         # Handle 3D data
+            # if pdata.vars[var_name].ndim == 3:
+            #     slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
+            #     # var_data = pdata.vars[var_name][:,:,slice_idx]
+            #     var_data = pdata.vars[var_name][:,slice_idx,:]
+
+    #         else:
+    #             var_data = pdata.vars[var_name]
+
+    #         # Apply transformations
+    #         is_log = var_name in ('rho', 'prs')
+    #         is_vel = var_name in ('vx1','vx2')
+    #         vars_data = np.log10(var_data.T) if is_log else var_data.T
+            
+    #         # Set dynamic min/max for colorbar
+    #         v_min_max = [-2500, 2500] if is_vel else [
+    #             np.nanpercentile(vars_data, 1),
+    #             np.nanpercentile(vars_data, 99)
+    #         ]
+
+    #         # Mirror left side for odd indices
+    #         x_coord = (-1 if i % 2 else 1) * pdata.vars[sdata.var_choice[0]]
+    #         y_coord = pdata.vars[sdata.var_choice[1]]
+            
+    #         # Create plot with automatic shading
+    #         im = ax.pcolormesh(
+    #             x_coord,
+    #             y_coord,
+    #             vars_data,
+    #             cmap=extras["c_maps"][i],
+    #             shading='auto',  # Handles dimension mismatches
+    #             vmin=v_min_max[0],
+    #             vmax=v_min_max[1]
+    #         )
+
+    #         # Add colorbar
+    #         cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
+    #         cbar.set_label(
+    #             f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
+    #             fontsize=14
+    #         )
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
