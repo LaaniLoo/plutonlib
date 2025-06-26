@@ -42,9 +42,10 @@ class SimulationData:
     Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
     converted/raw data, units and var info
     """
-    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False):
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False,load_outputs = None):
         self.sim_type = sim_type
         self.run_name = run_name
+        self.load_outputs = load_outputs
         self.profile_choice = profile_choice or self._select_profile() # arg or function to select
 
         # Saving 
@@ -98,7 +99,7 @@ class SimulationData:
     def load_raw(self):
         start = time.time() #for load time
 
-        self._raw_data = pluto_loader(self.sim_type,self.run_name,self.profile_choice)
+        self._raw_data = pluto_loader(self.sim_type,self.run_name,self.profile_choice,self.load_outputs)
         self._d_files = self._raw_data['d_files']
         self._var_choice = self._raw_data['var_choice']
         self._geometry = self._raw_data['vars_extra'][0]
@@ -109,7 +110,7 @@ class SimulationData:
             self.load_raw()
         
         profile = profile or self.profile_choice
-        loaded_data =pluto_conv(self.sim_type, self.run_name,profile)
+        loaded_data =pluto_conv(self.sim_type, self.run_name,profile,self.load_outputs)
 
         self._conv_data = loaded_data
 
@@ -561,7 +562,7 @@ def pluto_loader_all_d_files(sim_type, run_name, profile_choice):
 
     return {"vars": vars, "var_choice": var_choice, "vars_extra": vars_extra, "d_files": d_files, "warnings": warnings} #"nlinf": nlinf
 
-def pluto_loader(sim_type, run_name, profile_choice,load_outputs="all"):
+def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     """
     Loads simulation data from a specified Pluto simulation.
 
@@ -594,7 +595,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs="all"):
     # print("Var Choice:", var_choice)
 
     # wdir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
-    wdir = SimulationData(sim_type, run_name, profile_choice).wdir
+    wdir = SimulationData(sim_type, run_name, profile_choice,load_outputs=load_outputs).wdir
 
     #NOTE USE FOR LAST OUTPUT ONLY
     # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
@@ -606,7 +607,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs="all"):
     n_outputs = pk_sim_count(sim_path=Path(wdir), data_type="double") # grabs number of data output files, might need datatype
     print(f"Found {n_outputs} output files")
 
-    if load_outputs == "all":
+    if load_outputs == None:
         load_outputs = n_outputs
 
     if load_outputs > n_outputs:
@@ -645,7 +646,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs="all"):
 
 
 
-def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
+def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,**kwargs):
     """
     Converts Pluto simulation variables from code units to CGS and SI units.
 
@@ -667,7 +668,7 @@ def pluto_conv(sim_type, run_name, profile_choice,**kwargs):
         - var_choice: List of variable names corresponding to the selected profile.
         - d_files: contains a list of the available data files for the sim
     """
-    loaded_data = pluto_loader(sim_type, run_name, profile_choice)
+    loaded_data = pluto_loader(sim_type, run_name, profile_choice,load_outputs)
     d_files = loaded_data["d_files"]
     vars_dict = loaded_data["vars"]
     var_choice = loaded_data["var_choice"] # chosen vars at the chosen profile
