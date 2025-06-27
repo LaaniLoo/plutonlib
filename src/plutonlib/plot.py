@@ -270,40 +270,46 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
             # 3D Case
             if pdata.vars[var_name].ndim == 3:
-                slice_idx = pdata.vars[var_name].shape[2] // 2  # Middle slice
-                # prof_data = pa.calc_var_prof(sdata,"x3")["var_profile"]
+                slice_idx = pdata.vars["x2"].shape[0] / 2  # y-Middle slice
                 vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:].T) if is_log else pdata.vars[var_name][:,slice_idx,:].T 
-            
-            # 2D Case 
-            else:
-                vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
-            v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
-            # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
-            #                                   vmin=-5000, vmax=5000.0, base=10)
 
-
-            # Determine plot side and colormap
-            if i % 2 == 0:  # Even index vars on right
-                #,vmin = -5000, vmax = 5000
                 im = ax.pcolormesh(
                     pdata.vars[sdata.var_choice[0]], 
                     pdata.vars[sdata.var_choice[1]], 
                     vars_data, 
                     cmap=extras["c_maps"][i],
-                    # norm = norm
-                    vmin = v_min_max[0],
-                    vmax =  v_min_max[1]
-                    )
-            else:           # Odd index vars on left (flipped)
-                im = ax.pcolormesh(
-                    -1 * pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
-                    vars_data, 
-                    cmap=extras["c_maps"][i],
-                    # norm = norm
-                    vmin =  v_min_max[0],
-                    vmax =  v_min_max[1]
-                    )
+                )
+            
+            # 2D Case 
+            else:
+                vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+                v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
+                # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
+                #                                   vmin=-5000, vmax=5000.0, base=10)
+
+
+                # Determine plot side and colormap
+                if i % 2 == 0:  # Even index vars on right
+                    #,vmin = -5000, vmax = 5000
+                    im = ax.pcolormesh(
+                        pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data, 
+                        cmap=extras["c_maps"][i],
+                        # norm = norm
+                        vmin = v_min_max[0],
+                        vmax =  v_min_max[1]
+                        )
+                else:           # Odd index vars on left (flipped)
+                    im = ax.pcolormesh(
+                        -1 * pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data, 
+                        cmap=extras["c_maps"][i],
+                        # norm = norm
+                        vmin =  v_min_max[0],
+                        vmax =  v_min_max[1]
+                        )
                 
             # Add colorbar with appropriate label
             cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
