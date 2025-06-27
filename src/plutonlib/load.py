@@ -109,6 +109,9 @@ class SimulationData:
     def load_raw(self):
         start = time.time() #for load time
 
+        if isinstance(self.load_outputs, list):
+            raise TypeError(f"{pcolours.WARNING}Cannot use list with load_outputs, try tuple")
+        
         self._raw_data = pluto_loader(self.sim_type,self.run_name,self.profile_choice,self.load_outputs)
         self._d_files = self._raw_data['d_files']
         self._var_choice = self._raw_data['var_choice']
@@ -532,18 +535,13 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
 
     var_choice = profiles[profile_choice]
 
-    #DEBUG vars
-    # print("Var Choice:", var_choice)
-
-    # wdir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
     wdir = SimulationData(sim_type, run_name, profile_choice,load_outputs=load_outputs).wdir
 
-    #NOTE USE FOR LAST OUTPUT ONLY
-    # nlinf = pk_io.nlast_info(w_dir=wdir) #info dict about PLUTO outputs
+    n_outputs = pk_io.nlast_info(w_dir=wdir)["nlast"] #NOTE uses pk_io instead of simulations
 
     # try: # for dbl files:
-    n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
-
+    # n_outputs = pk_sim_count(wdir) # grabs number of data output files, might need datatype
+    
     # except FileNotFoundError:# for h5 files:
         # n_outputs = pk_sim_count_h5(sim_path=Path(wdir), data_type="double") # grabs number of data output files, might need datatype
 
@@ -555,15 +553,12 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     if isinstance(load_outputs,int) and load_outputs > n_outputs:
         raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
 
-    #OLD 
-    # all_d_files = [f"data_{i}" for i in range(n_outputs + 1)]
-    # d_files = all_d_files[:load_outputs+1]
-
     data_0 = pk_io.pload(0, w_dir=wdir) 
 
     # Handle list of indices
-    if isinstance(load_outputs, list):
+    if isinstance(load_outputs, tuple):
         d_files = [f"data_{i}" for i in load_outputs if i <= n_outputs]
+        load_outputs = tuple(load_outputs)
     elif load_outputs is not None:  # Original behavior for integer
         d_files = [f"data_{i}" for i in range(min(load_outputs, n_outputs) + 1)]
     else:  # Load all
@@ -592,7 +587,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
             warnings.append(f"{pcolours.WARNING}loaded data_{output_num}")
             # print(f"{pcolours.WARNING}loaded data_{output_num}")
 
-    elif isinstance(load_outputs,list):
+    elif isinstance(load_outputs,tuple):
         for i in load_outputs:
             output_num, file_data = load_file(i)
             vars[f"data_{output_num}"] = file_data
