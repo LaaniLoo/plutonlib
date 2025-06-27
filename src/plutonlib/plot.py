@@ -411,6 +411,8 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
+    print("load state:", sdata._is_loaded)
+
     run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run_name,sel_prof)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
 

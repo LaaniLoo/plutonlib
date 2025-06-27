@@ -51,8 +51,12 @@ def nlast_info(w_dir=None, datatype=None):
     elif datatype == "vtk":
         fname_v = w_dir + "vtk.out"
     else:
-        # fname_v = w_dir + "dbl.out"
-        fname_v = w_dir + "dbl.h5.out"
+        #NOTE Try dbl or h5
+        try:
+            fname_v = w_dir + "dbl.out"
+        except:
+            fname_v = w_dir + "dbl.h5.out"
+
     with open(fname_v, "r") as f:
         last_line = f.readlines()[-1].split()
     nlast = int(last_line[0])
@@ -906,8 +910,12 @@ class pload(object):
             varfile = self.wdir + "png.out"
         else:
             dtype = "d"
-            varfile = self.wdir + "dbl.h5.out"
-            dataext = ".dbl.h5"
+            try:
+                varfile = self.wdir + "dbl.out"
+                dataext = ".dbl"
+            except:
+                varfile = self.wdir + "dbl.h5.out"
+                dataext = ".dbl.h5"
 
         self.ReadVarFile(varfile)
         self.ReadGridFile(gridfile)

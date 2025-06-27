@@ -77,7 +77,6 @@ def get_pluto_units(sim_coord,d_files):
     # "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
     # }
 
-
     # Read norm values from ini file
     cur_dir = Path(__file__).resolve().parent          # directory containing this .py
     ini_path = cur_dir / "pluto_units.ini"   
