@@ -272,10 +272,10 @@ def cmap_base(sdata,pdata = None, **kwargs):
             if pdata.vars[var_name].ndim == 3:
                 slice_idx = pdata.vars["x1"].shape[0] // 2  # y-Middle slice
                 vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:].T) if is_log else pdata.vars[var_name][:,slice_idx,:].T 
-
+                x1_2d, x2_2d = np.meshgrid(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]])
                 im = ax.pcolormesh(
-                    pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
+                    x1_2d,
+                    x2_2d,
                     vars_data, 
                     cmap=extras["c_maps"][i],
                 )
@@ -417,7 +417,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
-    print("load state:", sdata._is_loaded)
+    # print("load state:", sdata._is_loaded)
 
     run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run_name,sel_prof)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
