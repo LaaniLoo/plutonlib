@@ -270,8 +270,8 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
             # 3D Case
             if pdata.vars[var_name].ndim == 3:
-                slice_idx = pdata.vars["x1"].shape[0] // 2  # y-Middle slice
-                vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:].T) if is_log else pdata.vars[var_name][:,slice_idx,:].T 
+                slice_idx = pdata.vars[sdata.var_choice[0]].shape[0] // 2  # y-Middle slice
+                vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:]) if is_log else pdata.vars[var_name][:,slice_idx,:] 
                 x1_2d, x2_2d = np.meshgrid(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]])
                 im = ax.pcolormesh(
                     x1_2d,
