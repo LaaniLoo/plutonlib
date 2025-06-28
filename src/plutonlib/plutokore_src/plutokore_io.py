@@ -50,12 +50,14 @@ def nlast_info(w_dir=None, datatype=None):
         fname_v = w_dir + "flt.out"
     elif datatype == "vtk":
         fname_v = w_dir + "vtk.out"
-    else:
-        #NOTE Try dbl or h5
-        try:
-            fname_v = w_dir + "dbl.out"
-        except:
+    else: #NOTE Try dbl or h5\
+        if _os.path.isfile(_os.path.join(w_dir,r"dbl.h5.out")):
             fname_v = w_dir + "dbl.h5.out"
+        elif _os.path.isfile(_os.path.join(w_dir,r"dbl.out")):
+            fname_v = w_dir + "dbl.out"
+        else:
+            print("Neither dbl.h5.out or dbl.out files are found")
+
 
     with open(fname_v, "r") as f:
         last_line = f.readlines()[-1].split()
@@ -910,12 +912,13 @@ class pload(object):
             varfile = self.wdir + "png.out"
         else:
             dtype = "d"
-            try:
-                varfile = self.wdir + "dbl.out"
-                dataext = ".dbl"
-            except:
+            if _os.path.isfile(_os.path.join(self.wdir,r"dbl.h5.out")):
                 varfile = self.wdir + "dbl.h5.out"
                 dataext = ".dbl.h5"
+            elif _os.path.isfile(_os.path.join(self.wdir,r"dbl.out")):
+                varfile = self.wdir + "dbl.out"
+                dataext = ".dbl"
+
 
         self.ReadVarFile(varfile)
         self.ReadGridFile(gridfile)

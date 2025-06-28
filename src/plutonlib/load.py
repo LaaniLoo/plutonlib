@@ -536,7 +536,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     var_choice = profiles[profile_choice]
 
     wdir = SimulationData(sim_type, run_name, profile_choice,load_outputs=load_outputs).wdir
-
+    print(wdir)
     n_outputs = pk_io.nlast_info(w_dir=wdir)["nlast"] #NOTE uses pk_io instead of simulations
 
     # try: # for dbl files:
@@ -553,6 +553,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     if isinstance(load_outputs,int) and load_outputs > n_outputs:
         raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
 
+    
     data_0 = pk_io.pload(0, w_dir=wdir) 
 
     # Handle list of indices
