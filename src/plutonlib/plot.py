@@ -319,69 +319,69 @@ def cmap_base(sdata,pdata = None, **kwargs):
     #         )
 
     if sim_type in ("Jet"):
-    # For 3D case (when var_name is specified)
-    if var_name is not None and pdata.vars[var_name].ndim == 3:
-        # Get middle slice
-        slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-        slice_idx = pa.calc_var_prof(sdata, slice_var)["var_profile_single"]
-        
-        # Prepare data
-        is_log = var_name in ('rho', 'prs')
-        vars_data = np.log10(pdata.vars[var_name][slice_idx]) if is_log else pdata.vars[var_name][slice_idx]
-        
-        # Get correct colormap and label
-        var_idx = plot_vars.index(var_name)
-        c_map = extras["c_maps"][var_idx]
-        cbar_label = extras["cbar_labels"][var_idx]
-        
-        # Create the plot
-        im = ax.pcolormesh(
-            pdata.vars[sdata.var_choice[0]], 
-            pdata.vars[sdata.var_choice[1]], 
-            vars_data.T,
-            cmap=c_map
-        )
-        
-        # Add colorbar
-        cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.05)
-        cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
-    
-    # For 2D case (original behavior)
-    else:
-        for i, current_var in enumerate(plot_vars):
-            if current_var not in pdata.vars:
-                continue
-
-            is_log = current_var in ('rho', 'prs')
-            is_vel = current_var in ('vx1', 'vx2')
+        # For 3D case (when var_name is specified)
+        if var_name is not None and pdata.vars[var_name].ndim == 3:
+            # Get middle slice
+            slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+            slice_idx = pa.calc_var_prof(sdata, slice_var)["var_profile_single"]
             
-            vars_data = np.log10(pdata.vars[current_var].T) if is_log else pdata.vars[current_var].T
-            v_min_max = [-2500, 2500] if is_vel else [None, None]
+            # Prepare data
+            is_log = var_name in ('rho', 'prs')
+            vars_data = np.log10(pdata.vars[var_name][slice_idx]) if is_log else pdata.vars[var_name][slice_idx]
             
-            if i % 2 == 0:  # Right side
-                im = ax.pcolormesh(
-                    pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
-                    vars_data,
-                    cmap=extras["c_maps"][i],
-                    vmin=v_min_max[0],
-                    vmax=v_min_max[1]
-                )
-            else:  # Left side (flipped)
-                im = ax.pcolormesh(
-                    -1 * pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
-                    vars_data,
-                    cmap=extras["c_maps"][i],
-                    vmin=v_min_max[0],
-                    vmax=v_min_max[1]
-                )
+            # Get correct colormap and label
+            var_idx = plot_vars.index(var_name)
+            c_map = extras["c_maps"][var_idx]
+            cbar_label = extras["cbar_labels"][var_idx]
             
-            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
-            cbar.set_label(
-                f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-                fontsize=14
+            # Create the plot
+            im = ax.pcolormesh(
+                pdata.vars[sdata.var_choice[0]], 
+                pdata.vars[sdata.var_choice[1]], 
+                vars_data.T,
+                cmap=c_map
             )
+            
+            # Add colorbar
+            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.05)
+            cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
+        
+        # For 2D case (original behavior)
+        else:
+            for i, current_var in enumerate(plot_vars):
+                if current_var not in pdata.vars:
+                    continue
+
+                is_log = current_var in ('rho', 'prs')
+                is_vel = current_var in ('vx1', 'vx2')
+                
+                vars_data = np.log10(pdata.vars[current_var].T) if is_log else pdata.vars[current_var].T
+                v_min_max = [-2500, 2500] if is_vel else [None, None]
+                
+                if i % 2 == 0:  # Right side
+                    im = ax.pcolormesh(
+                        pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data,
+                        cmap=extras["c_maps"][i],
+                        vmin=v_min_max[0],
+                        vmax=v_min_max[1]
+                    )
+                else:  # Left side (flipped)
+                    im = ax.pcolormesh(
+                        -1 * pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data,
+                        cmap=extras["c_maps"][i],
+                        vmin=v_min_max[0],
+                        vmax=v_min_max[1]
+                    )
+                
+                cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
+                cbar.set_label(
+                    f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
+                    fontsize=14
+                )
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
