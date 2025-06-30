@@ -255,68 +255,142 @@ def cmap_base(sdata,pdata = None, **kwargs):
             cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
 
     #used for plotting jet, #NOTE was on line 235
-    if sim_type in ("Jet"):
-        for i, var_name in enumerate(plot_vars):
-            if var_name not in sdata.get_vars(sdata.d_files[-1]): #TODO Change to an error
-                print(f"Warning: Variable {var_name} not found in data, skipping")
-                continue
+    # if sim_type in ("Jet"):
+    #     for i, var_name in enumerate(plot_vars):
+    #         if var_name not in sdata.get_vars(sdata.d_files[-1]): #TODO Change to an error
+    #             print(f"Warning: Variable {var_name} not found in data, skipping")
+    #             continue
 
-            # Apply log scale if density or pressure
-            is_log = var_name in ('rho', 'prs')
-            is_vel = var_name in ('vx1','vx2')
+    #         # Apply log scale if density or pressure
+    #         is_log = var_name in ('rho', 'prs')
+    #         is_vel = var_name in ('vx1','vx2')
 
-            # 3D Case
-            if pdata.vars[var_name].ndim == 3:
+    #         # 3D Case
+    #         if pdata.vars[var_name].ndim == 3:
                 
-                # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
+    #             # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
+    #             slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+    #             slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    #             vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
+    #             im = ax.pcolormesh(
+    #                 pdata.vars[sdata.var_choice[0]], 
+    #                 pdata.vars[sdata.var_choice[1]], 
+    #                 vars_data.T, 
+    #                 cmap=extras["c_maps"][i],
+    #             )
+            
+    #         # 2D Case 
+    #         if pdata.vars[var_name].ndim == 2:
+                
+    #             vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+    #             v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
+    #             # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
+    #             #                                   vmin=-5000, vmax=5000.0, base=10)
+
+
+    #             # Determine plot side and colormap
+    #             if i % 2 == 0:  # Even index vars on right
+    #                 #,vmin = -5000, vmax = 5000
+    #                 im = ax.pcolormesh(
+    #                     pdata.vars[sdata.var_choice[0]], 
+    #                     pdata.vars[sdata.var_choice[1]], 
+    #                     vars_data, 
+    #                     cmap=extras["c_maps"][i],
+    #                     # norm = norm
+    #                     vmin = v_min_max[0],
+    #                     vmax =  v_min_max[1]
+    #                     )
+    #             else:           # Odd index vars on left (flipped)
+    #                 im = ax.pcolormesh(
+    #                     -1 * pdata.vars[sdata.var_choice[0]], 
+    #                     pdata.vars[sdata.var_choice[1]], 
+    #                     vars_data, 
+    #                     cmap=extras["c_maps"][i],
+    #                     # norm = norm
+    #                     vmin =  v_min_max[0],
+    #                     vmax =  v_min_max[1]
+    #                     )
+                
+    #         # Add colorbar with appropriate label
+    #         cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
+    #         cbar.set_label(
+    #             f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
+    #             fontsize=14
+    #         )
+
+    if sim_type in ("Jet"):
+            # 3D Case - One variable per subplot
+            if var_name is not None and pdata.vars[var_name].ndim == 3:
+                # Get slice for the third dimension
                 slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-                slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
-                vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
+                slice_idx = pa.calc_var_prof(sdata, slice_var)["var_profile_single"]
+                
+                # Prepare data
+                is_log = var_name in ('rho', 'prs')
+                vars_data = np.log10(pdata.vars[var_name][slice_idx]) if is_log else pdata.vars[var_name][slice_idx]
+                
+                # Get correct colormap and label
+                var_idx = plot_vars.index(var_name)
+                c_map = extras["c_maps"][var_idx]
+                cbar_label = extras["cbar_labels"][var_idx]
+                
+                # Create plot
                 im = ax.pcolormesh(
                     pdata.vars[sdata.var_choice[0]], 
                     pdata.vars[sdata.var_choice[1]], 
-                    vars_data.T, 
-                    cmap=extras["c_maps"][i],
+                    vars_data.T,
+                    cmap=c_map
+                )
+                
+                # Add colorbar
+                cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.05)
+                cbar.set_label(
+                    f"Log10({cbar_label})" if is_log else cbar_label,
+                    fontsize=14
                 )
             
-            # 2D Case 
-            if pdata.vars[var_name].ndim == 2:
-                
-                vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
-                v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
-                # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
-                #                                   vmin=-5000, vmax=5000.0, base=10)
+            # 2D Case - Both variables in one subplot
+            else:
+                for i, current_var in enumerate(plot_vars):
+                    if current_var not in pdata.vars:
+                        print(f"Warning: Variable {current_var} not found in data, skipping")
+                        continue
 
-
-                # Determine plot side and colormap
-                if i % 2 == 0:  # Even index vars on right
-                    #,vmin = -5000, vmax = 5000
-                    im = ax.pcolormesh(
-                        pdata.vars[sdata.var_choice[0]], 
-                        pdata.vars[sdata.var_choice[1]], 
-                        vars_data, 
-                        cmap=extras["c_maps"][i],
-                        # norm = norm
-                        vmin = v_min_max[0],
-                        vmax =  v_min_max[1]
+                    # Apply log scale if density or pressure
+                    is_log = current_var in ('rho', 'prs')
+                    is_vel = current_var in ('vx1', 'vx2')
+                    
+                    # Prepare data
+                    vars_data = np.log10(pdata.vars[current_var].T) if is_log else pdata.vars[current_var].T
+                    v_min_max = [-2500, 2500] if is_vel else [None, None]
+                    
+                    # Determine plot side and colormap
+                    if i % 2 == 0:  # Even index vars on right
+                        im = ax.pcolormesh(
+                            pdata.vars[sdata.var_choice[0]], 
+                            pdata.vars[sdata.var_choice[1]], 
+                            vars_data,
+                            cmap=extras["c_maps"][i],
+                            vmin=v_min_max[0],
+                            vmax=v_min_max[1]
                         )
-                else:           # Odd index vars on left (flipped)
-                    im = ax.pcolormesh(
-                        -1 * pdata.vars[sdata.var_choice[0]], 
-                        pdata.vars[sdata.var_choice[1]], 
-                        vars_data, 
-                        cmap=extras["c_maps"][i],
-                        # norm = norm
-                        vmin =  v_min_max[0],
-                        vmax =  v_min_max[1]
+                    else:  # Odd index vars on left (flipped)
+                        im = ax.pcolormesh(
+                            -1 * pdata.vars[sdata.var_choice[0]], 
+                            pdata.vars[sdata.var_choice[1]], 
+                            vars_data,
+                            cmap=extras["c_maps"][i],
+                            vmin=v_min_max[0],
+                            vmax=v_min_max[1]
                         )
-                
-            # Add colorbar with appropriate label
-            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
-            cbar.set_label(
-                f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-                fontsize=14
-            )
+                    
+                    # Add colorbar
+                    cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
+                    cbar.set_label(
+                        f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
+                        fontsize=14
+                    )
+        
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
@@ -443,14 +517,42 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
         # Jet only needs to iterate  over d_file
+        # if sdata.sim_type in ("Jet"):
+        #     for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+        #         pdata.d_file = d_file
+        #         pdata.vars = sdata.get_vars(d_file)
+
+        #         plot_label(sdata,pdata,idx)
+        #         cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
+        #         plot_axlim(pdata.axes[idx],kwargs)
+
+            # Jet case - modified section
+
         if sdata.sim_type in ("Jet"):
-            for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+            plot_vars = sdata.var_choice[2:]
+            plot_idx = 0
+            
+            for d_file in pdata.d_files:
                 pdata.d_file = d_file
                 pdata.vars = sdata.get_vars(d_file)
-
-                plot_label(sdata,pdata,idx)
-                cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
-                plot_axlim(pdata.axes[idx],kwargs)
+                
+                # Check if data is 3D
+                if pdata.vars[plot_vars[0]].ndim == 3:
+                    # Handle 3D case - separate subplots for each variable
+                    for var_name in plot_vars:
+                        if plot_idx >= len(pdata.axes):
+                            break
+                            
+                        cmap_base(sdata, pdata, ax_idx=plot_idx, var_name=var_name)
+                        plot_label(sdata, pdata, plot_idx)
+                        plot_axlim(pdata.axes[plot_idx], kwargs)
+                        plot_idx += 1
+                else:
+                    # Handle 2D case - original behavior
+                    plot_label(sdata, pdata, plot_idx)
+                    cmap_base(sdata, pdata, ax_idx=plot_idx)
+                    plot_axlim(pdata.axes[plot_idx], kwargs)
+                    plot_idx += 1
 
         # Stellar_Wind needs to iterate  over d_file and var name 
         if sdata.sim_type in ("Stellar_Wind"):
