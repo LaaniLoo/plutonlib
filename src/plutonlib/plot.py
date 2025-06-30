@@ -319,78 +319,66 @@ def cmap_base(sdata,pdata = None, **kwargs):
     #         )
 
     if sim_type in ("Jet"):
+        if var_name is not None and pdata.vars[var_name].ndim == 3:
             # 3D Case - One variable per subplot
-            if var_name is not None and pdata.vars[var_name].ndim == 3:
-                # Get slice for the third dimension
-                slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-                slice_idx = pa.calc_var_prof(sdata, slice_var)["var_profile_single"]
+            slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+            slice_idx = pa.calc_var_prof(sdata, slice_var)["var_profile_single"]
+            
+            is_log = var_name in ('rho', 'prs')
+            vars_data = np.log10(pdata.vars[var_name][slice_idx]) if is_log else pdata.vars[var_name][slice_idx]
+            
+            var_idx = plot_vars.index(var_name)
+            c_map = extras["c_maps"][var_idx]
+            cbar_label = extras["cbar_labels"][var_idx]
+            
+            im = ax.pcolormesh(
+                pdata.vars[sdata.var_choice[0]], 
+                pdata.vars[sdata.var_choice[1]], 
+                vars_data.T,
+                cmap=c_map
+            )
+            
+            cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.05)
+            cbar.set_label(
+                f"Log10({cbar_label})" if is_log else cbar_label,
+                fontsize=14
+            )
+        else:
+            # 2D Case - Both variables in one subplot
+            for i, current_var in enumerate(plot_vars):
+                if current_var not in pdata.vars:
+                    continue
+
+                is_log = current_var in ('rho', 'prs')
+                is_vel = current_var in ('vx1', 'vx2')
                 
-                # Prepare data
-                is_log = var_name in ('rho', 'prs')
-                vars_data = np.log10(pdata.vars[var_name][slice_idx]) if is_log else pdata.vars[var_name][slice_idx]
+                vars_data = np.log10(pdata.vars[current_var].T) if is_log else pdata.vars[current_var].T
+                v_min_max = [-2500, 2500] if is_vel else [None, None]
                 
-                # Get correct colormap and label
-                var_idx = plot_vars.index(var_name)
-                c_map = extras["c_maps"][var_idx]
-                cbar_label = extras["cbar_labels"][var_idx]
+                if i % 2 == 0:
+                    im = ax.pcolormesh(
+                        pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data,
+                        cmap=extras["c_maps"][i],
+                        vmin=v_min_max[0],
+                        vmax=v_min_max[1]
+                    )
+                else:
+                    im = ax.pcolormesh(
+                        -1 * pdata.vars[sdata.var_choice[0]], 
+                        pdata.vars[sdata.var_choice[1]], 
+                        vars_data,
+                        cmap=extras["c_maps"][i],
+                        vmin=v_min_max[0],
+                        vmax=v_min_max[1]
+                    )
                 
-                # Create plot
-                im = ax.pcolormesh(
-                    pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
-                    vars_data.T,
-                    cmap=c_map
-                )
-                
-                # Add colorbar
-                cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.05)
+                cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
                 cbar.set_label(
-                    f"Log10({cbar_label})" if is_log else cbar_label,
+                    f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
                     fontsize=14
                 )
-            
-            # 2D Case - Both variables in one subplot
-            else:
-                for i, current_var in enumerate(plot_vars):
-                    if current_var not in pdata.vars:
-                        print(f"Warning: Variable {current_var} not found in data, skipping")
-                        continue
-
-                    # Apply log scale if density or pressure
-                    is_log = current_var in ('rho', 'prs')
-                    is_vel = current_var in ('vx1', 'vx2')
-                    
-                    # Prepare data
-                    vars_data = np.log10(pdata.vars[current_var].T) if is_log else pdata.vars[current_var].T
-                    v_min_max = [-2500, 2500] if is_vel else [None, None]
-                    
-                    # Determine plot side and colormap
-                    if i % 2 == 0:  # Even index vars on right
-                        im = ax.pcolormesh(
-                            pdata.vars[sdata.var_choice[0]], 
-                            pdata.vars[sdata.var_choice[1]], 
-                            vars_data,
-                            cmap=extras["c_maps"][i],
-                            vmin=v_min_max[0],
-                            vmax=v_min_max[1]
-                        )
-                    else:  # Odd index vars on left (flipped)
-                        im = ax.pcolormesh(
-                            -1 * pdata.vars[sdata.var_choice[0]], 
-                            pdata.vars[sdata.var_choice[1]], 
-                            vars_data,
-                            cmap=extras["c_maps"][i],
-                            vmin=v_min_max[0],
-                            vmax=v_min_max[1]
-                        )
-                    
-                    # Add colorbar
-                    cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1)
-                    cbar.set_label(
-                        f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-                        fontsize=14
-                    )
-        
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
@@ -543,8 +531,13 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                         if plot_idx >= len(pdata.axes):
                             break
                             
-                        cmap_base(sdata, pdata, ax_idx=plot_idx, var_name=var_name)
-                        plot_label(sdata, pdata, plot_idx)
+                        # Create new PlotData instance for each variable to avoid overwriting
+                        var_pdata = PlotData()
+                        var_pdata.__dict__ = pdata.__dict__.copy()
+                        var_pdata.vars = pdata.vars
+                        
+                        cmap_base(sdata, var_pdata, ax_idx=plot_idx, var_name=var_name)
+                        plot_label(sdata, var_pdata, plot_idx)
                         plot_axlim(pdata.axes[plot_idx], kwargs)
                         plot_idx += 1
                 else:
@@ -553,28 +546,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                     cmap_base(sdata, pdata, ax_idx=plot_idx)
                     plot_axlim(pdata.axes[plot_idx], kwargs)
                     plot_idx += 1
-
-        # Stellar_Wind needs to iterate  over d_file and var name 
-        if sdata.sim_type in ("Stellar_Wind"):
-            plot_vars = sdata.var_choice[2:]
-            plot_idx = 0 #only way to index plot per var 
-
-            for d_file in pdata.d_files:
-                pdata.d_file = d_file
-                pdata.vars = sdata.get_vars(d_file)
-                for var_name in plot_vars:
-                    if plot_idx >= len(pdata.axes):
-                        break
-                        
-                    # Plot each variable in its own subplot
-                    cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
-                    plot_label(sdata,pdata,plot_idx)
-                    plot_axlim(pdata.axes[plot_idx],kwargs)
-
-                    plot_idx += 1
         
-
-
         plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
 
 def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
