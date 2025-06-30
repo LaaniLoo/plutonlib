@@ -260,12 +260,12 @@ def cmap_base(sdata,pdata = None, **kwargs):
         slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
 
         is_log = var_name in ('rho', 'prs')
-
         vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
 
         var_idx = sdata.var_choice[2:].index(var_name)
         c_map = extras["c_maps"][var_idx]
         cbar_label = extras["cbar_labels"][var_idx]
+        
         im = ax.pcolormesh(
             pdata.vars[sdata.var_choice[0]], 
             pdata.vars[sdata.var_choice[1]], 
@@ -452,32 +452,38 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
         # Jet only needs to iterate  over d_file
+        # if sdata.sim_type in ("Jet"):
+        #     for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+        #         pdata.d_file = d_file
+        #         pdata.vars = sdata.get_vars(d_file)
+
+        #         plot_label(sdata,pdata,idx)
+        #         cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
+        #         plot_axlim(pdata.axes[idx],kwargs)
+
         if sdata.sim_type in ("Jet"):
-            for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
-                pdata.d_file = d_file
-                pdata.vars = sdata.get_vars(d_file)
-
-                plot_label(sdata,pdata,idx)
-                cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
-                plot_axlim(pdata.axes[idx],kwargs)
-
-        if sdata.sim_type in ("Jet") and sdata.get_vars()["rho"].ndim == 3:
             plot_vars = sdata.var_choice[2:]
-            plot_idx = 0 #only way to index plot per var 
-
+            plot_idx = 0
+            
             for d_file in pdata.d_files:
                 pdata.d_file = d_file
                 pdata.vars = sdata.get_vars(d_file)
-                for var_name in plot_vars:
-                    if plot_idx >= len(pdata.axes):
-                        break
-                        
-                    # Plot each variable in its own subplot
-                    # cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
-                    cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
-                    plot_label(sdata,pdata,plot_idx)
-                    plot_axlim(pdata.axes[plot_idx],kwargs)
-
+                
+                # Check if data is 3D
+                if pdata.vars[plot_vars[0]].ndim == 3:
+                    for var_name in plot_vars:
+                        if plot_idx >= len(pdata.axes):
+                            break
+                            
+                        cmap_base(sdata, pdata, ax_idx=plot_idx, var_name=var_name)
+                        plot_label(sdata, pdata, plot_idx)
+                        plot_axlim(pdata.axes[plot_idx], kwargs)
+                        plot_idx += 1
+                else:
+                    # Handle 2D case
+                    plot_label(sdata, pdata, plot_idx)
+                    cmap_base(sdata, pdata, ax_idx=plot_idx)
+                    plot_axlim(pdata.axes[plot_idx], kwargs)
                     plot_idx += 1
 
         # Stellar_Wind needs to iterate  over d_file and var name 
