@@ -473,7 +473,8 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                         break
                         
                     # Plot each variable in its own subplot
-                    cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
+                    # cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
+                    cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
                     plot_label(sdata,pdata,plot_idx)
                     plot_axlim(pdata.axes[plot_idx],kwargs)
 
