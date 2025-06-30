@@ -265,12 +265,12 @@ def cmap_base(sdata,pdata = None, **kwargs):
         var_idx = sdata.var_choice[2:].index(var_name)
         c_map = extras["c_maps"][var_idx]
         cbar_label = extras["cbar_labels"][var_idx]
-        
+
         im = ax.pcolormesh(
             pdata.vars[sdata.var_choice[0]], 
             pdata.vars[sdata.var_choice[1]], 
             vars_data.T, 
-            cmap=extras["c_maps"][i],
+            cmap=extras["c_maps"][var_idx],
         )
 
         cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
