@@ -45,6 +45,12 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
         "x3": (x_mid, y_mid, slice(None))
         }
 
+        single_slice_map = { #slices in shape of coord
+        "x1": (x_mid, slice(None), slice(None)),
+        "x2": (slice(None), y_mid, slice(None)),
+        "x3": (slice(None), slice(None), z_mid)
+        } 
+
     else:
 
         #TODO add 3d case if statement
@@ -65,10 +71,11 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
         }
 
     var_profile = slice_map[sel_coord]
+    var_profile_single = single_slice_map[sel_coord]
     coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else None
 
     returns = {
-        "var_profile": var_profile,"coord_sliced": coord_sliced
+        "var_profile": var_profile,"var_profile_single": var_profile_single,"coord_sliced": coord_sliced
     }
     return returns
 

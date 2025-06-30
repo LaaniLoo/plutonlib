@@ -175,10 +175,13 @@ class SimulationData:
     def get_var_info(self,var_name):
         """Gets coordinate name, unit, norm value etc"""
         var_info = self.units.get(var_name)
+        shp_info = {"Shape" : self.get_all_vars()[var_name].shape}
+        var_info.update(shp_info)
 
         if not var_info:
             raise KeyError(f"No unit info for variable {var_name}")
         
+
         return var_info
 
     def get_warnings(self):

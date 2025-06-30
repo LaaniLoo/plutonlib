@@ -229,13 +229,12 @@ def cmap_base(sdata,pdata = None, **kwargs):
         for d_file in sdata.d_files:
             pdata.vars = sdata.get_vars(d_file)
 
-
     ax = pdata.axes[idx] # sets the axis as an index
 
     plot_vars = sdata.var_choice[2:]
     sim_type = sdata.sim_type
 
-    #plotting in 3D
+    #plotting in 3D for Stellar Wind
     if sim_type in ("Stellar_Wind"):
         var_idx = sdata.var_choice[2:].index(var_name)
 
@@ -247,7 +246,6 @@ def cmap_base(sdata,pdata = None, **kwargs):
             is_log = var_name in ('rho', 'prs')
             vars_data = np.log10(vars_profile.T) if is_log else vars_profile.T #NOTE Why transpose?
 
-            
             c_map = extras["c_maps"][var_idx]
             cbar_label = extras["cbar_labels"][var_idx]
 
@@ -263,20 +261,21 @@ def cmap_base(sdata,pdata = None, **kwargs):
                 print(f"Warning: Variable {var_name} not found in data, skipping")
                 continue
 
-
             # Apply log scale if density or pressure
             is_log = var_name in ('rho', 'prs')
             is_vel = var_name in ('vx1','vx2')
 
             # 3D Case
             if pdata.vars[var_name].ndim == 3:
-                slice_idx = pdata.vars[sdata.var_choice[0]].shape[0] // 2  # y-Middle slice
-                vars_data = np.log10(pdata.vars[var_name][:,slice_idx,:]) if is_log else pdata.vars[var_name][:,slice_idx,:] 
-                x1_2d, x2_2d = np.meshgrid(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]])
+                
+                # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
+                slice_var = set(sdata.coord_names) - set(sdata.var_choice[:2])
+                slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+                vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
                 im = ax.pcolormesh(
-                    x1_2d,
-                    x2_2d,
-                    vars_data, 
+                    pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data.T, 
                     cmap=extras["c_maps"][i],
                 )
             

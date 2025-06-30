@@ -79,7 +79,9 @@ def get_pluto_units(sim_coord,d_files):
 
     # Read norm values from ini file
     cur_dir = Path(__file__).resolve().parent          # directory containing this .py
-    ini_path = cur_dir / "pluto_units.ini"   
+    # ini_path = cur_dir / "pluto_units.ini" 
+    ini_path = cur_dir / "pluto_units_default.ini" 
+
 
     config = configparser.ConfigParser()
     config.optionxform = str
