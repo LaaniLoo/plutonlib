@@ -453,7 +453,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
 
         # Stellar_Wind needs to iterate  over d_file and var name 
-        if sdata.sim_type in ("Stellar_Wind"):
+        if sdata.sim_type in ("Stellar_Wind") or sdata.sim_type in ("Jet_Cluster"):
             plot_vars = sdata.var_choice[2:]
             plot_idx = 0 #only way to index plot per var 
 
