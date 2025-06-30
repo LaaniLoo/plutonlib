@@ -269,7 +269,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
             if pdata.vars[var_name].ndim == 3:
                 
                 # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
-                slice_var = set(sdata.coord_names) - set(sdata.var_choice[:2])
+                slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
                 slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
                 vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
                 im = ax.pcolormesh(
