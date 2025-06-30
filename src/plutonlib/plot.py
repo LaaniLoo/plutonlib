@@ -255,27 +255,27 @@ def cmap_base(sdata,pdata = None, **kwargs):
             cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
 
     # 3D Jet Case
-    if sim_type in ("Jet") and sdata.vars["rho"].ndim == 3:
+    # if sim_type in ("Jet") and sdata.vars["rho"].ndim == 3:
         
-        slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-        slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    #     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+    #     slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
 
-        is_log = var_name in ('rho', 'prs')
-        vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
+    #     is_log = var_name in ('rho', 'prs')
+    #     vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
 
-        var_idx = sdata.var_choice[2:].index(var_name)
-        c_map = extras["c_maps"][var_idx]
-        cbar_label = extras["cbar_labels"][var_idx]
+    #     var_idx = sdata.var_choice[2:].index(var_name)
+    #     c_map = extras["c_maps"][var_idx]
+    #     cbar_label = extras["cbar_labels"][var_idx]
 
-        im = ax.pcolormesh(
-            pdata.vars[sdata.var_choice[0]], 
-            pdata.vars[sdata.var_choice[1]], 
-            vars_data.T, 
-            cmap=extras["c_maps"][i],
-        )
+    #     im = ax.pcolormesh(
+    #         pdata.vars[sdata.var_choice[0]], 
+    #         pdata.vars[sdata.var_choice[1]], 
+    #         vars_data.T, 
+    #         cmap=extras["c_maps"][i],
+    #     )
 
-        cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-        cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
+    #     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
+    #     cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
 
     # 2D Jet Case
     if sim_type in ("Jet"):
@@ -310,7 +310,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
                         vmin = v_min_max[0],
                         vmax =  v_min_max[1]
                         )
-                else:           # Odd index vars on left (flipped)
+                else: # Odd index vars on left (flipped)
                     im = ax.pcolormesh(
                         -1 * pdata.vars[sdata.var_choice[0]], 
                         pdata.vars[sdata.var_choice[1]], 
@@ -320,6 +320,20 @@ def cmap_base(sdata,pdata = None, **kwargs):
                         vmin =  v_min_max[0],
                         vmax =  v_min_max[1]
                         )
+                    
+            if pdata.vars[var_name].ndim == 3:
+
+                slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+                slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+
+                vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
+
+                im = ax.pcolormesh(
+                    pdata.vars[sdata.var_choice[0]], 
+                    pdata.vars[sdata.var_choice[1]], 
+                    vars_data.T, 
+                    cmap=extras["c_maps"][i],
+                )
                 
             # Add colorbar with appropriate label
             cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
