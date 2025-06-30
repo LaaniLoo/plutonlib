@@ -451,9 +451,26 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                 cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
                 plot_axlim(pdata.axes[idx],kwargs)
 
+        if sdata.sim_type in ("Jet_Cluster"):
+            plot_vars = sdata.var_choice[2:]
+            plot_idx = 0 #only way to index plot per var 
+
+            for d_file in pdata.d_files:
+                pdata.d_file = d_file
+                pdata.vars = sdata.get_vars(d_file)
+                for var_name in plot_vars:
+                    if plot_idx >= len(pdata.axes):
+                        break
+                        
+                    # Plot each variable in its own subplot
+                    cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
+                    # plot_label(sdata,pdata,plot_idx)
+                    plot_axlim(pdata.axes[plot_idx],kwargs)
+
+                    plot_idx += 1
 
         # Stellar_Wind needs to iterate  over d_file and var name 
-        if sdata.sim_type in ("Stellar_Wind") or sdata.sim_type in ("Jet_Cluster"):
+        if sdata.sim_type in ("Stellar_Wind"):
             plot_vars = sdata.var_choice[2:]
             plot_idx = 0 #only way to index plot per var 
 
