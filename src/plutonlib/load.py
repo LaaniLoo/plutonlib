@@ -17,10 +17,10 @@ PLUTODIR = pc.plutodir
 from plutonlib.plutokore_src import plutokore_io as pk_io
 
 #for dbl:
-from plutokore.simulations import get_output_count as pk_sim_count
+# from plutokore.simulations import get_output_count as pk_sim_count
 
 #for hdf5:
-from plutokore.simulations import get_hdf5_output_count as pk_sim_count_h5
+# from plutokore.simulations import get_hdf5_output_count as pk_sim_count_h5
 # from pk_sim import get_output_count as pk_sim_count
 
 
@@ -43,7 +43,8 @@ class SimulationData:
     Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
     converted/raw data, units and var info
     """
-    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False,load_outputs = None):
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name = None,auto_load = False,
+                 load_outputs = None,ini_name ="pluto_units.ini" ):
         self.sim_type = sim_type
         self.run_name = run_name
         self.load_outputs = load_outputs
@@ -72,6 +73,7 @@ class SimulationData:
         self.avail_sims = os.listdir(pc.sim_dir)
         self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else print(f"{pcolours.WARNING}Skipping avail_runs")
         self.wdir =  os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else print(f"{pcolours.WARNING}Skipping wdir")
+        # self.ini_path = os.path.join(pc.src_path,ini_name)
 
         # Vars
         self._var_choice = None 
@@ -213,6 +215,7 @@ class SimulationData:
         warnings = self.conv_data['warnings']
         for warning in warnings:
             print(warning)
+        print("\n",f"{pcolours.WARNING}Current Working Dir:", self.wdir)
         print(pcolours.ENDC) #ends yellow warning colour 
 
     def d_sel(self,slice,start = 0):
@@ -323,6 +326,12 @@ class SimulationData:
         if self._var_choice is None:
             self.load_raw()
         return self._var_choice
+    
+    @property
+    def grid_ndim(self):
+        if self._units is None:
+            self.load_units()
+        return self.get_var_info("rho")["ndim"]
 
 #------------------------#
 #       functions    
@@ -541,7 +550,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     var_choice = profiles[profile_choice]
 
     wdir = SimulationData(sim_type, run_name, profile_choice,load_outputs=load_outputs).wdir
-    print(wdir)
+    # print(wdir)
     n_outputs = pk_io.nlast_info(w_dir=wdir)["nlast"] #NOTE uses pk_io instead of simulations
 
     # try: # for dbl files:

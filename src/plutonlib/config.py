@@ -55,7 +55,13 @@ coord_systems = {
     "SPHERICAL": ['r','theta','phi']  
 }
 
-def get_pluto_units(sim_coord,d_files):
+# Read norm values from ini file
+cur_dir = Path(__file__).resolve().parent          # directory containing this .py
+# ini_path_default = cur_dir / "pluto_units_default.ini" 
+ini_path_default = cur_dir / "pluto_units.ini" 
+
+
+def get_pluto_units(sim_coord,d_files,ini_path=ini_path_default):
     """
     gets the values required to normalise PLUTO "code-units" to CGS, then can converted to SI
     """
@@ -77,14 +83,12 @@ def get_pluto_units(sim_coord,d_files):
     # "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
     # }
 
-    # Read norm values from ini file
-    cur_dir = Path(__file__).resolve().parent          # directory containing this .py
-    # ini_path = cur_dir / "pluto_units.ini" 
-    ini_path = cur_dir / "pluto_units_default.ini" 
+
 
 
     config = configparser.ConfigParser()
     config.optionxform = str
+    # print("Loading:",ini_path)
     config.read(ini_path)
     # print(f"Read {ini_path}")
     norm_values = {k: float(v) for k, v in config["normalisations"].items()}
