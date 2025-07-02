@@ -24,7 +24,7 @@ except KeyError: #if not env var creates a plutonlib_output folder in current wd
     print(f"Creating plutonlib_output folder in {os.getcwd()}") if is_dir else None
     # print("\n")
 
-src_path = r'plutonlib/src/plutonlib'
+src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
 
 try: #Checks for PLUTO_DIR env var
     plutodir = os.environ["PLUTO_DIR"]

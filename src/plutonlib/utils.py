@@ -19,8 +19,12 @@ def py_reload(module):
     print(f"{module_name} Last Saved:",time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
 
 def py_reload_all():
+    is_path = os.path.isdir(pc.src_path)
+    if not is_path:
+        raise FileNotFoundError(f"Cannot locate src path, currently set to: {pc.src_path}")
+    
     for f in glob(pc.src_path + '/*.py'):
-        py_file = f.split("/")[3]
+        py_file = f.split("/")[6]
         module_name = "plutonlib." + py_file.split(".py")[0]
 
         module = importlib.import_module(module_name) #, package=None
