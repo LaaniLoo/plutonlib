@@ -266,20 +266,6 @@ def cmap_base(sdata,pdata = None, **kwargs):
             # Apply log scale if density or pressure
             is_log = var_name in ('rho', 'prs')
             is_vel = var_name in ('vx1','vx2')
-
-            # 3D Case
-            if pdata.vars[var_name].ndim == 3:
-                
-                # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
-                slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-                slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
-                vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
-                im = ax.pcolormesh(
-                    pdata.vars[sdata.var_choice[0]], 
-                    pdata.vars[sdata.var_choice[1]], 
-                    vars_data.T, 
-                    cmap=extras["c_maps"][i],
-                )
             
             # 2D Case 
             if pdata.vars[var_name].ndim == 2:
@@ -312,6 +298,20 @@ def cmap_base(sdata,pdata = None, **kwargs):
                         vmin =  v_min_max[0],
                         vmax =  v_min_max[1]
                         )
+                    
+        # 3D Case
+        if pdata.vars[var_name].ndim == 3:
+            
+            # slice_idx = sdata.get_coords()["x2"].shape[0] // 2  # y-Middle slice
+            slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+            slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+            vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice] 
+            im = ax.pcolormesh(
+                pdata.vars[sdata.var_choice[0]], 
+                pdata.vars[sdata.var_choice[1]], 
+                vars_data.T, 
+                cmap=extras["c_maps"][i],
+            )
                 
             # Add colorbar with appropriate label
             cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
