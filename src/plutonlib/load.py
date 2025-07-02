@@ -175,7 +175,8 @@ class SimulationData:
     def get_var_info(self,var_name):
         """Gets coordinate name, unit, norm value etc"""
         var_info = self.units.get(var_name)
-        shp_info = {"Shape" : self.get_all_vars()[var_name].shape}
+        shp_info = {"shape" : self.get_all_vars()[var_name].shape}
+        dim_info = {"ndim" : self.get_all_vars()[var_name].ndim}
         var_info.update(shp_info)
 
         if not var_info:

@@ -74,9 +74,11 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
         print("\n")
         plot_vars = None
 
+    #NOTE plot sim has two types of plot sizes, two var per subp or one var per subp
+    ndim = sdata.get_var_info("rho")["ndim"] #gets rho ndim info for nplots 
     called_func = inspect.stack()[1].function
-    if called_func == "plot_sim": #plot sim has two types of plot sizes
-        n_plots = len(pdata.d_files) if sim_type in ("Jet") else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
+    if called_func == "plot_sim": 
+        n_plots = len(pdata.d_files) if ndim == 2 else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
     
     else: #all other functions only need d_file sized plot
          n_plots = len(pdata.d_files)
