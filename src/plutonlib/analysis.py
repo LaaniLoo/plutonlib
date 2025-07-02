@@ -9,9 +9,7 @@ import scipy as sp
 from scipy import stats
 
 import matplotlib.pyplot as plt
-
 from collections import defaultdict 
-
 from IPython.display import display, Latex
 import inspect
 
