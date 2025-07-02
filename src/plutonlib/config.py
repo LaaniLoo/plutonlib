@@ -67,25 +67,6 @@ def get_pluto_units(sim_coord,d_files,ini_path=ini_path_default):
     """
     sel_coords = coord_systems[sim_coord] #gets the coord vars for the specific coord sys
 
-    #TODO assign from config etc?
-    #key: norm, CGS, SI, var_name?, formatted coord in sys
-    # pluto_units = {
-    # "x1": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
-    # "x2": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
-    # "x3": {"norm": 1.496e13, "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
-    # "rho": {"norm": 1.673e-24, "cgs": (u.gram / u.cm**3), "si": (u.kg / u.m**3), "var_name": "Density"},
-    # "prs": {"norm": 1.673e-14, "cgs": (u.dyn / u.cm**2), "si": u.Pa, "var_name": "Pressure"},
-    # "vx1": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[0]}_Velocity"},
-    # "vx2": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[1]}_Velocity"},
-    # "vx3": {"norm": 1.000e05, "cgs": (u.cm / u.s), "si": (u.m / u.s), "var_name": f"{sel_coords[2]}_Velocity"},
-    # "T": {"norm": 1.203e02, "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    # "SimTime_s": {"norm": np.linspace(0,1.496e08,len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"}, #NOTE not needed as below can be converted to si for seconds
-    # "SimTime": {"norm": np.linspace(0,4.744e00,len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"}, 
-    # }
-
-
-
-
     config = configparser.ConfigParser()
     config.optionxform = str
     # print("Loading:",ini_path)
