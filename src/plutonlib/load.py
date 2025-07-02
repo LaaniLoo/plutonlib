@@ -178,6 +178,7 @@ class SimulationData:
         shp_info = {"shape" : self.get_all_vars()[var_name].shape}
         dim_info = {"ndim" : self.get_all_vars()[var_name].ndim}
         var_info.update(shp_info)
+        var_info.update(dim_info)
 
         if not var_info:
             raise KeyError(f"No unit info for variable {var_name}")
