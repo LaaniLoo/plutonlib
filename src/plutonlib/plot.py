@@ -235,15 +235,7 @@ def pcmesh_3d(sdata,pdata = None, **kwargs):
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
-    data = sdata.get_all_vars()
-    x1 = data["x1"]
-    x2 = data["x2"]
-    x3 = data["x3"]
-
-    xx,yy,zz = np.meshgrid(x1,x2,x3)
-
-    # im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=c_map)
-    im = ax.pcolormesh(xx,zz, vars_data, cmap=c_map)
+    im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=c_map)
 
 
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
