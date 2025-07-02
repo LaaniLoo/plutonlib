@@ -582,7 +582,6 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None):
     geometry = data_0.geometry #gets the geometry of the first file = fast
 
     loaded_vars = [v for v in var_choice if hasattr(data_0, v)]
-    # print("Loaded Vars:", loaded_vars)
 
     non_vars = set(var_choice) - set(loaded_vars)
 
