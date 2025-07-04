@@ -38,7 +38,8 @@ else:
     raise FileNotFoundError(f"{pcolours.WARNING} Simulation directory not found, needs to be in PLUTO_DIR ({plutodir}), see sim_save.sh")
 
 profiles = {
-    "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "SimTime"],
+    "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
+    "all_nc": ["ncx","ncy","ncz","rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
     
     "xy_rho_prs": ["x1", "x2", "rho", "prs"],
     "xz_rho_prs": ["x1", "x3", "rho", "prs"],
@@ -48,6 +49,34 @@ profiles = {
     "xz_vel": ['x1','x3','vx1','vx3'],
     "yz_vel": ["x2", "x3", 'vx2','vx3'],
 }
+
+def profiles2(arr_type=None):
+
+    coord_prefixes = {
+        "e":  ["ex",  "ey",  "ez"],
+        "m":  ["mx",  "my",  "mz"],
+        "d":  ["dx",  "dy",  "dz"],
+        # "x":  ["x1",  "x2",  "x3"],
+        "nc": ["ncx", "ncy", "ncz"],
+        "cc": ["ccx", "ccy", "ccz"],
+        None: ["mx",  "my",  "mz"],  # default to midpoint if None
+    }
+
+    # Get the correct coordinate labels, defaults to mx ...
+    coords = coord_prefixes.get(arr_type, ["mx", "my", "mz"])
+    x, y, z = coords
+
+    profiles = {
+        "all": [x, y, z, "rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
+        "xy_rho_prs": [x, y, "rho", "prs"],
+        "xz_rho_prs": [x, z, "rho", "prs"],
+        "yz_rho_prs": [y, z, "rho", "prs"],
+        "xy_vel":     [x, y, "vx1", "vx2"],
+        "xz_vel":     [x, z, "vx1", "vx3"],
+        "yz_vel":     [y, z, "vx2", "vx3"],
+    }
+    returns = {"profiles":profiles,"coord_prefixes":coord_prefixes}
+    return returns
 
 coord_systems = {
     "CYLINDRICAL": ['r','z','theta'],
@@ -84,8 +113,8 @@ def get_pluto_units(sim_coord,d_files,ini_path=ini_path_default):
     "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
     "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
     "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    "SimTime_s": {"norm": np.linspace(0, norm_values["SimTime_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
-    "SimTime": {"norm": np.linspace(0, norm_values["SimTime"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
+    "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
+    "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
     }
     
     return pluto_units 

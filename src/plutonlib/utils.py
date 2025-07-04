@@ -1,4 +1,5 @@
 import plutonlib.config as pc
+import plutonlib.load as pl
 
 import os
 import time
@@ -86,3 +87,34 @@ def setup_dir(start_dir):
 
     return save_dir
 
+# def init_SimulationData(sdata,sel_runs = None,sel_prof = None,**kwargs):
+#     #TODO make a class or function or something to streamline this
+#     sdata.run_name = sel_runs if sel_runs else sdata.run_name
+
+#     run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run_name,sel_prof)
+#     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
+
+#     for run in run_names:
+#         sdata.run_name = run
+#         sdata.profile_choice = profile_choices[run][0]
+#         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+#         arr_type = kwargs.get('arr_type', sdata.arr_type)
+#         sdata = pl.SimulationData(
+#             sdata.sim_type,
+#             sdata.run_name,
+#             sdata.profile_choice,
+#             sdata.subdir_name,
+#             load_outputs=loaded_outputs,
+#             arr_type=arr_type
+#             )
+    
+#     returns = {"loaded_outputs":loaded_outputs}
+
+#     return returns
+
+def flatten(x):
+    if isinstance(x, (list, tuple)):
+        for i in x:
+            yield from flatten(i)
+    else:
+        yield x

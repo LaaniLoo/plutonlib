@@ -62,11 +62,11 @@ def nlast_info(w_dir=None, datatype=None):
     with open(fname_v, "r") as f:
         last_line = f.readlines()[-1].split()
     nlast = int(last_line[0])
-    SimTime = float(last_line[1])
+    sim_time = float(last_line[1])
     Dt = float(last_line[2])
     Nstep = int(last_line[3])
 
-    return {"nlast": nlast, "time": SimTime, "dt": Dt, "Nstep": Nstep}
+    return {"nlast": nlast, "time": sim_time, "dt": Dt, "Nstep": Nstep}
 
 
 class pload(object):
@@ -151,7 +151,7 @@ class pload(object):
 
         if self.datatype == "hdf5":
             fh5 = h5.File(timefile, "r")
-            self.SimTime = fh5.attrs.get("time")
+            self.sim_time = fh5.attrs.get("time")
             # self.Dt = 1.e-2 # Should be erased later given the level in AMR
             fh5.close()
         else:
@@ -160,7 +160,7 @@ class pload(object):
                 tlist = []
                 for line in f_var.readlines():
                     tlist.append(line.split())
-            self.SimTime = float(tlist[ns][1])
+            self.sim_time = float(tlist[ns][1])
             self.Dt = float(tlist[ns][2])
 
     def ReadVarFile(self, varfile):
@@ -933,7 +933,7 @@ class pload(object):
 
         D = [
             ("NStep", self.NStep),
-            ("SimTime", self.SimTime),
+            ("sim_time", self.sim_time),
             ("Dt", self.Dt),
             ("n1", self.n1),
             ("n2", self.n2),

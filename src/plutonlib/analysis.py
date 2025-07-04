@@ -24,8 +24,14 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
     automatically calculates the required array slice for an array of >=2 dimensions
     """
     loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name,load_outputs=loaded_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type)
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
@@ -275,7 +281,7 @@ def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stela
 
 
 
-#---Plot length/radius across SimTime---#
+#---Plot length/radius across sim_time---#
 def get_jet_length_dim(sdata):
     """Gets the array with the longest grid size, used for Jet length as safety net"""
     coords = sdata.get_coords() #loads all coords at d_last
@@ -288,11 +294,11 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
     var_info = sdata.get_var_info(sel_coord)
 
-    xlab = f"SimTime [{sdata.get_var_info('SimTime')['cgs']}]"
+    xlab = f"sim_time [{sdata.get_var_info('sim_time')['cgs']}]"
     ylab = f"{var_info['coord_name']}-Radius [{var_info['si']}]"
     title = f"{sdata.sim_type} {ylab} across {xlab}"
 
-    t_yr = sdata.get_vars(sdata.d_last)["SimTime"]
+    t_yr = sdata.get_vars(sdata.d_last)["sim_time"]
 
     #Legend assignment based on sim_time
     if sdata.sim_type == "Jet":
@@ -357,7 +363,7 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
 
 def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var as it shouldn't matter unless stellar wind
     """
-    Plots the calculated radius of a sim, e.g. jet radius across SimTime
+    Plots the calculated radius of a sim, e.g. jet radius across sim_time
     * Jet: graph_peaks() for plotting, calculates the peak dens at d_file -> end of jet -> assigns radius
     * Stellar_Wind: peak_finder() for plotting
     """
@@ -404,7 +410,7 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
     sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
 
     peak_data = peak_findr("x2","vx2",sdata=sdata) #NOTE USE OF PREDET VARS
-    radius = peak_data["radius"] # calculated shell/jet radii at SimTime from max vx2
+    radius = peak_data["radius"] # calculated shell/jet radii at sim_time from max vx2
     vel = peak_data["peak_var"] # corresponding velocity at the above radii 
     locs = peak_data["locs"] #index location where max occurs
 
@@ -435,16 +441,16 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
         
 
     if plot:
-        t = sdata.get_vars(sdata.d_last)["SimTime"]
+        t = sdata.get_vars(sdata.d_last)["sim_time"]
 
         eqn = '$Q_{jet} = \\frac{1}{2}4\\pi r_s^2 \\rho(r_s) V^3_s$'
         display(Latex(eqn))
 
         plt.figure()
-        plt.title("Plot of Energy vs SimTime")
+        plt.title("Plot of Energy vs sim_time")
         plt.plot(t,q_jet,label = "$Q_{jet}$")
         plt.ylabel("Jet Energy [J]")
-        plt.xlabel("SimTime [yr]")
+        plt.xlabel("sim_time [yr]")
         plt.legend()
 
         pdata = pp.PlotData()
@@ -464,7 +470,7 @@ def calc_radius(sdata,plot =0):
     rt_sim, rt_calc = [], []
     rho_0 = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
 
-    t = sdata.get_vars(sdata.d_last)["SimTime"]
+    t = sdata.get_vars(sdata.d_last)["sim_time"]
 
     q_jet_sim = calc_energy(sdata=sdata,type="sim")
     q_jet_calc = calc_energy(sdata=sdata,type="calc")
@@ -486,11 +492,11 @@ def calc_radius(sdata,plot =0):
         display(Latex(eqn))
 
         plt.figure()
-        plt.title("Plot of calculated/simulated R(t) vs SimTime")
+        plt.title("Plot of calculated/simulated R(t) vs sim_time")
         plt.plot(t,rt_calc,label = "calc r(t)")
         plt.plot(t,rt_sim,label = "r(t)")
         plt.ylabel("radius [m]")
-        plt.xlabel("SimTime [yr]")
+        plt.xlabel("sim_time [yr]")
         plt.legend()
 
         pdata = pp.PlotData()

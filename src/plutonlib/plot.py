@@ -41,6 +41,19 @@ class PlotData:
         self.__dict__.update(kwargs)
 
 #---Plot Helper Functions---#
+def sim_type_match(sdata):
+    is_jet_2d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 2
+    is_jet_3d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 3
+    is_stellar_wind = "_".join(sdata.sim_type.split("_",2)[:2]) in ("Stellar_Wind")
+    
+    returns = {
+        "is_jet_2d":is_jet_2d,
+        "is_jet_3d":is_jet_3d,
+        "is_stellar_wind":is_stellar_wind,
+    }
+
+    return returns
+
 def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplots determined by number of data_files
     """
     Sets up and calculates the number of required subplots
@@ -167,19 +180,13 @@ def plot_extras(sdata,pdata = None, **kwargs):
         cbar_labels.append(var_label + " " + f"[{var_units}]")
         labels.append(var_label)
 
-    #plot cases #TODO Could be moved to pdata?:
-    is_jet_2D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 2
-    is_jet_3D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 3
-    is_stellar_wind = sdata.sim_type in ("Stellar_Wind")
-
-
     #assigning title if jet: two vars per subplot
-    if is_jet_2D:
+    if sim_type_match(sdata)["is_jet_2d"]:
         title = f"{sdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append(title)
 
     #assigning title if other: one var per subplot
-    if is_stellar_wind or is_jet_3D:
+    if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
         title_L = f"{sdata.sim_type} {labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_R = f"{sdata.sim_type} {labels[1]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append([title_L,title_R])
@@ -236,6 +243,36 @@ def pcmesh_3d(sdata,pdata = None, **kwargs):
     cbar_label = extras["cbar_labels"][var_idx]
 
     im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=c_map)
+
+
+    cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
+    cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
+
+def pcmesh_3d_nc(sdata,pdata = None, **kwargs):    
+    """
+    Assigns the pcolormesh data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
+    Also assigns colour bar and label
+    """ 
+    var_name = kwargs.get('var_name')
+    extras = kwargs.get('extras')
+    ax = kwargs.get('ax')
+
+    if var_name is None or extras is None or ax is None:
+        raise ValueError("Missing one of required kwargs: 'var_name', 'extras', 'ax'")
+    
+    var_idx = sdata.var_choice[2:].index(var_name)
+
+    slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+    slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+
+    is_log = var_name in ('rho', 'prs')
+    vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice]
+
+    c_map = extras["c_maps"][var_idx]
+    cbar_label = extras["cbar_labels"][var_idx]
+
+    # print(pdata.vars[sdata.var_choice[0]].shape)
+    im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]][slice], pdata.vars[sdata.var_choice[1]][slice], vars_data, cmap=c_map)
 
 
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
@@ -330,17 +367,15 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
     ax = pdata.axes[idx] # sets the axis as an index
 
-    #plot cases #TODO Could be moved to pdata?:
-    is_jet_2D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 2
-    is_jet_3D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 3
-    is_stellar_wind = sdata.sim_type in ("Stellar_Wind")
-
     #plotting in 3D for Stellar Wind and 3D jet
-    if is_stellar_wind or is_jet_3D:
+    if sim_type_match(sdata)["is_stellar_wind"]:
         pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
 
+    if sim_type_match(sdata)["is_jet_3d"]:
+        pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
+
     # used for plotting jet,
-    if is_jet_2D:
+    if sim_type_match(sdata)["is_jet_2d"]:
         pcmesh_2d(sdata, pdata=pdata, extras=extras, ax=ax)
 
 
@@ -371,15 +406,10 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     ax.set_xlabel(xy_labels[sdata.var_choice[0]])
     ax.set_ylabel(xy_labels[sdata.var_choice[1]])   
 
-    #plot cases #TODO Could be moved to pdata?:
-    is_jet_2D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 2
-    is_jet_3D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 3
-    is_stellar_wind = sdata.sim_type in ("Stellar_Wind")
-
-    if is_stellar_wind or is_jet_3D:
+    if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
         ax.set_title(f"{title[0]}") if idx % 2 == 0 else ax.set_title(f"{title[1]}")
 
-    elif is_jet_2D:
+    elif sim_type_match(sdata)["is_jet_2d"]:
         ax.set_title(f"{title}")
 
 def plot_axlim(ax,kwargs):
@@ -442,10 +472,18 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     if pdata is None:
         pdata = PlotData(**kwargs)
 
+    # Ensure sel_runs is either None or a single string (not a list)
+    if isinstance(sel_runs, list):
+        if len(sel_runs) == 1:
+            sel_runs = sel_runs[0]  # Unwrap single-element lists
+        else:
+            raise ValueError("sel_runs must be a single run name or None")
+
     #TODO make a class or function or something to streamline this
-    sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
+    # sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-    sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
+    # sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
+    sdata.run_name = sel_runs if sel_runs else sdata.run_name
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
     # print("load state:", sdata._is_loaded)
@@ -457,9 +495,16 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         sdata.run_name = run
         sdata.profile_choice = profile_choices[run][0]
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-        sdata = pl.SimulationData(sdata.sim_type,sdata.run_name,sdata.profile_choice,sdata.subdir_name,load_outputs=loaded_outputs)
-
-        # pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+        arr_type = kwargs.get('arr_type', sdata.arr_type)
+        sdata = pl.SimulationData(
+            sdata.sim_type,
+            sdata.run_name,
+            sdata.profile_choice,
+            sdata.subdir_name,
+            load_outputs=loaded_outputs,
+            arr_type=arr_type
+            )
+        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
         # Handle list selection
         if isinstance(loaded_outputs, list):
@@ -471,13 +516,8 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
-        #plot cases #TODO Could be moved to pdata?:
-        is_jet_2D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 2
-        is_jet_3D = sdata.sim_type in ("Jet") and sdata.grid_ndim == 3
-        is_stellar_wind = sdata.sim_type in ("Stellar_Wind")
-
         # Jet only needs to iterate over d_file
-        if is_jet_2D:
+        if sim_type_match(sdata)["is_jet_2d"]:
             for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
                 pdata.d_file = d_file
                 pdata.vars = sdata.get_vars(d_file)
@@ -488,7 +528,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
 
         # Stellar_Wind needs to iterate  over d_file and var name 
-        if is_stellar_wind or is_jet_3D:
+        if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
         # if sdata.get_var_info("rho")["ndim"] == 3:
             plot_vars = sdata.var_choice[2:]
             plot_idx = 0 #only way to index plot per var 
