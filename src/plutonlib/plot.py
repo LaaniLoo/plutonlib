@@ -264,7 +264,17 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
 
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
     print("Slice Var = ", slice_var)
-    slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    # slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    slice_dim = int(slice_var.strip("x"))
+    midpoint = sdata.get_all_vars()[slice_var].shape[slice_dim] // 2
+
+    if slice_dim == 1:
+        slice = [midpoint,:,:]
+    if slice_dim == 2:
+        slice = [:,midpoint,:]
+    if slice_dim == 3:
+        slice = [:,:,midpoint]
+
 
     is_log = var_name in ('rho', 'prs')
     vars_data = np.log10(sdata.get_all_vars()[var_name][slice]) if is_log else sdata.get_all_vars()[var_name][slice]
