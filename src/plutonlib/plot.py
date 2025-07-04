@@ -265,25 +265,16 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
     print("Slice Var = ", slice_var)
     # slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
-    slice_dim = int(slice_var.strip("x"))
-    midpoint = sdata.get_all_vars()[slice_var].shape[slice_dim] // 2
-
-    if slice_dim == 1:
-        slice = [midpoint,slice(None),slice(None)]
-    if slice_dim == 2:
-        slice = [slice(None),midpoint,slice(None)]
-    if slice_dim == 3:
-        slice = [slice(None),slice(None),midpoint]
-
+    mid_y = sdata.get_all_vars()["x2"].shape[1] // 2
 
     is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(sdata.get_all_vars()[var_name][slice]) if is_log else sdata.get_all_vars()[var_name][slice]
+    vars_data = np.log10(sdata.get_all_vars()[var_name][:,mid_y,:]) if is_log else sdata.get_all_vars()[var_name][:,mid_y,:]
 
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
     # print(pdata.vars[sdata.var_choice[0]].shape)
-    im = ax.pcolormesh(sdata.get_all_vars()[sdata.var_choice[0]][slice],sdata.get_all_vars()[sdata.var_choice[1]][slice], vars_data, cmap=c_map)
+    im = ax.pcolormesh(sdata.get_all_vars()[sdata.var_choice[0]][:,mid_y,:],sdata.get_all_vars()[sdata.var_choice[1]][:,mid_y,:], vars_data, cmap=c_map)
 
 
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
