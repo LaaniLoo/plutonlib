@@ -269,11 +269,11 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     midpoint = sdata.get_all_vars()[slice_var].shape[slice_dim] // 2
 
     if slice_dim == 1:
-        slice = [midpoint,:,:]
+        slice = [midpoint,slice(None),slice(None)]
     if slice_dim == 2:
-        slice = [:,midpoint,:]
+        slice = [slice(None),midpoint,slice(None)]
     if slice_dim == 3:
-        slice = [:,:,midpoint]
+        slice = [slice(None),slice(None),midpoint]
 
 
     is_log = var_name in ('rho', 'prs')
