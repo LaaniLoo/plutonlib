@@ -263,16 +263,17 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     var_idx = sdata.var_choice[2:].index(var_name)
 
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
+    print("Slice Var = ", slice_var)
     slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
 
     is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(pdata.vars[var_name][slice]) if is_log else pdata.vars[var_name][slice]
+    vars_data = np.log10(sdata.get_all_vars()[var_name][slice]) if is_log else sdata.get_all_vars()[var_name][slice]
 
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
     # print(pdata.vars[sdata.var_choice[0]].shape)
-    im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]][slice], pdata.vars[sdata.var_choice[1]][slice], vars_data, cmap=c_map)
+    im = ax.pcolormesh(sdata.get_all_vars()[sdata.var_choice[0]][slice],sdata.get_all_vars()[sdata.var_choice[1]][slice], vars_data, cmap=c_map)
 
 
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
