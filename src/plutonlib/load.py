@@ -46,11 +46,12 @@ class SimulationData:
     converted/raw data, units and var info
     """
     def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name=None,auto_load=False,
-                 load_outputs=None,arr_type=None,ini_name ="pluto_units.ini" ):
+                 load_outputs=None,arr_type=None,ini_file=None):
         self.sim_type = sim_type
         self.run_name = run_name
         self.load_outputs = load_outputs
         self.arr_type = arr_type
+        self.ini_file = ini_file
 
         #Safety measure to ensure correct array is loaded
         if self.arr_type is None:
@@ -133,19 +134,24 @@ class SimulationData:
         self._d_files = self._raw_data['d_files']
         self._var_choice = self._raw_data['var_choice']
         self._geometry = self._raw_data['vars_extra'][0]
-        self.load_time = time.time() - start
+        # self.load_time = time.time() - start
+        print(f"Pluto Loader: {(time.time() - start):.2f}s")
 
     def load_conv(self,profile=None):
-        if self._raw_data is None:
-            self.load_raw()
+        # if self._raw_data is None:
+        #     self.load_raw()
         
+        start = time.time() #for load time
+
         profile = profile or self.profile_choice
-        loaded_data =pluto_conv(self.sim_type, self.run_name,profile,self.load_outputs,self.arr_type)
+        loaded_data =pluto_conv(self.sim_type, self.run_name,profile,self.load_outputs,self.arr_type,self.ini_file)
 
         self._conv_data = loaded_data
 
         if profile == "all": #failsafe to load all data if req
             self._all_conv_data = loaded_data
+        
+        print(f"Pluto Conv: {(time.time() - start):.2f}s")
 
     def load_units(self):
         if self._conv_data is None:
@@ -226,10 +232,12 @@ class SimulationData:
             print(dir_log)
 
         #--Other--# 
+        print(f"{pcolours.WARNING}---SimulationData Info---","\n")
         warnings = self.conv_data['warnings']
         for warning in warnings:
             print(warning)
         print("\n",f"{pcolours.WARNING}Current Working Dir:", self.wdir)
+        print("\n",f"Units file: {pc.get_ini_file(self.ini_file)}") # Prints current units.ini file
         print(pcolours.ENDC) #ends yellow warning colour 
 
     def d_sel(self,slice,start = 0):
@@ -570,6 +578,7 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
         setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
         setattr(data_file, "variable_path", f"Timestep_{load_output}/vars")
         setattr(data_file, "geometry", "CARTESIAN")
+        
         # TODO WORRY ABOUT UNIT UNITS????
 
         # Set the variables
@@ -721,7 +730,7 @@ def pluto_loader(sim_type, run_name, profile_choice,load_outputs=None,arr_type=N
     return {"vars": vars, "var_choice": var_choice, "vars_extra": vars_extra, "d_files": d_files, "warnings": warnings} #"nlinf": nlinf
 
 @lru_cache(maxsize=None)  # This caches based on input arguments
-def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,arr_type=None,**kwargs):
+def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,arr_type=None,ini_file=None,**kwargs):
     """
     Converts Pluto simulation variables from code units to CGS and SI units.
 
@@ -743,6 +752,7 @@ def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,arr_type=Non
         - var_choice: List of variable names corresponding to the selected profile.
         - d_files: contains a list of the available data files for the sim
     """
+    start1 = time.time()
     loaded_data = pluto_loader(sim_type, run_name, profile_choice,load_outputs,arr_type)
     d_files = loaded_data["d_files"]
     vars_dict = loaded_data["vars"]
@@ -750,16 +760,17 @@ def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,arr_type=Non
     sim_coord = loaded_data["vars_extra"][0] #gets the coordinate sys of the current sim
     warnings = loaded_data["warnings"] #loads any warning messages about vars
     vars_si = defaultdict(dict)
+    print(f"Reloaded Pluto_loader: {(time.time() - start1):.2f}s")
 
     # Process each file and variable
-
+    start2 = time.time()
     for d_file in d_files:
         for var_name in var_choice:
             # if var_name not in vars_dict[d_file]: 
             #     continue  # Skip missing variables
 
             raw_data =  vars_dict[d_file][var_name]
-            conv_vals = pc.value_norm_conv(var_name,d_files,raw_data) #converts the raw pluto array
+            conv_vals = pc.value_norm_conv(var_name,d_files,raw_data,ini_file=ini_file) #converts the raw pluto array
 
             if var_name == "sim_time":
                 # adds both time in years and seconds as keys, sim_time defaults to yr
@@ -768,6 +779,7 @@ def pluto_conv(sim_type, run_name, profile_choice,load_outputs=None,arr_type=Non
 
             else:
                 vars_si[d_file][var_name] = conv_vals["si"]
+    print(f"Converted Pluto_loader: {(time.time() - start2):.2f}s")
 
     return {"vars_si": vars_si, "var_choice": var_choice,"d_files": d_files,"sim_coord": sim_coord,"warnings": warnings}
 

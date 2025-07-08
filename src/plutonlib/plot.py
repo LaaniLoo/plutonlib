@@ -244,7 +244,6 @@ def pcmesh_3d(sdata,pdata = None, **kwargs):
 
     im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=c_map)
 
-
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
     cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
 
@@ -263,20 +262,20 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     var_idx = sdata.var_choice[2:].index(var_name)
 
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-    # slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
-
-    #TODO FIX SLICE IMPLEMENTATION 
-    mid_y = sdata.get_all_vars()["x2"].shape[1] // 2
+    profile = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
 
     is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(pdata.vars[var_name][:,mid_y,:]).T if is_log else pdata.vars[var_name][:,mid_y,:].T
+    vars_data = np.log10(pdata.vars[var_name][profile]) if is_log else pdata.vars[var_name][profile]
 
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
-    # print(pdata.vars[sdata.var_choice[0]].shape)
-    im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]][:,mid_y,:],pdata.vars[sdata.var_choice[1]][:,mid_y,:], vars_data, cmap=c_map)
-
+    im = ax.pcolormesh(
+        pdata.vars[sdata.var_choice[0]][profile],
+        pdata.vars[sdata.var_choice[1]][profile], 
+        vars_data, 
+        cmap=c_map
+        )
 
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
     cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
@@ -484,7 +483,9 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
     #TODO make a class or function or something to streamline this
     # sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
+    
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
+
     # sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
     sdata.run_name = sel_runs if sel_runs else sdata.run_name
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 

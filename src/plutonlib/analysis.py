@@ -37,9 +37,15 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
 
     if ndim >2:
         try:
-            x_mid = len(vars_last["x1"])//2 
-            y_mid = len(vars_last["x2"])//2 
-            z_mid = len(vars_last["x3"])//2 
+            if arr_type == 'nc': #best method for 3D arrays
+                x_mid = vars_last["x1"].shape[0] // 2
+                y_mid = vars_last["x2"].shape[1] // 2
+                z_mid = vars_last["x3"].shape[2] // 2
+    
+            else: #NOTE not sure what this method is?
+                x_mid = len(vars_last["x1"])//2 
+                y_mid = len(vars_last["x2"])//2 
+                z_mid = len(vars_last["x3"])//2 
         except KeyError:
             raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
         
@@ -75,7 +81,8 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
         }
 
     var_profile = slice_map[sel_coord]
-    var_profile_single = single_slice_map[sel_coord]
+    var_profile_single = single_slice_map[sel_coord] if ndim >2 else None
+
     coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else None
 
     returns = {
