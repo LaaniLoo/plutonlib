@@ -25,13 +25,17 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
     """
     loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
     arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
     sdata = pl.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
         subdir_name = sdata.subdir_name,
         load_outputs=loaded_outputs,
-        arr_type = arr_type)
+        arr_type = arr_type,
+        ini_file = ini_file)
+    
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
@@ -96,7 +100,18 @@ def peak_findr(sel_coord,sel_var,sdata,**kwargs):
     Calculates the max values of an array and their location, e.g. use to find max values of x2 for vx2 to find jet radius
     """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     radius = []
     peak_info = []
@@ -121,10 +136,21 @@ def peak_findr(sel_coord,sel_var,sdata,**kwargs):
 
     return {"peak_info": peak_info,"radius": radius, "peak_var": peak_var,"locs": locs } 
 
-def graph_peaks(sel_coord,sel_var,sdata): #TODO Put in peak findr 
+def graph_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO Put in peak findr 
     """Follows a similar process to peak_findr() except it uses scipy signal peak finding, good for visual representation"""
     
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     coord_units = (sdata.get_var_info(sel_coord)["si"]).to_string('latex')
     var_units = (sdata.get_var_info(sel_var)["si"]).to_string('latex')
@@ -161,7 +187,18 @@ def graph_peaks(sel_coord,sel_var,sdata): #TODO Put in peak findr
 def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting same alg as peak_findr
     """A version of peak_findr() used for plotting, but includes all peak values """
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     var_peak_idx = defaultdict(list)
     peak_vars = []
@@ -211,7 +248,18 @@ def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting s
 def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar wind rho
     """Plots the peaks found by all_graph_peaks()"""
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     vars_last = sdata.get_vars(sdata.d_last)
     peak_data = all_graph_peaks(sel_coord,sel_var,sdata=sdata,**kwargs) #NOTE all goes wrong with graph_peaks, something to do with d_files
@@ -250,7 +298,18 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
 def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar wind rho
     """Plots the peaks found by all_graph_peaks()"""
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     vars_last = sdata.get_vars(sdata.d_last)
     peak_data = all_graph_peaks(sel_coord,sel_var,sdata=sdata,**kwargs) #NOTE all goes wrong with graph_peaks, something to do with d_files
@@ -298,7 +357,20 @@ def get_jet_length_dim(sdata):
 
 def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     """ Helper function for plot_time_prog, handles plotting assignment"""
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
+
+
     var_info = sdata.get_var_info(sel_coord)
 
     xlab = f"sim_time [{sdata.get_var_info('sim_time')['cgs']}]"
@@ -374,8 +446,20 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
     * Jet: graph_peaks() for plotting, calculates the peak dens at d_file -> end of jet -> assigns radius
     * Stellar_Wind: peak_finder() for plotting
     """
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
+
+
     r = []
 
 
@@ -407,14 +491,24 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
 
      
 #---Energy, Density, Radius Calculations---#
-def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
+def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0,**kwargs):
     """
     Calculates the Q value for a simulation given its density and velocity
     * type = "sim": calculates the observed value using simulation values
     * type = "calc": calculates the theoretical value using calculated density from calc_density()
     """
-    
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     peak_data = peak_findr("x2","vx2",sdata=sdata) #NOTE USE OF PREDET VARS
     radius = peak_data["radius"] # calculated shell/jet radii at sim_time from max vx2
@@ -467,12 +561,23 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0):
     else:
         return q_jet
 
-def calc_radius(sdata,plot =0):
+def calc_radius(sdata,plot =0,**kwargs):
     """
     Calculates the radius as a function of time using calc_energy()
     * has both simulated and calculated values 
     """
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
+
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
 
     rt_sim, rt_calc = [], []
     rho_0 = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
@@ -555,12 +660,23 @@ def calc_radial_vel(sdata,plot = 0):
     else:
         return returns
     
-def calc_density(sdata,sel_coord = "x2",plot = 0):
+def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
     """
     Calculates the density values using the radial velocity from calc_radial_vel() as well as r_0 and v_wind
     """
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name = sdata.subdir_name)
+    sdata = pl.SimulationData(
+        sim_type=sdata.sim_type,
+        run_name=sdata.run_name,
+        profile_choice="all",
+        subdir_name = sdata.subdir_name,
+        load_outputs=loaded_outputs,
+        arr_type = arr_type,
+        ini_file = ini_file)
+
 
     r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
     v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]

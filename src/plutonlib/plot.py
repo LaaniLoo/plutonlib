@@ -136,7 +136,6 @@ def plot_extras(sdata,pdata = None, **kwargs):
         Dictionary containing all above parameters
 
     """
-
     if pdata is None:
         pdata = PlotData(**kwargs)
 
@@ -144,7 +143,6 @@ def plot_extras(sdata,pdata = None, **kwargs):
     if pdata.extras and pdata.extras.get("_last_d_file") == pdata.d_file: #TODO fix whatever this is
         return pdata.extras
     
-
     cbar_labels = []
     c_map_names = []
     c_maps = []
@@ -152,12 +150,6 @@ def plot_extras(sdata,pdata = None, **kwargs):
     coord_labels = []
     xy_labels = {}
     title_other = []
-
-
-    #Gets last timestep if req
-    # nlinf = loaded_data["nlinf"]
-    # print("Last timestep info:", nlinf)
-
 
     #assigning x,y,z etc labels
     for var_name in sdata.var_choice:
@@ -380,7 +372,6 @@ def cmap_base(sdata,pdata = None, **kwargs):
     if sim_type_match(sdata)["is_jet_2d"]:
         pcmesh_2d(sdata, pdata=pdata, extras=extras, ax=ax)
 
-
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
     Generates titles, x/y labels for given plot/s 
@@ -498,15 +489,18 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     for run in run_names:
         sdata.run_name = run
         sdata.profile_choice = profile_choices[run][0]
+        # sdata.profile_choice = sel_prof
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
         arr_type = kwargs.get('arr_type', sdata.arr_type)
+        ini_file = kwargs.get('ini_file',sdata.ini_file)
         sdata = pl.SimulationData(
             sdata.sim_type,
             sdata.run_name,
             sdata.profile_choice,
             sdata.subdir_name,
             load_outputs=loaded_outputs,
-            arr_type=arr_type
+            arr_type=arr_type,
+            ini_file=ini_file
             )
         pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 

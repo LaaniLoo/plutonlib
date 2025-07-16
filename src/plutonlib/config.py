@@ -1,4 +1,5 @@
-import plutonlib.utils as pu
+# import plutonlib.utils as pu
+# import plutonlib.plot as pp
 from plutonlib.colours import pcolours
 
 
@@ -7,6 +8,9 @@ from astropy import units as u
 import numpy as np
 import configparser
 from pathlib import Path 
+import time
+from functools import lru_cache
+
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
@@ -89,19 +93,26 @@ def get_ini_file(ini_file = None):
     should follow naming convention: name_units.ini 
     """
     if ini_file is None:
-        ini_path = os.path.join(src_path,"pluto_units_default" + ".ini")
+        ini_path = os.path.join(src_path,"pluto_units" + ".ini")
     
     else:
         ini_path = os.path.join(src_path,ini_file + ".ini")
-
+    
+    is_file = os.path.isfile(ini_path)
+    if not is_file:
+        raise FileNotFoundError(f"{pcolours.WARNING}{ini_path} Not found")
+    
     return ini_path 
 
-def get_pluto_units(sim_coord,d_files,ini_file=None):
+def get_pluto_units(sim_coord,d_files,ini_file):
     """
     gets the values required to normalise PLUTO "code-units" to CGS, then can converted to SI
     """
-    if ini_file is None: #gets the ini_file
-        ini_path = get_ini_file(ini_file=ini_file)
+    if ini_file is None: #gets raise error safer than null assignment
+        ini_path = get_ini_file(ini_file=None)
+        raise ValueError(f"{pcolours.WARNING}ini_file is None, please load defaults from {ini_path}")
+    
+    ini_path = get_ini_file(ini_file=ini_file)
 
     sel_coords = coord_systems[sim_coord] #gets the coord vars for the specific coord sys
 
@@ -109,22 +120,7 @@ def get_pluto_units(sim_coord,d_files,ini_file=None):
     config.optionxform = str
     # print("Loading:",ini_path)
     config.read(ini_path)
-    # print(f"Read {ini_path}")
     norm_values = {k: float(v) for k, v in config["normalisations"].items()}
-
-    # pluto_units = {
-    # "x1": {"norm": norm_values["x1"], "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
-    # "x2": {"norm": norm_values["x2"], "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
-    # "x3": {"norm": norm_values["x3"], "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
-    # "rho": {"norm": norm_values["rho"], "cgs": u.g / u.cm**3, "si": u.kg / u.m**3, "var_name": "Density"},
-    # "prs": {"norm": norm_values["prs"], "cgs": u.dyn / u.cm**2, "si": u.Pa, "var_name": "Pressure"},
-    # "vx1": {"norm": norm_values["vx1"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[0]}_Velocity"},
-    # "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
-    # "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
-    # "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    # "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
-    # "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
-    # }
 
     pluto_units = {
     "x1": {"norm": norm_values["x1"], "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
@@ -138,7 +134,9 @@ def get_pluto_units(sim_coord,d_files,ini_file=None):
     "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
     "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
     "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
+    "ini_file": ini_file,
     }
+
     
     return pluto_units 
 
@@ -146,7 +144,6 @@ def value_norm_conv(var_name,d_files,raw_data = None, self = 0,ini_file = None):
     """
     gets value from get_pluto_units to convert to SI or CGS
     """
-
     pluto_units = get_pluto_units("CARTESIAN",d_files,ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
 
     cgs_unit =  pluto_units[var_name]["cgs"]
@@ -170,6 +167,7 @@ def value_norm_conv(var_name,d_files,raw_data = None, self = 0,ini_file = None):
     }
 
     return returns
+
 
 #---Sim data tree structure---#
 # In pluto-master
