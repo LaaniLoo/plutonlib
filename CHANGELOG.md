@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2025-07-16
+
+### 🐛 Bug Fixes
+
+
+- *(load.py)* Propper hdf5 loading from pk, new arr_type for profiles, ini_file in sdata, ThreadPoolExecutor
+
+* Added full hdf5 support, similar to plutokore, requires arr_type to load different grid array types (see SimulationData).
+  * Can now add own .ini file for units into SimulationData as ini_file (without extension, needs to be in /src).
+  * Added ThreadPoolExecutor in pluto_conv for faster converts.
+
+
+### Other
+
+
+- *(general)* update CHANGELOG.md
+
+
+- *(general)* update CHANGELOG.md
+
+
+- *(general)* test propper hdf5 loading with arr_type
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try transpose xz_jet data
+
+
+- *(general)* pre commit before load optimisation
+
+
 ## [v0.5.0] - 2025-07-02
 
 ### Documentation
@@ -30,7 +72,180 @@ can load only specific files with load_outputs (tuple), added lru_cache for cach
 ### 🐛 Bug Fixes
 
 
+- *(all)* fix circular import error
+
+pu.bcolors was causing a circular error in config.py, created colours.py to fix
+
+- *(general)* attempt to fix hdf5
+
+
+- *(general)* hdf5 fix, plutkore edit
+
+
+- *(general)* cluster-slowness
+
+
+- *(general)* import select d_files with load_outputs
+
+
+- *(general)* plot.py loading all d_files
+
+
+- *(general)* plotting when loading select d_files
+
+
+- *(general)* profile-loading functions load all d_files
+
+
+- *(general)* attempt to fix 3D plotting of jet
+
+
+- *(general)* plotting correct d_files
+
+
+- *(general)* can load_outputs as list
+
+
+- *(general)* added pluto_units.ini
+
+
+- *(general)* cach loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* can now load both dbl and h5
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* removed Jet_Cluster, added dim check
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* fixed pu.py_reload_all()
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* attempt to fix plotting same var on both subplots
+
+
+
 ### Other
+
+
+- *(general)* version 0.4.3 → 0.4.4
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* debug slow pluto_loader for cluster
+
+
+- *(general)* attempt to get plot.py to work on cluster
+
+
+- *(general)* test fix for 3D plots
+
+
+- *(general)* slice for 3D plotting
+
+
+- *(general)* plot jet with profile
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* test commit before tag
+
+
+- *(general)* meshgrid
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.4.4 → 0.5.0
 
 
 ## [v0.4.3] - 2025-05-19
