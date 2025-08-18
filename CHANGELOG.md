@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2025-08-18
+
+### 🐛 Bug Fixes
+
+
+- *(fixed-calc_var_prof-`value`-kwarg,-3D-analysis-plotters)* calc_var_prof `value` kwarg now works for 3D arrays, all analysis plotters work in 3D now
+
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
 ## [0.6.0] - 2025-08-18
 
 ### 🚀 Features
