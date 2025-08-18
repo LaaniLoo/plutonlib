@@ -37,13 +37,21 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
         arr_type = arr_type,
         ini_file = ini_file)
     
+    value_slice_map = { #slices for when using find_nearest 
+        "x1": (slice(None),0,0),
+        "x2": (0,slice(None),0),
+        "x3": (0,0,slice(None)),
+    }
+
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
     #TODO add 3d case if statement
     # used to slice at custom index or specified value
     if 'value' in kwargs:
-        idx = find_nearest(sdata.get_coords()[sel_coord],kwargs['value'])['idx']
+        value_slice = value_slice_map[sel_coord]
+        coords_array = sdata.get_coords()[sel_coord][value_slice] if ndim >2 else sdata.get_coords()[sel_coord]
+        idx = find_nearest(coords_array,kwargs['value'])['idx']
 
     elif 'idx' in kwargs:
         idx = kwargs['idx']
@@ -67,21 +75,21 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
             raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
         
         slice_map_1D = { #slices in shape of coord
-        "x1": (slice(None), y_mid, z_mid),
-        "x2": (x_mid, slice(None), z_mid),
-        "x3": (x_mid, y_mid, slice(None))
+            "x1": (slice(None), y_mid, z_mid),
+            "x2": (x_mid, slice(None), z_mid),
+            "x3": (x_mid, y_mid, slice(None))
         }
 
         slice_map_2D = { #slices in shape of coord
-        "x1": (x_mid, slice(None), slice(None)),
-        "x2": (slice(None), y_mid, slice(None)),
-        "x3": (slice(None), slice(None), z_mid)
+            "x1": (x_mid, slice(None), slice(None)),
+            "x2": (slice(None), y_mid, slice(None)),
+            "x3": (slice(None), slice(None), z_mid)
         } 
 
     else:
         slice_map_1D = { #slices in shape of coord
-        "x1": (slice(None), idx),
-        "x2": (idx, slice(None)),
+            "x1": (slice(None), idx),
+            "x2": (idx, slice(None)),
         }
 
     slice_1D = slice_map_1D[sel_coord]
@@ -128,7 +136,7 @@ def peak_findr(sel_coord,sel_var,sdata,**kwargs):
 
         locs.append(max_loc[0])
 
-        coord_array = var[sel_coord]   
+        coord_array = var[sel_coord][var_profile] if sdata.grid_ndim >2 else var[sel_coord]    
 
         peak_info.append(f"{d_file} Radius: {coord_array[max_loc][0]:.2e} m, {sel_var}: {var_sliced[max_loc][0]:.2e}")
         peak_var.append(var_sliced[max_loc][0])
@@ -207,8 +215,10 @@ def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting s
     var = sdata.get_vars(sdata.d_last)[sel_var]
     coord = sdata.get_vars(sdata.d_last)[sel_coord]
 
+    ndim = sdata.grid_ndim
     var_profile = calc_var_prof(sdata,sel_coord,**kwargs)["slice_1D"]
     var_sliced = var[var_profile]
+    coord = coord[var_profile] if sdata.grid_ndim >2 else coord
 
     var_peak_idx, _ = sp.signal.find_peaks(var_sliced)
     var_trough_idx, _ = sp.signal.find_peaks(-var_sliced) 
@@ -237,6 +247,7 @@ def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting s
         "var_sliced": var_sliced,
         "var_peak_idx": var_peak_idx,
         "var_trough_idx": var_trough_idx,
+        "var_profile": var_profile,
         "peak_coords": peak_coords,
         "peak_vars": peak_vars,
         "trough_vars": trough_vars,
@@ -261,8 +272,11 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
         arr_type = arr_type,
         ini_file = ini_file)
 
-    vars_last = sdata.get_vars(sdata.d_last)
     peak_data = all_graph_peaks(sel_coord,sel_var,sdata=sdata,**kwargs) #NOTE all goes wrong with graph_peaks, something to do with d_files
+    if sdata.grid_ndim >2: #3D array needs sliced coords
+        plot_coords = sdata.get_vars(sdata.d_last)[sel_coord][peak_data["var_profile"]]
+    elif sdata.grid_ndim <=2:
+        sdata.get_vars(sdata.d_last)[sel_coord]
     var_sliced = peak_data["var_sliced"]
     peak_coords = peak_data["peak_coords"]
     peak_vars = peak_data["peak_vars"]
@@ -278,7 +292,7 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
 
 
     f,a = plt.subplots(figsize = (7,7))
-    a.plot(vars_last[sel_coord],base_plot_data) # base plot
+    a.plot(plot_coords,base_plot_data) # base plot
     a.plot(peak_coords,peak_plot_data,"x",label= label)
     a.legend()
     a.set_xlabel(xlab)
@@ -377,20 +391,26 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     ylab = f"{var_info['coord_name']}-Radius [{var_info['si']}]"
     title = f"{sdata.sim_type} {ylab} across {xlab}"
 
-    t_yr = sdata.get_vars(sdata.d_last)["sim_time"]
+    t_values = []
+    for data in sdata.d_files:
+        t_values.append(sdata.get_vars(data)["sim_time"])
 
     #Legend assignment based on sim_time
-    if sdata.sim_type == "Jet":
+    if pu.sim_type_match(sdata)["is_jet_2d"]:
         longest_array = get_jet_length_dim(sdata) # used to avoid confusion btwn jet length and width
         measurement = "length" if sel_coord == longest_array else "width"
         legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius ({measurement})" #names legend based on width or length
 
-    elif sdata.sim_type == "Stellar_Wind":
+    elif pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
         legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius"
     
     if type == "def": #default type plot
         f,a = plt.subplots()
-        a.plot(t_yr, r, color = "darkorchid") # base plot
+
+        print(t_values)
+        print(r)
+
+        a.plot(t_values, r, color = "darkorchid") # base plot
         a.set_xlabel(xlab)
         a.set_ylabel(ylab)
         a.set_title(title)
@@ -398,9 +418,9 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
         a.legend([legend_base])
         a.text(0.05, 0.8,f"R = {r[-1]:.2e} m", transform=a.transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
 
-        a.plot(t_yr,r,"x", label = sdata.d_files)
+        a.plot(t_values,r,"x", label = sdata.d_files)
         for i, d_file in enumerate(sdata.d_files):
-            a.annotate(d_file.strip("data_"), (t_yr[i], r[i]), textcoords="offset points", xytext=(1,1), ha='right')
+            a.annotate(d_file.strip("data_"), (t_values[i], r[i]), textcoords="offset points", xytext=(1,1), ha='right')
 
         pdata = pp.PlotData()
         pdata.fig = plt.gcf()  
@@ -410,18 +430,18 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     
     elif type == "log": #log-log type plot
         d_files = sdata.d_files[1:]
-        t_yr = np.log10(t_yr[1:])
+        t_values = np.log10(t_values[1:])
         r = np.log10(r[1:])
 
-        slope, intercept, r_value, p_value, std_err = stats.linregress(t_yr, r)
+        slope, intercept, r_value, p_value, std_err = stats.linregress(t_values, r)
         eqn = f'$R_{var_info["coord_name"]} \\propto t^{{{slope:.2f}}} \\pm {std_err:.2f} \\; [m]$'
         display(Latex(eqn))
 
         f,a = plt.subplots()
-        a.plot(t_yr, r, color = "orange") # base plot
+        a.plot(t_values, r, color = "orange") # base plot
 
-        # r_ideal = (t_yr ** 0.6)
-        # a.plot(t_yr, r_ideal, color="hotpink")
+        # r_ideal = (t_values ** 0.6)
+        # a.plot(t_values, r_ideal, color="hotpink")
 
         a.set_xlabel(xlab)
         a.set_ylabel(ylab)
@@ -430,9 +450,9 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
         a.legend([legend_base,r'Ideal: $t^{0.6}$'])
         a.text(0.05, 0.8, eqn, transform=a.transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
         # a.text(slope)
-        a.plot(t_yr,r,"x", label = d_files)
+        a.plot(t_values,r,"x", label = d_files)
         for i, d_file in enumerate(d_files):
-            a.annotate(d_file.strip("data_"), (t_yr[i], r[i]), textcoords="offset points", xytext=(1,1), ha='right')
+            a.annotate(d_file.strip("data_"), (t_values[i], r[i]), textcoords="offset points", xytext=(1,1), ha='right')
 
         pdata = pp.PlotData()
         pdata.fig = plt.gcf()  
@@ -463,7 +483,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
     r = []
 
 
-    if sdata.sim_type == "Jet":
+    if pu.sim_type_match(sdata)["is_jet_2d"]:
         sel_var = "rho" #graph peaks doesn't care which var is used, a peak is a peak?
         peak_data = graph_peaks(sel_coord,sel_var,sdata) 
         var_peak_idx = peak_data["var_peak_idx"]
@@ -477,7 +497,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
             else:
                 r.append(0)
 
-    elif sdata.sim_type == "Stellar_Wind":
+    elif pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
         #TODO fix below assignment -> fix peak_findr 
         coord_dim = sel_coord.strip("x")
         sel_var = "vx" + coord_dim #NOTE peak_findr DOES care which var is used, set to vel?
