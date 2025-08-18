@@ -7,11 +7,12 @@ from plutonlib.colours import pcolours
 import numpy as np
 import scipy as sp
 from scipy import stats
-
+from scipy import constants
 import matplotlib.pyplot as plt
 from collections import defaultdict 
 from IPython.display import display, Latex
 import inspect
+
 
 def find_nearest(array, value):
     """Find closes value in array"""
@@ -39,6 +40,18 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
     vars_last = sdata.get_vars(sdata.d_last)
     ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
 
+    #TODO add 3d case if statement
+    # used to slice at custom index or specified value
+    if 'value' in kwargs:
+        idx = find_nearest(sdata.get_coords()[sel_coord],kwargs['value'])['idx']
+
+    elif 'idx' in kwargs:
+        idx = kwargs['idx']
+
+    else:
+        # print('Neither idx or value kwargs were given: slicing at idx = 0')
+        idx = 0
+
     if ndim >2:
         try:
             if arr_type == 'nc': #best method for 3D arrays
@@ -53,44 +66,31 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
         except KeyError:
             raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
         
-        slice_map = { #slices in shape of coord
+        slice_map_1D = { #slices in shape of coord
         "x1": (slice(None), y_mid, z_mid),
         "x2": (x_mid, slice(None), z_mid),
         "x3": (x_mid, y_mid, slice(None))
         }
 
-        single_slice_map = { #slices in shape of coord
+        slice_map_2D = { #slices in shape of coord
         "x1": (x_mid, slice(None), slice(None)),
         "x2": (slice(None), y_mid, slice(None)),
         "x3": (slice(None), slice(None), z_mid)
         } 
 
     else:
-
-        #TODO add 3d case if statement
-        # used to slice at custom index or specified value
-        if 'value' in kwargs:
-            idx = find_nearest(sdata.get_coords()[sel_coord],kwargs['value'])['idx']
-
-        elif 'idx' in kwargs:
-            idx = kwargs['idx']
-
-        else:
-            # print('Neither idx or value kwargs were given: slicing at idx = 0')
-            idx = 0
-
-        slice_map = { #slices in shape of coord
+        slice_map_1D = { #slices in shape of coord
         "x1": (slice(None), idx),
         "x2": (idx, slice(None)),
         }
 
-    var_profile = slice_map[sel_coord]
-    var_profile_single = single_slice_map[sel_coord] if ndim >2 else None
+    slice_1D = slice_map_1D[sel_coord]
+    slice_2D = slice_map_2D[sel_coord] if ndim >2 else None
 
-    coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else None
+    coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else sdata.get_coords()[sel_coord][slice_1D][idx]
 
     returns = {
-        "var_profile": var_profile,"var_profile_single": var_profile_single,"coord_sliced": coord_sliced
+        "slice_1D": slice_1D,"slice_2D": slice_2D,"coord_sliced": coord_sliced
     }
     return returns
 
@@ -118,7 +118,7 @@ def peak_findr(sel_coord,sel_var,sdata,**kwargs):
     peak_var = []
     locs = []
 
-    var_profile = calc_var_prof(sdata,sel_coord,**kwargs)["var_profile"]
+    var_profile = calc_var_prof(sdata,sel_coord,**kwargs)["slice_1D"]
     for d_file in sdata.d_files:
         var = sdata.get_vars(d_file)
 
@@ -160,7 +160,7 @@ def graph_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO Put in peak findr
     peak_vars = []
     peak_coords = []
     
-    var_profile = calc_var_prof(sdata,sel_coord)["var_profile"]
+    var_profile = calc_var_prof(sdata,sel_coord)["slice_1D"]
     for d_file in sdata.d_files: #find graphical peaks across all data files
 
         var = sdata.get_vars(d_file)[sel_var]
@@ -207,7 +207,7 @@ def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting s
     var = sdata.get_vars(sdata.d_last)[sel_var]
     coord = sdata.get_vars(sdata.d_last)[sel_coord]
 
-    var_profile = calc_var_prof(sdata,sel_coord,**kwargs)["var_profile"]
+    var_profile = calc_var_prof(sdata,sel_coord,**kwargs)["slice_1D"]
     var_sliced = var[var_profile]
 
     var_peak_idx, _ = sp.signal.find_peaks(var_sliced)
@@ -519,7 +519,7 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0,**kwargs):
 
     if type == "sim": #calculates using simulated values
         rho = []
-        profile = calc_var_prof(sdata,sel_coord)["var_profile"]
+        profile = calc_var_prof(sdata,sel_coord)["slice_1D"]
 
         for loc, d_file in zip(locs,sdata.d_files):
 
@@ -689,7 +689,7 @@ def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
     calc = (v_wind*(r_0**2))/(v_r*(r**2))
     rho_calc = calc*rho_norm
     rho_sim = sdata.get_vars(sdata.d_last)["rho"]
-    profile = calc_var_prof(sdata,sel_coord)["var_profile"]
+    profile = calc_var_prof(sdata,sel_coord)["slice_1D"]
 
     returns = {
         "rho_calc": rho_calc,
@@ -715,5 +715,25 @@ def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
     else:    
         return returns
 
-
+def EOS(rho=None,prs=None,T=None,mu = 0.60364,prnt = 1):
+    """
+    Simple Equation of state calculator to get Temp for a given density and pressure etc...
+    """
+    m_H = constants.m_p
+    kb = constants.k
+    
+    if not T:
+        T = (prs*mu*m_H)/(rho*kb)
+        T_prnt = f"Temperature = {T:.2e} K"
+        return T if not prnt else T_prnt
+    
+    if not prs:
+        prs = (kb*rho*T)/(mu*m_H)
+        prs_prnt = f"Pressure = {prs:.2e} Pa"
+        return prs if not prnt else prs_prnt
+    
+    if not rho:
+        rho = (prs*mu*m_H)/(T*kb)
+        rho_prnt = f"Density = {rho:.2e} kgm^-3"
+        return rho if not prnt else rho_prnt
 
