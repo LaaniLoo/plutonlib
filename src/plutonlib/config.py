@@ -15,17 +15,24 @@ from functools import lru_cache
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
 #TODO env_var or config file?
-try: #Checks if PLUTON_START_DIR is an env var
-    start_dir = os.environ["PLUTONLIB_START_DIR"]
-except KeyError: #if not env var creates a plutonlib_output folder in current wd
-    new_dir = os.path.join(os.getcwd(),"plutonlib_output")
-    is_dir = os.path.isdir(new_dir)
+def get_start_dir(origin_dir):
+    warnings = []
+    try: #Checks if PLUTON_START_DIR is an env var
+        start_dir = os.environ["PLUTONLIB_START_DIR"]
+        warnings.append(f"{pcolours.WARNING}{start_dir} (PLUTONLIB_START_DIR)")
+    except KeyError: #if not env var creates a plutonlib_output folder at origin_dir
+        # new_dir = os.path.join(os.getcwd(),"plutonlib_output")
+        new_dir = os.path.join(origin_dir,"plutonlib_output")
 
-    start_dir = new_dir if is_dir is True else os.makedirs(new_dir)
+        is_dir = os.path.isdir(new_dir)
+        if not is_dir:
+            os.makedirs(new_dir)
+            print(f"{pcolours.WARNING}Creating plutonlib_output folder in {origin_dir}") 
+            print("\n")
 
-    print("\n")
-    print(f"{pcolours.WARNING}environment variable PLUTONLIB_START_DIR not found, setting save location as {start_dir}")
-    print(f"Creating plutonlib_output folder in {os.getcwd()}") if is_dir else None
+        start_dir = new_dir
+        warnings.append(f"{pcolours.WARNING}{start_dir} (Missing environment variable PLUTONLIB_START_DIR)")
+    return {"start_dir":start_dir,"warnings":warnings}
 
 src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
 
@@ -51,6 +58,14 @@ profiles = {
     "xz_vel": ['x1','x3','vx1','vx3'],
     "yz_vel": ["x2", "x3", 'vx2','vx3'],
 }
+
+arr_type_key = {
+    "e": "1D cell edge coordinate arrays [x, y, z]",
+    "m": "1D cell midpoint coordinate arrays [x, y, z]",
+    "d": "1D cell delta arrays [x, y, z]",
+    "nc": "3D cell edge arrays [x, y, z]",
+    "cc": "3D cell midpoint arrays [x, y, z]"
+    }
 
 def profiles2(arr_type=None):
 
