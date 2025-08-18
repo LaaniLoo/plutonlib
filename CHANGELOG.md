@@ -2,7 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.1] - 2025-07-16
+## [0.6.0] - 2025-08-18
+
+### 🚀 Features
+
+
+- *(config.py)* added get_start_dir to create start dir from origin
+
+creates a starting directory from an origin -> save_dir is then set to run location if not PLUTONLIB_START_DIR
+
+- *(analysis.py)* added EOS, renamed var_profile to slice_1D and slice_2D
+
+added equation of state calculator to find temp for given prs,dens etc..
+  * var_profile in cal_var_prof was renamed to slice_1D/slice_2D to better fit different grid slices.
+
+- *(load.py)* cache delete, load_outputs = "last", SimulationData.change_arr_type()
+
+sdata deletes cache when changing arr_type or ini_file
+  * can load last output with load_outputs = "last"
+  * Can now change array type (correctly reloads data) with SimulationData.change_arr_type().
+
+
+### 🐛 Bug Fixes
+
+
+- *(plot.py)* errors for incompatible array types when plotting
+
+throw error if not arr_type = 'nc' in cmap_base.
+  * sel_prof now overides sdata.var_choice to allow faster plotting using "all" profile
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+## [v0.5.1] - 2025-07-16
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🐛 Bug Fixes
 
@@ -10,19 +53,50 @@ All notable changes to this project will be documented in this file.
 - *(load.py)* Propper hdf5 loading from pk, new arr_type for profiles, ini_file in sdata, ThreadPoolExecutor
 
 * Added full hdf5 support, similar to plutokore, requires arr_type to load different grid array types (see SimulationData).
-* Can now add own .ini file for units into SimulationData as ini_file (without extension, needs to be in /src).
-* Added ThreadPoolExecutor in pluto_conv for faster converts.
+  * Can now add own .ini file for units into SimulationData as ini_file (without extension, needs to be in /src).
+  * Added ThreadPoolExecutor in pluto_conv for faster converts.
 
 
 ### Other
 
+
 - *(general)* update CHANGELOG.md
+
+
+- *(general)* update CHANGELOG.md
+
+
+- *(general)* test propper hdf5 loading with arr_type
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try transpose xz_jet data
+
+
+- *(general)* pre commit before load optimisation
+
+
+- *(general)* version 0.5.0 → 0.5.1
+
 
 ## [v0.5.0] - 2025-07-02
 
 ### Documentation
 
+
 - *(general)* update changelog
+
 
 
 ### 🚀 Features
@@ -48,6 +122,120 @@ can load only specific files with load_outputs (tuple), added lru_cache for cach
 
 pu.bcolors was causing a circular error in config.py, created colours.py to fix
 
+- *(general)* attempt to fix hdf5
+
+
+- *(general)* hdf5 fix, plutkore edit
+
+
+- *(general)* cluster-slowness
+
+
+- *(general)* import select d_files with load_outputs
+
+
+- *(general)* plot.py loading all d_files
+
+
+- *(general)* plotting when loading select d_files
+
+
+- *(general)* profile-loading functions load all d_files
+
+
+- *(general)* attempt to fix 3D plotting of jet
+
+
+- *(general)* plotting correct d_files
+
+
+- *(general)* can load_outputs as list
+
+
+- *(general)* added pluto_units.ini
+
+
+- *(general)* cach loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* can now load both dbl and h5
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* removed Jet_Cluster, added dim check
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* fixed pu.py_reload_all()
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* attempt to fix plotting same var on both subplots
+
+
 
 ### Other
 
@@ -56,6 +244,49 @@ pu.bcolors was causing a circular error in config.py, created colours.py to fix
 
 
 - *(general)* doc cleanup and misc changes
+
+
+- *(general)* debug slow pluto_loader for cluster
+
+
+- *(general)* attempt to get plot.py to work on cluster
+
+
+- *(general)* test fix for 3D plots
+
+
+- *(general)* slice for 3D plotting
+
+
+- *(general)* plot jet with profile
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* test commit before tag
+
+
+- *(general)* meshgrid
+
 
 - *(general)* doc cleanup and misc changes
 
