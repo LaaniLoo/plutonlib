@@ -112,9 +112,15 @@ def setup_dir(start_dir):
 
 #     return returns
 
-def flatten(x):
-    if isinstance(x, (list, tuple)):
-        for i in x:
-            yield from flatten(i)
-    else:
-        yield x
+def sim_type_match(sdata):
+    is_jet_2d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 2
+    is_jet_3d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 3
+    is_stellar_wind = "_".join(sdata.sim_type.split("_",2)[:2]) in ("Stellar_Wind")
+    
+    returns = {
+        "is_jet_2d":is_jet_2d,
+        "is_jet_3d":is_jet_3d,
+        "is_stellar_wind":is_stellar_wind,
+    }
+
+    return returns

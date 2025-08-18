@@ -6,7 +6,9 @@ bump_release() {
 
         next_version=$(cz bump --get-next)
         echo "Next version will be: v$next_version"
-        git-cliff --tag $next_version -o CHANGELOG.md
+        # git-cliff --tag $next_version -o CHANGELOG.md
+        # git-cliff --unreleased --tag $next_version -o CHANGELOG.md --append
+        git-cliff --unreleased --tag $next_version --prepend CHANGELOG.md
 
         git add CHANGELOG.md
         git commit -m "docs: update changelog"

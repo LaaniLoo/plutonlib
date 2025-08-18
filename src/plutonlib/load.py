@@ -784,7 +784,7 @@ def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=N
             if var_name == "sim_time":
                 # adds both time in years and seconds as keys, sim_time defaults to yr
                 file_results[var_name] = conv_vals["cgs"]
-                file_results["sim_time_s"] = conv_vals["si"]
+                # file_results["sim_time_s"] = conv_vals["si"]
             else:
                 file_results[var_name] = conv_vals["si"]
 

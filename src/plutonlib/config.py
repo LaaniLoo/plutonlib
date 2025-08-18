@@ -147,8 +147,10 @@ def get_pluto_units(sim_coord,d_files,ini_file):
     "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
     "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
     "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
-    "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
+    # "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
+    # "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
+    # "sim_time_s": {"norm": norm_values["sim_time_s"], "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
+    "sim_time": {"norm":  norm_values["sim_time"], "cgs": u.Myr, "si": u.Myr, "var_name": "Time"},
     "ini_file": ini_file,
     }
 
