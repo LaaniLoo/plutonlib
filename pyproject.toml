@@ -48,7 +48,7 @@ version-file = "src/plutonlib/_version.py"  # Or __init__.py
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.6.0"  # Must match [project] version
+version = "0.6.1"  # Must match [project] version
 version_files = [
     "pyproject.toml:project.version",
     "pyproject.toml:tool.commitizen.version",
