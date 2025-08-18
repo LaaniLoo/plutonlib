@@ -226,7 +226,7 @@ def pcmesh_3d(sdata,pdata = None, **kwargs):
     var_idx = sdata.var_choice[2:].index(var_name)
 
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-    slice = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    slice = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
 
     is_log = var_name in ('rho', 'prs')
     vars_data = np.log10(pdata.vars[var_name][slice]).T if is_log else pdata.vars[var_name][slice].T
@@ -254,7 +254,7 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     var_idx = sdata.var_choice[2:].index(var_name)
 
     slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-    profile = pa.calc_var_prof(sdata,slice_var)["var_profile_single"]
+    profile = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
 
     is_log = var_name in ('rho', 'prs')
     vars_data = np.log10(pdata.vars[var_name][profile]) if is_log else pdata.vars[var_name][profile]
@@ -366,6 +366,11 @@ def cmap_base(sdata,pdata = None, **kwargs):
         pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
 
     if sim_type_match(sdata)["is_jet_3d"]:
+        if kwargs.get('arr_type', sdata.arr_type) != "nc":
+            # sdata.change_arr_type("nc")
+            raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'nc' to plot 3D jet")
+
+            
         pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
 
     # used for plotting jet,
@@ -481,27 +486,33 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     sdata.run_name = sel_runs if sel_runs else sdata.run_name
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
-    # print("load state:", sdata._is_loaded)
+    old_profile = sdata._var_choice
+    sdata._var_choice = pc.profiles[sel_prof] #NOTE this line allows any profile to be overridden by sel_prof
 
     run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run_name,sel_prof)
     run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
 
     for run in run_names:
         sdata.run_name = run
-        sdata.profile_choice = profile_choices[run][0]
-        # sdata.profile_choice = sel_prof
+        # sdata.profile_choice = profile_choices[run][0] #NOTE Not sure why this is here 
         loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-        arr_type = kwargs.get('arr_type', sdata.arr_type)
-        ini_file = kwargs.get('ini_file',sdata.ini_file)
-        sdata = pl.SimulationData(
-            sdata.sim_type,
-            sdata.run_name,
-            sdata.profile_choice,
-            sdata.subdir_name,
-            load_outputs=loaded_outputs,
-            arr_type=arr_type,
-            ini_file=ini_file
-            )
+        sdata.run_name = run
+        sdata.profile_choice = sel_prof
+        sdata.load_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+        sdata.arr_type = kwargs.get('arr_type', sdata.arr_type)
+        sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
+
+        #TODO REMOVE SILLY REASSIGNMENT OF SDATA 
+        # sdata = pl.SimulationData(
+        #     sdata.sim_type,
+        #     sdata.run_name,
+        #     sdata.profile_choice,
+        #     sdata.subdir_name,
+        #     load_outputs=loaded_outputs,
+        #     arr_type=arr_type,
+        #     ini_file=ini_file
+        #     )
+
         pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
         # Handle list selection
@@ -546,28 +557,30 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
                     plot_idx += 1
         
         plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+    
+    sdata._var_choice = old_profile #returns sdata to original profile to avoid future errors
 
+ 
 def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
     """
     Plots 1D slices of selected variables from Pluto simulations.
     """
+    # if kwargs.get('arr_type', sdata.arr_type) != "cc":
+    #     sdata.change_arr_type("cc")
     pdata = PlotData(**kwargs)
     # sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name=sdata.subdir_name)
-
-    # sel_coords = [sel_coords] if sel_coords and not isinstance(sel_coords,list) else sel_coords
-    # sel_vars = [sel_vars] if sel_vars and not isinstance(sel_vars,list) else sel_vars
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
 
-    if sdata.load_outputs is not None:
-        pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
-    else:
-        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+    # if sdata.load_outputs is not None:
+    #     pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
+    # else:
+    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
     axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs) #,d_files=pdata.d_files
     plot_idx = 0  # Keep track of which subplot index we are using
 
     for d_file in pdata.d_files: # plot across all files
-        pdata.vars = sdata.get_vars(d_file)
+        pdata.vars = sdata.get_all_vars(d_file)
         extras_data = plot_extras(sdata,pdata)
         xy_labels = extras_data["xy_labels"]
         title = extras_data["title_other"][0]
@@ -581,7 +594,7 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         pdata.sel_var = sel_var
 
         calc_prof_data = pa.calc_var_prof(sdata,sel_coord,**kwargs)
-        var_profile = calc_prof_data["var_profile"]
+        var_profile = calc_prof_data["slice_1D"]
         coord_sliced = calc_prof_data["coord_sliced"]
         var_sliced = var_array[var_profile]
 
@@ -601,8 +614,13 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         )
         ax.set_xlabel(f"{xy_labels[sel_coord]}")
 
+        if sim_type_match(sdata)["is_jet_3d"]: #3D array case
+            if kwargs.get('arr_type', sdata.arr_type) != "cc":
+            #     sdata.change_arr_type("cc")
+                raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'cc' to plot 1D slice of 3D jet")
+            coord_array = coord_array[var_profile]
 
-        if sel_var in ("vx1", "vx2"):
+        if sel_var in ("vx1", "vx2","vx3"):
             ax.set_ylabel(
                 f"{var_label} [{var_units}]"
             )
