@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2025-08-26
+
+### Other
+
+
+- *(added-`SimulationData.jet_info`,`SimulationData.grid_setup`-and-`SimulationData.usr_params`)* Used to quickly acess `pluto_ini_info()` for a certain simulation
+
+
 ## [0.6.1] - 2025-08-18
 
 ### 🐛 Bug Fixes
