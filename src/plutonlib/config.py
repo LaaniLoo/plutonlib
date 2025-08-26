@@ -6,33 +6,16 @@ from plutonlib.colours import pcolours
 import os
 from astropy import units as u
 import numpy as np
+
 import configparser
+import glob 
+
 from pathlib import Path 
 import time
 from functools import lru_cache
 
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
-
-#TODO env_var or config file?
-def get_start_dir(origin_dir):
-    warnings = []
-    try: #Checks if PLUTON_START_DIR is an env var
-        start_dir = os.environ["PLUTONLIB_START_DIR"]
-        warnings.append(f"{pcolours.WARNING}{start_dir} (PLUTONLIB_START_DIR)")
-    except KeyError: #if not env var creates a plutonlib_output folder at origin_dir
-        # new_dir = os.path.join(os.getcwd(),"plutonlib_output")
-        new_dir = os.path.join(origin_dir,"plutonlib_output")
-
-        is_dir = os.path.isdir(new_dir)
-        if not is_dir:
-            os.makedirs(new_dir)
-            print(f"{pcolours.WARNING}Creating plutonlib_output folder in {origin_dir}") 
-            print("\n")
-
-        start_dir = new_dir
-        warnings.append(f"{pcolours.WARNING}{start_dir} (Missing environment variable PLUTONLIB_START_DIR)")
-    return {"start_dir":start_dir,"warnings":warnings}
 
 src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
 
@@ -66,6 +49,30 @@ arr_type_key = {
     "nc": "3D cell edge arrays [x, y, z]",
     "cc": "3D cell midpoint arrays [x, y, z]"
     }
+
+#TODO env_var or config file?
+def get_start_dir(origin_dir,**kwargs):
+    warnings = []
+    try: #Checks if PLUTON_START_DIR is an env var
+        start_dir = os.environ["PLUTONLIB_START_DIR"]
+        warnings.append(f"{pcolours.WARNING}{start_dir} (PLUTONLIB_START_DIR)")
+
+    except KeyError: #if not env var creates a plutonlib_output folder at origin_dir
+        if 'run_name' in kwargs: #make plutonlib_output folder more descriptive if run_name is passed
+            run_name = kwargs['run_name']
+            new_dir = os.path.join(origin_dir,f"{run_name}_plutonlib_output")
+        else:
+            new_dir = os.path.join(origin_dir,"plutonlib_output")
+
+        is_dir = os.path.isdir(new_dir)
+        if not is_dir:
+            os.makedirs(new_dir)
+            print(f"{pcolours.WARNING}Creating plutonlib_output folder in {origin_dir}") 
+            print("\n")
+
+        start_dir = new_dir
+        warnings.append(f"{pcolours.WARNING}{start_dir} (Missing environment variable PLUTONLIB_START_DIR)")
+    return {"start_dir":start_dir,"warnings":warnings}
 
 def profiles2(arr_type=None):
 
@@ -119,7 +126,32 @@ def get_ini_file(ini_file = None):
     
     return ini_path 
 
-def get_pluto_units(sim_coord,d_files,ini_file):
+def pluto_ini_info(sim_dir):
+    job_info_dir = os.path.join(sim_dir,"job_info")
+    job_dir_files = glob.glob(f"{job_info_dir}/*.ini") #gets all ini files in job_info_dir 
+    latest_ini = max(job_dir_files,key=os.path.getctime)
+    ini_name = latest_ini.split("/")[-1]
+    print("\n",f"Displaying latest .ini ({ini_name})...")
+
+    config = configparser.ConfigParser(allow_no_value=True)
+    config.read(latest_ini)
+
+    grid_setup = config.options("Grid")
+    raw_usr_params = config.options("Parameters")
+
+    usr_params = {
+        k: v.split(";",1)[0].strip()
+        for line in raw_usr_params if " " in line
+        for k,v in [line.split(None,1)]
+    }
+
+    key_params = {key: usr_params[key] for key in ['jet_pwr','jet_spd','jet_chi','env_rho_0','env_temp','wind_vx1','wind_vx2','wind_vx3']}
+
+    returns = {"grid_setup": grid_setup,"usr_params":usr_params,"key_params":key_params}
+
+    return returns
+
+def get_pluto_units(sim_coord,ini_file):
     """
     gets the values required to normalise PLUTO "code-units" to CGS, then can converted to SI
     """
@@ -133,7 +165,6 @@ def get_pluto_units(sim_coord,d_files,ini_file):
 
     config = configparser.ConfigParser()
     config.optionxform = str
-    # print("Loading:",ini_path)
     config.read(ini_path)
     norm_values = {k: float(v) for k, v in config["normalisations"].items()}
 
@@ -142,11 +173,12 @@ def get_pluto_units(sim_coord,d_files,ini_file):
     "x2": {"norm": norm_values["x2"], "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
     "x3": {"norm": norm_values["x3"], "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
     "rho": {"norm": norm_values["rho"], "cgs": u.g / u.cm**3, "si": u.kg / u.m**3, "var_name": "Density"},
-    "prs": {"norm": norm_values["prs"], "cgs": u.dyn / u.cm**2, "si": u.Pa, "var_name": "Pressure"},
+    # "prs": {"norm": norm_values["prs"], "cgs": u.dyn / u.cm**2, "si": u.Pa, "var_name": "Pressure"},
+    "prs": {"norm": norm_values["prs"], "cgs": u.Pa, "si": u.Pa, "var_name": "Pressure"},
     "vx1": {"norm": norm_values["vx1"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[0]}_Velocity"},
     "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
     "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
-    "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
+    # "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
     # "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
     # "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
     # "sim_time_s": {"norm": norm_values["sim_time_s"], "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
@@ -157,11 +189,11 @@ def get_pluto_units(sim_coord,d_files,ini_file):
     
     return pluto_units 
 
-def value_norm_conv(var_name,d_files,raw_data = None, self = 0,ini_file = None):
+def value_norm_conv(var_name,raw_data = None, self = 0,ini_file = None):
     """
     gets value from get_pluto_units to convert to SI or CGS
     """
-    pluto_units = get_pluto_units("CARTESIAN",d_files,ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
+    pluto_units = get_pluto_units("CARTESIAN",ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
 
     cgs_unit =  pluto_units[var_name]["cgs"]
     si_unit = pluto_units[var_name]["si"]
@@ -187,17 +219,26 @@ def value_norm_conv(var_name,d_files,raw_data = None, self = 0,ini_file = None):
 
 
 #---Sim data tree structure---#
-# In pluto-master
-# Simulations
-# ├── Jet
-# │   ├── Assn_hllc
-# │   │   ├── data.0000.dbl
-# │   │   ├── data.0001.dbl
-# │   │   ├── data.0002.dbl
-# │   │   ├── data.0003.dbl
-# │   │   ├── data.0004.dbl
-# │   │   ├── data.0005.dbl
-# │   │   ├── data.0006.dbl
-# │   │   ├── dbl.out
-# │   │   ├── grid.out
-# │   │   └── restart.out
+def plutonlib_tree_helper():
+    tree = """pluto_master/
+└── Simulations/
+    └── sim_type/
+        └── run_name/
+            ├── data.0000.dbl.h5
+            ├── data.0000.dbl.xmf
+            ├── dbl.h5.out
+            ├── grid.out
+            ├── restart.out
+            ├── job_info
+            │   └── pluto_template.ini
+            ├── log
+            │   ├── pluto.0.log
+            │   ├── pluto.1.log
+            │   ├── pluto.2.log
+            │   ├── pluto.3.log
+            │   ├── pluto.4.log
+            │   └── pluto.5.log
+            └── run_name_plutonlib_output
+                └── Jet_wind_test_temp_xz_vel_plot.png"""
+    print(tree)
+
