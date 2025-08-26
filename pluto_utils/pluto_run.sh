@@ -1,0 +1,107 @@
+#!/bin/bash
+ncores=6 #number of cpu cores to run pluto on
+ini_file="pluto_template.ini"
+save_dir="."
+run_dir="$save_dir/temp"
+cluster_run=false
+
+script_dir="$PLUTONLIB/pluto_utils"
+
+#script options, needs help
+while getopts "c" opt; do
+    case $opt in 
+        c) cluster_run=true ;;
+        *) echo "Usage: $0 [-c]" ;; #[-n cores] [-i ini_file] [-r run_dir]
+    esac
+done
+
+while [[ "$change_output" != "y" && "$change_output" != "n" ]]; do
+    read -p "Change run name? (output_dir = $run_dir) [y/n]:" change_output
+done
+
+if [[ "$change_output" == "y" ]]; then
+    read -p "Enter new run name:" new_run_dir
+    run_dir="$save_dir/$new_run_dir"
+elif [[ "$change_output" == "n" ]]; then
+    echo "output_dir set to $run_dir"
+fi
+
+log_dir="$run_dir/log"
+job_info_dir="$run_dir"/job_info
+
+# Update the 'output_dir/log_dir' in the ini file
+sed -i "s|^\(output_dir\s*\).*|\1$run_dir|" $ini_file
+sed -i "s|^\(log_dir\s*\).*|\1$run_dir/log|" $ini_file
+
+#check if the run directory exists, if not, create
+if [ ! -d "$run_dir" ]; then
+    mkdir -p "$run_dir"
+    mkdir -p "$job_info_dir"
+    mkdir -p "$log_dir"
+fi
+
+echo "Saving $ini_file to $job_info_dir"
+cp "$save_dir"/$ini_file "$job_info_dir"
+
+#--Functions--#
+
+pluto_local() {
+    printf "\n"
+    echo "Running pluto ($ini_file) executable with $ncores CPU cores..."
+    mpirun --use-hwthread-cpus -np $ncores ./pluto -i $ini_file &
+    pluto_pid=$! #pluto process ID
+
+    # If user presses Ctrl+C, kill Pluto too
+    # trap "echo 'Stopping PLUTO...'; kill -INT $pluto_pid 2>/dev/null" INT
+    trap "printf '\nStopping PLUTO...\n'; kill -INT $pluto_pid 2>/dev/null" INT
+    sleep 1
+
+    printf "\n"
+    read -p "Check pluto log? [y/n]:" check_log
+    if [[ "$check_log" == "y" ]]; then
+        log_file="$log_dir/pluto.0.log"
+        echo "Waiting for log file..."
+        while [ ! -f "$log_file" ]; do sleep 5; done
+        sleep 2
+        less "$log_file"
+    fi
+
+    printf "\n"
+    echo "PLUTO running with PID $pluto_pid (Ctrl+C to stop)"
+    wait $pluto_pid   # keeps script tied to Pluto, Ctrl+C cleans up properly
+}
+
+pluto_cluster() {
+    printf "\n"
+    echo "Submitting pluto job ($ini_file)..."
+    jobid=$(qsub -v ini_file="$ini_file",save_dir="$save_dir",job_info_dir="$job_info_dir" "./job_submit.sh")
+    echo "Submitted job $jobid"
+
+    jobnum=$(echo "$jobid" | cut -d. -f1)
+    touch "$job_info_dir/$jobnum"
+
+    sleep 5 
+
+    printf "\n"
+    read -p "Check pluto log? [y/n]:" check_log
+    if [[ "$check_log" == "y" ]]; then
+        log_file="$log_dir/pluto.0.log"
+        echo "Waiting for log file..."
+        while [ ! -f "$log_file" ]; do sleep 5; done
+        sleep 5
+        less "$log_file"
+    fi
+}
+
+show_help() {
+    echo "-c = cluster, submits job to cluster to run pluto"
+}
+
+#-----#
+if [[ "$cluster_run" == true ]]; then
+    pluto_cluster
+    cp "$script_dir/clean.sh" "$job_info_dir/clean.sh"
+
+elif [[ "$cluster_run" == false ]]; then
+    pluto_local
+fi
