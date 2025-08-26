@@ -41,19 +41,6 @@ class PlotData:
         self.__dict__.update(kwargs)
 
 #---Plot Helper Functions---#
-def sim_type_match(sdata):
-    is_jet_2d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 2
-    is_jet_3d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 3
-    is_stellar_wind = "_".join(sdata.sim_type.split("_",2)[:2]) in ("Stellar_Wind")
-    
-    returns = {
-        "is_jet_2d":is_jet_2d,
-        "is_jet_3d":is_jet_3d,
-        "is_stellar_wind":is_stellar_wind,
-    }
-
-    return returns
-
 def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplots determined by number of data_files
     """
     Sets up and calculates the number of required subplots
@@ -173,12 +160,12 @@ def plot_extras(sdata,pdata = None, **kwargs):
         labels.append(var_label)
 
     #assigning title if jet: two vars per subplot
-    if sim_type_match(sdata)["is_jet_2d"]:
+    if pu.sim_type_match(sdata)["is_jet_2d"]:
         title = f"{sdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append(title)
 
     #assigning title if other: one var per subplot
-    if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
+    if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
         title_L = f"{sdata.sim_type} {labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_R = f"{sdata.sim_type} {labels[1]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append([title_L,title_R])
@@ -362,10 +349,10 @@ def cmap_base(sdata,pdata = None, **kwargs):
     ax = pdata.axes[idx] # sets the axis as an index
 
     #plotting in 3D for Stellar Wind and 3D jet
-    if sim_type_match(sdata)["is_stellar_wind"]:
+    if pu.sim_type_match(sdata)["is_stellar_wind"]:
         pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
 
-    if sim_type_match(sdata)["is_jet_3d"]:
+    if pu.sim_type_match(sdata)["is_jet_3d"]:
         if kwargs.get('arr_type', sdata.arr_type) != "nc":
             # sdata.change_arr_type("nc")
             raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'nc' to plot 3D jet")
@@ -374,7 +361,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
         pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
 
     # used for plotting jet,
-    if sim_type_match(sdata)["is_jet_2d"]:
+    if pu.sim_type_match(sdata)["is_jet_2d"]:
         pcmesh_2d(sdata, pdata=pdata, extras=extras, ax=ax)
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
@@ -404,10 +391,10 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     ax.set_xlabel(xy_labels[sdata.var_choice[0]])
     ax.set_ylabel(xy_labels[sdata.var_choice[1]])   
 
-    if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
+    if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
         ax.set_title(f"{title[0]}") if idx % 2 == 0 else ax.set_title(f"{title[1]}")
 
-    elif sim_type_match(sdata)["is_jet_2d"]:
+    elif pu.sim_type_match(sdata)["is_jet_2d"]:
         ax.set_title(f"{title}")
 
 def plot_axlim(ax,kwargs):
@@ -526,7 +513,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
         pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
         # Jet only needs to iterate over d_file
-        if sim_type_match(sdata)["is_jet_2d"]:
+        if pu.sim_type_match(sdata)["is_jet_2d"]:
             for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
                 pdata.d_file = d_file
                 pdata.vars = sdata.get_vars(d_file)
@@ -537,7 +524,7 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
 
 
         # Stellar_Wind needs to iterate  over d_file and var name 
-        if sim_type_match(sdata)["is_stellar_wind"] or sim_type_match(sdata)["is_jet_3d"]:
+        if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
         # if sdata.get_var_info("rho")["ndim"] == 3:
             plot_vars = sdata.var_choice[2:]
             plot_idx = 0 #only way to index plot per var 
@@ -614,7 +601,7 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         )
         ax.set_xlabel(f"{xy_labels[sel_coord]}")
 
-        if sim_type_match(sdata)["is_jet_3d"]: #3D array case
+        if pu.sim_type_match(sdata)["is_jet_3d"]: #3D array case
             if kwargs.get('arr_type', sdata.arr_type) != "cc":
             #     sdata.change_arr_type("cc")
                 raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'cc' to plot 1D slice of 3D jet")
