@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2025-09-01
+
+### 🐛 Bug Fixes
+
+
+- *(config.py)* changed `pc.value_norm_conv` to `pc.code_to_usr_units` overhauled unit conversion
+
+Unit conversion is now done via the unit values in the pluto_units/jet_units ini files where `code_unit_values` are the normalisations and units to convert raw pluto code units into specified units, e.g. x1=1.5kpc means that x=2 -> x=3kpc, there is then the `user_unit_values` headder to further convert the code units into a user defined unit. Note that any mention of si/cgs has been changed to uuv/cuv (user unit/code unit values)
+
+- *(plot.py)* can now use idx/value kwargs to change plot location, depreciated multiple runs per plot
+
+
+- *(load.py)* changed `d_file` formatting to include `sim_time`, replaced `vars_si` with `vars_uuv`
+
+`d_file` now is of the format `data.001_1Myr` where the conversion to Myr or some unit is calculated in `pluto_loader()`. See changes to analysis.py re vars_uuv etc..
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
 ## [v0.7.0] - 2025-08-26
 ## [0.7.0] - 2025-08-26
 
