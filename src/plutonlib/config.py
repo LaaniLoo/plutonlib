@@ -4,7 +4,10 @@ from plutonlib.colours import pcolours
 
 
 import os
+
 from astropy import units as u
+from astropy import constants as const 
+
 import numpy as np
 
 import configparser
@@ -30,17 +33,17 @@ if os.path.isdir(os.path.join(plutodir, "Simulations")): #if simulation dir does
 else:
     raise FileNotFoundError(f"{pcolours.WARNING} Simulation directory not found, needs to be in PLUTO_DIR ({plutodir}), see sim_save.sh")
 
-profiles = {
-    "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
-    
-    "xy_rho_prs": ["x1", "x2", "rho", "prs"],
-    "xz_rho_prs": ["x1", "x3", "rho", "prs"],
-    "yz_rho_prs": ["x2", "x3", "rho", "prs"],
+# profiles = {
+#     "all": ["x1", "x2", "x3", "rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
+#     "grid_time": ["x1","x2","x3","sim_time"],
+#     "xy_rho_prs": ["x1", "x2", "rho", "prs"],
+#     "xz_rho_prs": ["x1", "x3", "rho", "prs"],
+#     "yz_rho_prs": ["x2", "x3", "rho", "prs"],
 
-    "xy_vel": ["x1", "x2", "vx1", "vx2"],
-    "xz_vel": ['x1','x3','vx1','vx3'],
-    "yz_vel": ["x2", "x3", 'vx2','vx3'],
-}
+#     "xy_vel": ["x1", "x2", "vx1", "vx2"],
+#     "xz_vel": ['x1','x3','vx1','vx3'],
+#     "yz_vel": ["x2", "x3", 'vx2','vx3'],
+# }
 
 arr_type_key = {
     "e": "1D cell edge coordinate arrays [x, y, z]",
@@ -83,15 +86,16 @@ def profiles2(arr_type=None):
         # "x":  ["x1",  "x2",  "x3"],
         "nc": ["ncx", "ncy", "ncz"],
         "cc": ["ccx", "ccy", "ccz"],
-        None: ["mx",  "my",  "mz"],  # default to midpoint if None
+        None: ["x1",  "x2",  "x3"],  # default if None
     }
 
     # Get the correct coordinate labels, defaults to mx ...
-    coords = coord_prefixes.get(arr_type, ["mx", "my", "mz"])
+    coords = coord_prefixes.get(arr_type, ["x1", "x2", "x3"])
     x, y, z = coords
 
     profiles = {
         "all": [x, y, z, "rho", "prs", "vx1", "vx2", "vx3", "sim_time"],
+        "grid_time": [x,y,z,"sim_time"],
         "xy_rho_prs": [x, y, "rho", "prs"],
         "xz_rho_prs": [x, z, "rho", "prs"],
         "yz_rho_prs": [y, z, "rho", "prs"],
@@ -153,7 +157,8 @@ def pluto_ini_info(sim_dir):
 
 def get_pluto_units(sim_coord,ini_file):
     """
-    gets the values required to normalise PLUTO "code-units" to CGS, then can converted to SI
+    gets the code and user unit values e.g. x1 = 1*kpc from the specified ini file, 
+    where multiplying an array by the code unit value normalizes it to that unit.
     """
     if ini_file is None: #gets raise error safer than null assignment
         ini_path = get_ini_file(ini_file=None)
@@ -166,57 +171,51 @@ def get_pluto_units(sim_coord,ini_file):
     config = configparser.ConfigParser()
     config.optionxform = str
     config.read(ini_path)
-    norm_values = {k: float(v) for k, v in config["normalisations"].items()}
+
+    c_unit = u.def_unit("c",const.c) #adds 1c (speed of light) as constant
+    u.add_enabled_units([c_unit])
+    code_unit_values = {k: u.Unit(v) for k, v in config["code_unit_values"].items()}
+    usr_unit_values = {k: u.Unit(v) for k, v in config["usr_unit_values"].items()}
 
     pluto_units = {
-    "x1": {"norm": norm_values["x1"], "cgs": u.cm, "si": u.m, "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
-    "x2": {"norm": norm_values["x2"], "cgs": u.cm, "si": u.m, "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
-    "x3": {"norm": norm_values["x3"], "cgs": u.cm, "si": u.m, "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
-    "rho": {"norm": norm_values["rho"], "cgs": u.g / u.cm**3, "si": u.kg / u.m**3, "var_name": "Density"},
-    # "prs": {"norm": norm_values["prs"], "cgs": u.dyn / u.cm**2, "si": u.Pa, "var_name": "Pressure"},
-    "prs": {"norm": norm_values["prs"], "cgs": u.Pa, "si": u.Pa, "var_name": "Pressure"},
-    "vx1": {"norm": norm_values["vx1"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[0]}_Velocity"},
-    "vx2": {"norm": norm_values["vx2"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[1]}_Velocity"},
-    "vx3": {"norm": norm_values["vx3"], "cgs": u.cm / u.s, "si": u.m / u.s, "var_name": f"{sel_coords[2]}_Velocity"},
-    # "T": {"norm": norm_values["T"], "cgs": u.K, "si": u.K, "var_name": "Temperature"},
-    # "sim_time_s": {"norm": np.linspace(0, norm_values["sim_time_s"], len(d_files)), "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
-    # "sim_time": {"norm": np.linspace(0, norm_values["sim_time"], len(d_files)), "cgs": u.yr, "si": u.s, "var_name": "Time"},
-    # "sim_time_s": {"norm": norm_values["sim_time_s"], "cgs": u.s, "si": u.s, "var_name": "Time (seconds)"},
-    "sim_time": {"norm":  norm_values["sim_time"], "cgs": u.Myr, "si": u.Myr, "var_name": "Time"},
-    "ini_file": ini_file,
+        "x1": {"code_uv": code_unit_values["x1"], "usr_uv": usr_unit_values["x1"], "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
+        "x2": {"code_uv": code_unit_values["x2"], "usr_uv": usr_unit_values["x2"], "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
+        "x3": {"code_uv": code_unit_values["x3"], "usr_uv": usr_unit_values["x3"], "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
+        "rho": {"code_uv": code_unit_values["rho"], "usr_uv": usr_unit_values["rho"], "var_name": "Density"},
+        "prs": {"code_uv": code_unit_values["prs"], "usr_uv": usr_unit_values["prs"], "var_name": "Pressure"},
+        "vx1": {"code_uv": code_unit_values["vx1"], "usr_uv": usr_unit_values["vx1"], "var_name": f"{sel_coords[0]}_Velocity"},
+        "vx2": {"code_uv": code_unit_values["vx2"], "usr_uv": usr_unit_values["vx2"], "var_name": f"{sel_coords[1]}_Velocity"},
+        "vx3": {"code_uv": code_unit_values["vx3"], "usr_uv": usr_unit_values["vx3"], "var_name": f"{sel_coords[2]}_Velocity"},
+        "sim_time": {"code_uv": code_unit_values["sim_time"], "usr_uv": usr_unit_values["sim_time"], "var_name": "Time"},
+        "ini_file": ini_file,
     }
-
     
     return pluto_units 
 
-def value_norm_conv(var_name,raw_data = None, self = 0,ini_file = None):
+def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
     """
-    gets value from get_pluto_units to convert to SI or CGS
+    gets unit value from get_pluto_units to convert from code units to the user specified units in the ini file.
     """
     pluto_units = get_pluto_units("CARTESIAN",ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
 
-    cgs_unit =  pluto_units[var_name]["cgs"]
-    si_unit = pluto_units[var_name]["si"]
-    norm = pluto_units[var_name]["norm"]
+    code_uv =  pluto_units[var_name]["code_uv"]
+    usr_uv = pluto_units[var_name]["usr_uv"]
+    # norm = pluto_units[var_name]["norm"]
 
     np.asarray(raw_data) if np.any(raw_data) and not isinstance(raw_data,np.ndarray) else raw_data #calc only works if raw_data is numpy array 
 
-    if self: #used to convert norm values from pluto_units into si or cgs
-        conv_si = (norm*cgs_unit).si.value #converts the units as well as normalize 
-        conv_cgs = (norm*cgs_unit).value
+    #convert raw_data
+    conv_to_code_units = (raw_data*code_uv)
+    conv_data_cuv = conv_to_code_units.value #equiv to arrays in cgs units
+    conv_data_uuv = conv_to_code_units.to(usr_uv).value #equiv to arrays in si units
 
-
-    else: #convert raw_data
-        conv_si = (raw_data * norm *cgs_unit).si.value #converts the units as well as normalize 
-        conv_cgs = (raw_data * norm *cgs_unit).value
-
-    returns = {"cgs": conv_cgs,
-               "si": conv_si
-
+    returns = {
+        "uv_usr":(1*code_uv).to(usr_uv).value, #like a scale factor??
+        "conv_data_cuv":conv_data_cuv, 
+        "conv_data_uuv":conv_data_uuv 
     }
 
     return returns
-
 
 #---Sim data tree structure---#
 def plutonlib_tree_helper():
