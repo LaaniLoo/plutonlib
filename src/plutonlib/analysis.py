@@ -62,15 +62,26 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
 
     if ndim >2:
         try:
-            if arr_type == 'nc': #best method for 3D arrays
-                x_mid = vars_last["x1"].shape[0] // 2
-                y_mid = vars_last["x2"].shape[1] // 2
-                z_mid = vars_last["x3"].shape[2] // 2
+            if arr_type in ('nc','cc'): #this method only works for a 3D array
+                x_mid = find_nearest(vars_last["x1"][value_slice_map["x1"]],0)['idx'] #to find nearest idx to 0
+                y_mid = find_nearest(vars_last["x2"][value_slice_map["x2"]],0)['idx'] 
+                z_mid = find_nearest(vars_last["x3"][value_slice_map["x3"]],0)['idx'] 
+            else:
+                x_mid = find_nearest(vars_last["x1"],0)['idx'] 
+                y_mid = find_nearest(vars_last["x2"],0)['idx'] 
+                z_mid = find_nearest(vars_last["x3"],0)['idx'] 
+
+        # try: #NOTE outdated method that only works for symm grids 
+        #     if arr_type == 'nc': #best method for 3D arrays
+        #         x_mid = vars_last["x1"].shape[0] // 2
+        #         y_mid = vars_last["x2"].shape[1] // 2
+        #         z_mid = vars_last["x3"].shape[2] // 2
     
-            else: #NOTE not sure what this method is?
-                x_mid = len(vars_last["x1"])//2 
-                y_mid = len(vars_last["x2"])//2 
-                z_mid = len(vars_last["x3"])//2 
+        #     else: #NOTE not sure what this method is? for 1D arrays?
+        #         x_mid = len(vars_last["x1"])//2 
+        #         y_mid = len(vars_last["x2"])//2 
+        #         z_mid = len(vars_last["x3"])//2 
+                
         except KeyError:
             raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
         
@@ -86,6 +97,12 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
             "x3": (slice(None), slice(None), z_mid)
         } 
 
+        custom_slice_map_2D = { #slices in shape of coord
+            "x1": (idx, slice(None), slice(None)),
+            "x2": (slice(None), idx, slice(None)),
+            "x3": (slice(None), slice(None), idx)
+        } 
+
     else:
         slice_map_1D = { #slices in shape of coord
             "x1": (slice(None), idx),
@@ -94,11 +111,15 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
 
     slice_1D = slice_map_1D[sel_coord]
     slice_2D = slice_map_2D[sel_coord] if ndim >2 else None
-
+    # custom_slice_2D = None if idx == 0 else custom_slice_map_2D[sel_coord] #Not needed if value/idx aren't passed
+    custom_slice_2D = custom_slice_map_2D[sel_coord]
     coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else sdata.get_coords()[sel_coord][slice_1D][idx]
 
     returns = {
-        "slice_1D": slice_1D,"slice_2D": slice_2D,"coord_sliced": coord_sliced
+        "slice_1D": slice_1D,
+        "slice_2D": slice_2D,
+        "custom_slice_2D":custom_slice_2D,
+        "coord_sliced": coord_sliced,
     }
     return returns
 
@@ -160,8 +181,8 @@ def graph_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO Put in peak findr
         arr_type = arr_type,
         ini_file = ini_file)
 
-    coord_units = (sdata.get_var_info(sel_coord)["si"]).to_string('latex')
-    var_units = (sdata.get_var_info(sel_var)["si"]).to_string('latex')
+    coord_units = (sdata.get_var_info(sel_coord)["usr_uv"]).to_string('latex')
+    var_units = (sdata.get_var_info(sel_var)["usr_uv"]).to_string('latex')
 
     var_peak_idx = defaultdict(list)
     peak_info = []
@@ -285,8 +306,8 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
     base_plot_data = np.log10(var_sliced) if is_log else var_sliced
     peak_plot_data = np.log10(peak_vars) if is_log else peak_vars
 
-    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['si']}]"
-    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['si']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['si']}]"
+    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['usr_uv']}]"
+    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['usr_uv']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['usr_uv']}]"
     label = f"Peak {ylab}"
     title = f"{sdata.sim_type} Peak {ylab} Across {xlab}"
 
@@ -335,8 +356,8 @@ def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stela
     base_plot_data = np.log10(var_sliced) if is_log else var_sliced
     peak_plot_data = np.log10(trough_vars) if is_log else trough_vars
 
-    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['si']}]"
-    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['si']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['si']}]"
+    xlab = f"{sdata.get_var_info(sel_coord)['coord_name']} [{sdata.get_var_info(sel_coord)['usr_uv']}]"
+    ylab = f"log10({sdata.get_var_info(sel_var)['var_name']}) [{sdata.get_var_info(sel_var)['usr_uv']}]" if is_log else f"{sdata.get_var_info(sel_var)['var_name']} [{sdata.get_var_info(sel_var)['usr_uv']}]"
     label = f"trough {ylab}"
     title = f"{sdata.sim_type} trough {ylab} Across {xlab}"
 
@@ -387,8 +408,8 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
 
     var_info = sdata.get_var_info(sel_coord)
 
-    xlab = f"sim_time [{sdata.get_var_info('sim_time')['cgs']}]"
-    ylab = f"{var_info['coord_name']}-Radius [{var_info['si']}]"
+    xlab = f"sim_time [{sdata.get_var_info('sim_time')['usr_uv']}]"
+    ylab = f"{var_info['coord_name']}-Radius [{var_info['usr_uv']}]"
     title = f"{sdata.sim_type} {ylab} across {xlab}"
 
     t_values = []
@@ -600,7 +621,7 @@ def calc_radius(sdata,plot =0,**kwargs):
         ini_file = ini_file)
 
     rt_sim, rt_calc = [], []
-    rho_0 = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+    rho_0 = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
 
     t = sdata.get_vars(sdata.d_last)["sim_time"]
 
@@ -644,9 +665,9 @@ def calc_radial_vel(sdata,plot = 0):
     """
 
 
-    r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
-    v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]
-    rho_norm = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+    r_0 = 1 * pc.code_to_usr_units("x1",sdata.d_files)["uv_usr"]
+    v_wind = 1 * pc.code_to_usr_units("vx1",sdata.d_files)["uv_usr"]
+    rho_norm = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
 
     v_r = []
 
@@ -698,9 +719,9 @@ def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
         ini_file = ini_file)
 
 
-    r_0 = 1 * pc.value_norm_conv("x1",sdata.d_files,self = 1)["si"]
-    v_wind = 1 * pc.value_norm_conv("vx1",sdata.d_files,self = 1)["si"]
-    rho_norm = 1 * pc.value_norm_conv("rho",sdata.d_files,self = 1)["si"]
+    r_0 = 1 * pc.code_to_usr_units("x1",sdata.d_files)["uv_usr"]
+    v_wind = 1 * pc.code_to_usr_units("vx1",sdata.d_files)["uv_usr"]
+    rho_norm = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
 
     v_r_data =calc_radial_vel(sdata,plot=0)
     v_r = v_r_data["v_r"]
