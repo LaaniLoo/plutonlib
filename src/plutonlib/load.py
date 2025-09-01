@@ -5,7 +5,7 @@ import plutonlib.utils as pu
 import plutonlib.config as pc
 from plutonlib.colours import pcolours
 
-profiles = pc.profiles
+# profiles = pc.profiles
 coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
@@ -13,7 +13,7 @@ PLUTODIR = pc.plutodir
 # import plutokore.io as pk_io
 
 # importing src files??
-from plutonlib.plutokore_src import plutokore_io as pk_io
+# from plutonlib.plutokore_src import plutokore_io as pk_io
 
 import numpy as np
 from astropy import units as u
@@ -92,7 +92,7 @@ class SimulationData:
 
         # Vars
         self._var_choice = None 
-        self.coord_names = ["x1","x2","x3"] #for convenience 
+        # self.coord_names = ["x1","x2","x3"] #NOTE DEPRECIATED FOR PROPERTY
         # self._coords
 
         # Metadata
@@ -175,36 +175,36 @@ class SimulationData:
         if d_file not in self.d_files:
             raise ValueError(f"{pcolours.WARNING}Output {d_file} has not been loaded, current files are {self.d_files}")
         
-    def get_vars(self,d_file=None,system = 'si'): #NOTE d_file was None not sure about that
+    def get_vars(self,d_file=None,system = 'uuv'): #NOTE d_file was None not sure about that
         """Loads only arrays specified by vars in profile_choice"""
         target_file = d_file or self.d_last
         self.check_d_file(target_file)
 
-        if system == 'si':
-            return self.conv_data['vars_si'][target_file]
+        if system == 'uuv':
+            return self.conv_data['vars_uuv'][target_file]
         else:
-            raise ValueError("system must be 'si' or 'cgs'")
+            raise ValueError("system must be in user or code unit values: 'uuv' or 'cuv'")
 
-    def get_all_vars(self,d_file=None,system = "si"):
+    def get_all_vars(self,d_file=None,system = "uuv"):
         """Loads all available arrays"""
         target_file = d_file or self.d_last
         self.check_d_file(target_file)
         # print(target_file) #debug above
 
-        if system == 'si':
+        if system == 'uuv':
             d_file_info = {"d_file" : target_file}
-            self.all_conv_data['vars_si'].update(d_file_info)
-            return self.all_conv_data['vars_si'][target_file]
+            self.all_conv_data['vars_uuv'].update(d_file_info)
+            return self.all_conv_data['vars_uuv'][target_file]
 
         else:
-            raise ValueError("system must be 'si', CGS needs implementation")
+            raise ValueError("system must be in user or code unit values: 'uuv' or 'cuv'")
     
     def get_coords(self,d_file=None):
         """Just gets the x,y,z arrays as needed"""
         target_file = d_file or self.d_last
         self.check_d_file(target_file)
 
-        conv_data = self.all_conv_data['vars_si'][target_file]
+        conv_data = self.all_conv_data['vars_uuv'][target_file]
 
         coords = {
             "x1": conv_data["x1"],
@@ -217,8 +217,10 @@ class SimulationData:
     def get_var_info(self,var_name):
         """Gets coordinate name, unit, norm value etc"""
         var_info = self.units.get(var_name)
-        shp_info = {"shape" : self.get_all_vars()[var_name].shape}
-        dim_info = {"ndim" : self.get_all_vars()[var_name].ndim}
+        # shp_info = {"shape" : self.get_all_vars()[var_name].shape} #NOTE was get_all_vars
+        # dim_info = {"ndim" : self.get_all_vars()[var_name].ndim}
+        shp_info = {"shape" : self.get_vars()[var_name].shape}
+        dim_info = {"ndim" : self.get_vars()[var_name].ndim}
         var_info.update(shp_info)
         var_info.update(dim_info)
 
@@ -381,6 +383,21 @@ class SimulationData:
         return self._var_choice
     
     @property
+    def coord_names(self):
+        coord_names = []
+        for var_name in self.var_choice:
+            if var_name in ('x1','x2','x3'):
+                coord_names.append(var_name)
+
+        return coord_names
+
+    @property
+    def spare_coord(self):
+        '''e.g. returns y if profile is xz etc...'''
+        spare_coord = ({'x1','x2','x3'} - set(self.coord_names)).pop()
+        return spare_coord
+
+    @property
     def grid_ndim(self):
         if self._units is None:
             self.load_units()
@@ -415,96 +432,98 @@ class SimulationData:
 #------------------------#
 
 #---Profile Loading---#
-def get_profiles(sim_type,run_name,profiles):
-    """
-    Prints available profiles for a specific simulation
-    """
-    if isinstance(run_name, list):
-        run_name = run_name[0]  # Force unwrap if somehow a list gets through
+# def get_profiles(sim_type,run_name,profiles):
+# # def get_profiles(sim_type,run_name):
 
-    data = pluto_loader(sim_type,run_name,"all",load_outputs=(0,),arr_type="m",ini_file="pluto_units") #NOTE pl should be faster than pc #NOTE loads 0th output for speed?
-    var_choice = data["var_choice"]
-    # vars = data["vars"]["data_0"]
-    first_key = list(data["vars"].keys())[0] # This is safer
-    vars = data["vars"][first_key]
+#     """
+#     Prints available profiles for a specific simulation
+#     """
+#     if isinstance(run_name, list):
+#         run_name = run_name[0]  # Force unwrap if somehow a list gets through
 
-    for var in var_choice[:-1]: # doesn't include sim_time as it has no size
-        if vars[var].size == 1:
-            avail_vars = var_choice
-            avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
+#     data = pluto_loader(sim_type,run_name,"all",load_outputs=(0,),arr_type="m",ini_file="pluto_units") #NOTE pl should be faster than pc #NOTE loads 0th output for speed?
+#     var_choice = data["var_choice"]
+#     # vars = data["vars"]["data_0"]
+#     first_key = list(data["vars"].keys())[0] # This is safer
+#     vars = data["vars"][first_key]
 
-    else:
-        avail_vars = var_choice
+#     for var in var_choice[:-1]: # doesn't include sim_time as it has no size
+#         if vars[var].size == 1:
+#             avail_vars = var_choice
+#             avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
 
-    keys = list(profiles.keys())
+#     else:
+#         avail_vars = var_choice
 
-    print("Available profiles:")
-    for i, prof in enumerate(keys):
-        vars_set = set(avail_vars)
-        prof_set = set(profiles[prof])
-        common = vars_set & prof_set
+#     keys = list(pc.profiles.keys())
 
-        if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
-            print(f"{i}: {prof}, {profiles[prof]}")
-            sys.stdout.flush()
+#     print("Available profiles:")
+#     for i, prof in enumerate(keys):
+#         vars_set = set(avail_vars)
+#         prof_set = set(pc.profiles[prof])
+#         common = vars_set & prof_set
 
-    return keys
+#         if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
+#             print(f"{i}: {prof}, {pc.profiles[prof]}")
+#             sys.stdout.flush()
 
-def select_profile(sim_type,run_name,profiles):
-    """Uses user input to select a profile"""
-    keys = get_profiles(sim_type,run_name,profiles)
+#     return keys
 
-    while True:
-        choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
-        if choice.lower() == "q":
-            print("Selection cancelled.")
-            return None  # Return None if the user quits
+# def select_profile(sim_type,run_name,profiles):
+#     """Uses user input to select a profile"""
+#     keys = get_profiles(sim_type,run_name,profiles)
 
-        if choice.isdigit():
-            choice = int(choice)
+#     while True:
+#         choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
+#         if choice.lower() == "q":
+#             print("Selection cancelled.")
+#             return None  # Return None if the user quits
 
-            if 0 <= int(choice) < len(profiles):
-                return keys[choice]
-            else:
-                print(f"Invalid choice. Please enter a number between 0 and {len(profiles) - 1}.")
-        else:
-            print("Invalid input. Please enter a valid number or 'q' to quit.")
+#         if choice.isdigit():
+#             choice = int(choice)
 
-def pluto_load_profile(sim_type, run_name, sel_prof):
-    """
-    Single-run version that:
-    - Uses get_profiles() exactly like original
-    - Prints available/selected profiles like original
-    - Works ONLY with single run_name (string)
-    """
-    # Input validation
-    if not isinstance(run_name, str):
-        raise TypeError("run_name must be a single string (no lists/None)")
-    if sel_prof is None:
-        raise ValueError("sel_prof cannot be None in single-run mode")
+#             if 0 <= int(choice) < len(pc.profiles):
+#                 return keys[choice]
+#             else:
+#                 print(f"Invalid choice. Please enter a number between 0 and {len(pc.profiles) - 1}.")
+#         else:
+#             print("Invalid input. Please enter a valid number or 'q' to quit.")
 
-    # Verify run exists (original didn't have this but it's good practice)
-    run_dir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
-    if not os.path.isdir(run_dir):
-        raise ValueError(f"Run directory not found: {run_dir}")
+# def pluto_load_profile(sim_type, run_name, sel_prof):
+#     """
+#     Single-run version that:
+#     - Uses get_profiles() exactly like original
+#     - Prints available/selected profiles like original
+#     - Works ONLY with single run_name (string)
+#     """
+#     # Input validation
+#     if not isinstance(run_name, str):
+#         raise TypeError("run_name must be a single string (no lists/None)")
+#     if sel_prof is None:
+#         raise ValueError("sel_prof cannot be None in single-run mode")
 
-    # Get available profiles (using original get_profiles())
-    get_profiles(sim_type, run_name, profiles)
+#     # Verify run exists (original didn't have this but it's good practice)
+#     run_dir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
+#     if not os.path.isdir(run_dir):
+#         raise ValueError(f"Run directory not found: {run_dir}")
 
-    # Handle profile selection (simplified from original)
-    profile_choices = defaultdict(list)
+#     # Get available profiles (using original get_profiles())
+#     get_profiles(sim_type, run_name, profiles)
+
+#     # Handle profile selection (simplified from original)
+#     profile_choices = defaultdict(list)
     
-    try:
-        profile_choices[run_name].append(sel_prof)
-        print(f"Selected profile {sel_prof} for run {run_name}: {profiles[sel_prof]}")
-        print("\n")
-    except KeyError:
-        raise KeyError(f"{sel_prof} is not an available profile")
+#     try:
+#         profile_choices[run_name].append(sel_prof)
+#         print(f"Selected profile {sel_prof} for run {run_name}: {profiles[sel_prof]}")
+#         print("\n")
+#     except KeyError:
+#         raise KeyError(f"{sel_prof} is not an available profile")
 
-    return {
-        'run_names': [run_name],  # Still a list for compatibility
-        'profile_choices': profile_choices
-    }
+#     return {
+#         'run_names': [run_name],  # Still a list for compatibility
+#         'profile_choices': profile_choices
+#     }
 
 #---Loading Files---#
 def get_file_outputs(wdir):
@@ -590,12 +609,15 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
             rdcc_w0=0.75                    # cache eviction aggressiveness
             )
 
+        # print(data_file.attrs.keys()) #debug attributes
+        # print(list(data_file.keys()))  # top-level groups
+        # print(list(data_file["Timestep_0"]['vars'].keys()))  # groups inside timestep
+        # print(data_file["Timestep_0"].attrs.keys())  # attributes of that timestep
+
         setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
         setattr(data_file, "variable_path", f"Timestep_{load_output}/vars")
         setattr(data_file, "geometry", "CARTESIAN")
         
-        # TODO WORRY ABOUT UNIT UNITS????
-
         # Set the variables
         variables = list(data_file[data_file.variable_path])
         for v in variables:
@@ -634,7 +656,7 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
         out_fname = "dbl.out"
         dtype.append("double")
 
-        data_file = pk_io.pload(load_output, w_dir=wdir)
+        # data_file = pk_io.pload(load_output, w_dir=wdir)
 
         #only want to do this calculation once
         geometry = data_file.geometry
@@ -677,7 +699,7 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
     vars = defaultdict(list)  # Stores variables for each D_file
     vars_extra = []
     warnings = []
-    var_choice = profiles[profile_choice]
+    var_choice = pc.profiles2()["profiles"][profile_choice]
 
     # wdir = SimulationData(sim_type, run_name, profile_choice, load_outputs=load_outputs, arr_type=arr_type).wdir
     wdir =  os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
@@ -692,16 +714,6 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
     if isinstance(load_outputs, int) and load_outputs > n_outputs:
         raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
 
-    # Assigning the number of d_files
-    # if isinstance(load_outputs, tuple):
-    #     d_files = [f"data.{output_n}" for output_n in load_outputs if output_n <= n_outputs]
-    #     load_outputs = tuple(load_outputs)
-    # elif load_outputs is not None:  # Original behavior for integer
-    #     d_files = [f"data.{output_n}" for output_n in range(min(load_outputs, n_outputs) + 1)]
-    # else:  # Load all
-    #     d_files = [f"data.{output_n}" for output_n in range(n_outputs + 1)]
-    
-    # Assign d_files with zero-padded numbers
     # Number of digits for zero-padding
     n_digits = 3  # scales automatically with number of outputs
 
@@ -718,7 +730,9 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
     # Define function for parallel processing
     def load_single_output(output_n):
         loaded_file = load_file_output(wdir=wdir, load_output=output_n, var_choice=var_choice, arr_type=arr_type)
-        sim_time = loaded_file["file_data"]["sim_time"]
+        # sim_time = loaded_file["file_data"]["sim_time"]
+
+        sim_time = load_file_output(wdir=wdir, load_output=output_n, var_choice=['sim_time'], arr_type=arr_type)['file_data']['sim_time']
         return output_n, loaded_file,sim_time
 
     # Process outputs in parallel
@@ -738,10 +752,10 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
         for future in as_completed(futures):
             output_n, loaded_file,sim_time = future.result()
 
-            #update d_files with sim_time
-            time_norm = pc.get_pluto_units("CARTESIAN",ini_file)["sim_time"]["norm"]
-            time_unit = str(pc.get_pluto_units("CARTESIAN",ini_file)["sim_time"]["si"])
-            time_str = f"_{sim_time*time_norm:.0f}{time_unit}"
+            #update d_files with sim_time #TODO make sure unit is relevant 
+            time_val = pc.code_to_usr_units("sim_time",sim_time,ini_file="jet_units")["conv_data_uuv"]
+            time_unit = str(pc.get_pluto_units("CARTESIAN",ini_file)["sim_time"]["usr_uv"])
+            time_str = f"_{time_val:.0f}{time_unit}"
 
             d_file_str = f"data.{output_n:0{n_digits}}{time_str}"
             for i, df in enumerate(d_files):
@@ -771,7 +785,7 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
 @lru_cache(maxsize=32)  # This caches based on input arguments
 def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=None, ini_file=None, **kwargs):
     """
-    Converts Pluto simulation variables from code units to CGS and SI units.
+    Converts Pluto simulation variables from code units to cuv and uuv units.
 
     Parameters:
     -----------
@@ -787,7 +801,7 @@ def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=N
     --------
     dict
         Dictionary containing:
-        - vars_si: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
+        - vars_uuv: dictionary of order vars[d_file][var_name] e.g. vars["data_0"]["x1"]
         - var_choice: List of variable names corresponding to the selected profile.
         - d_files: contains a list of the available data files for the sim
     """
@@ -798,7 +812,7 @@ def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=N
     var_choice = loaded_data["var_choice"]  # chosen vars at the chosen profile
     sim_coord = loaded_data["vars_extra"][0]  # gets the coordinate sys of the current sim
     warnings = loaded_data["warnings"]  # loads any warning messages about vars
-    vars_si = defaultdict(dict)
+    vars_uuv = defaultdict(dict)
     # print(f"Reloaded Pluto_loader: {(time.time() - start1):.2f}s")
 
     # Process each file and variable
@@ -810,14 +824,14 @@ def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=N
             if isinstance(raw_data, h5py.Dataset): #actually loads the dataset when required
                 raw_data = raw_data[()]
 
-            conv_vals = pc.value_norm_conv(var_name, raw_data, ini_file=ini_file) #d_files # converts the raw pluto array
+            conv_array = pc.code_to_usr_units(var_name, raw_data, ini_file=ini_file) #d_files # converts the raw pluto array
+            file_results[var_name] = conv_array["conv_data_uuv"]
 
-            if var_name == "sim_time":
-                # adds both time in years and seconds as keys, sim_time defaults to yr
-                file_results[var_name] = conv_vals["cgs"]
-                # file_results["sim_time_s"] = conv_vals["si"]
-            else:
-                file_results[var_name] = conv_vals["si"]
+            # if var_name == "sim_time":
+            #     # adds both time in years and seconds as keys, sim_time defaults to yr
+            #     file_results[var_name] = conv_vals["cgs"]
+            # else:
+            #     file_results[var_name] = conv_vals["si"]
 
         return d_file, file_results
 
@@ -828,8 +842,8 @@ def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=N
         futures = [executor.submit(process_file, d_file) for d_file in d_files]
         for future in as_completed(futures):
             d_file, file_results = future.result()
-            vars_si[d_file].update(file_results)
+            vars_uuv[d_file].update(file_results)
 
 
-    return {"vars_si": vars_si, "var_choice": var_choice, "d_files": d_files, "sim_coord": sim_coord, "warnings": warnings}
+    return {"vars_uuv": vars_uuv, "var_choice": var_choice, "d_files": d_files, "sim_coord": sim_coord, "warnings": warnings}
 
