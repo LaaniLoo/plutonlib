@@ -142,7 +142,7 @@ def plot_extras(sdata,pdata = None, **kwargs):
     for var_name in sdata.var_choice:
         if var_name in ("x1","x2","x3"): 
             coord_label = sdata.get_var_info(var_name)["coord_name"]
-            coord_units = (sdata.get_var_info(var_name)["si"]).to_string('latex')
+            coord_units = (sdata.get_var_info(var_name)["usr_uv"]).to_string('latex')
 
             coord_labels.append(coord_label)
             xy_labels[var_name] = (f"{coord_label} [{coord_units}]")  
@@ -154,7 +154,7 @@ def plot_extras(sdata,pdata = None, **kwargs):
     #assigning cbar and title labs from rho prs etc
     for var_name in sdata.var_choice[2:4]:
         var_label = sdata.get_var_info(var_name)["var_name"]
-        var_units = (sdata.get_var_info(var_name)["si"]).to_string('latex')
+        var_units = (sdata.get_var_info(var_name)["usr_uv"]).to_string('latex')
 
         cbar_labels.append(var_label + " " + f"[{var_units}]")
         labels.append(var_label)
@@ -198,34 +198,6 @@ def plot_extras(sdata,pdata = None, **kwargs):
         
     return pdata.extras
 
-def pcmesh_3d(sdata,pdata = None, **kwargs):    
-    """
-    Assigns the pcolormesh data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
-    Also assigns colour bar and label
-    """ 
-    var_name = kwargs.get('var_name')
-    extras = kwargs.get('extras')
-    ax = kwargs.get('ax')
-
-    if var_name is None or extras is None or ax is None:
-        raise ValueError("Missing one of required kwargs: 'var_name', 'extras', 'ax'")
-    
-    var_idx = sdata.var_choice[2:].index(var_name)
-
-    slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-    slice = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
-
-    is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(pdata.vars[var_name][slice]).T if is_log else pdata.vars[var_name][slice].T
-
-    c_map = extras["c_maps"][var_idx]
-    cbar_label = extras["cbar_labels"][var_idx]
-
-    im = ax.pcolormesh(pdata.vars[sdata.var_choice[0]], pdata.vars[sdata.var_choice[1]], vars_data, cmap=c_map)
-
-    cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-    cbar.set_label(f"Log10({cbar_label})" if is_log else cbar_label, fontsize=14)
-
 def pcmesh_3d_nc(sdata,pdata = None, **kwargs):    
     """
     Assigns the pcolormesh data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
@@ -234,14 +206,24 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     var_name = kwargs.get('var_name')
     extras = kwargs.get('extras')
     ax = kwargs.get('ax')
+    value = kwargs.get('value')
+    slice_idx = kwargs.get('idx')
 
     if var_name is None or extras is None or ax is None:
-        raise ValueError("Missing one of required kwargs: 'var_name', 'extras', 'ax'")
-    
+        raise ValueError("Missing one of required kwargs: 'var_name', 'extras' (dict: c_map,cbar_label), 'ax'")
+
     var_idx = sdata.var_choice[2:].index(var_name)
 
-    slice_var = (set(sdata.coord_names) - set(sdata.var_choice[:2])).pop()
-    profile = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
+    slice_var = sdata.spare_coord #e.g. if plot xz -> profile in y
+    #custom slice profiles when using value and idx kwargs 
+    if 'value' in kwargs and value is not None:
+        print("using value")
+        profile = pa.calc_var_prof(sdata,slice_var,value=value)["custom_slice_2D"]
+    if 'idx' in kwargs and slice_idx is not None:
+        print("using idx")
+        profile = pa.calc_var_prof(sdata,slice_var,idx=slice_idx)["custom_slice_2D"]
+    else: #normal midpoint slice behavior 
+        profile = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
 
     is_log = var_name in ('rho', 'prs')
     vars_data = np.log10(pdata.vars[var_name][profile]) if is_log else pdata.vars[var_name][profile]
@@ -329,7 +311,9 @@ def cmap_base(sdata,pdata = None, **kwargs):
     extras = plot_extras(sdata,pdata)
     idx = kwargs.get('ax_idx',0) #gets the plot index as a kwarg
     var_name = kwargs.get('var_name') #NOTE not sure why this is a kwarg maybe for plotter to insert var
-    
+    value = kwargs.get('value') #used for custom slices
+    slice_idx = kwargs.get('idx')
+
     #Simple error in case of wrong profile
     if len(sdata.var_choice) >4:
         raise TypeError(f"{pcolours.WARNING}sdata.profile_choice is set to '{sdata.profile_choice}' with vars: {sdata.var_choice} only 4 vars can be handled try sel_prof")
@@ -358,7 +342,7 @@ def cmap_base(sdata,pdata = None, **kwargs):
             raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'nc' to plot 3D jet")
 
             
-        pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
+        pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax,value=value,idx=slice_idx)
 
     # used for plotting jet,
     if pu.sim_type_match(sdata)["is_jet_2d"]:
@@ -418,8 +402,8 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
     file_type = kwargs["file_type"] if 'file_type' in kwargs else "png"
     print("Note: saving as pdf takes a while...") if file_type == "pdf" else None
 
-    if 'save_ovr' in kwargs:
-        save = kwargs['save_ovr'] #overwrite value to skip loop
+    if 'save' in kwargs:
+        save = kwargs['save'] #overwrite value to skip loop or to instantly save 
     
     else:
         save = input(f"Save plot for {sdata.run_name}? [1 = Yes, 0 = No, 2 = Custom label]:")
@@ -447,7 +431,7 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
         print("Exiting plot_save")
 
 #---Plotting Functions---#
-def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = None,**kwargs):
+def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
     """
     Plots the current simulation as either a L-R symmetrical colour map for rho/prs or vx1/vx2 (e.g. for jet) 
     or as separate colour map plots for each var 
@@ -456,124 +440,81 @@ def plot_sim(sdata,sel_d_files = None,sel_runs = None,sel_prof = None, pdata = N
     """
     if pdata is None:
         pdata = PlotData(**kwargs)
-
-    # Ensure sel_runs is either None or a single string (not a list)
-    if isinstance(sel_runs, list):
-        if len(sel_runs) == 1:
-            sel_runs = sel_runs[0]  # Unwrap single-element lists
-        else:
-            raise ValueError("sel_runs must be a single run name or None")
-
-    #TODO make a class or function or something to streamline this
-    # sel_runs = [sel_runs] if sel_runs and not isinstance(sel_runs,list) else sel_runs
     
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-
-    # sdata.run_name = sel_runs if sel_runs else [sdata.run_name]
-    sdata.run_name = sel_runs if sel_runs else sdata.run_name
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
-    old_profile = sdata._var_choice
-    sdata._var_choice = pc.profiles[sel_prof] #NOTE this line allows any profile to be overridden by sel_prof
+    old_profile = sdata._var_choice # fixes reassignment of vars?
+    sdata._var_choice = pc.profiles2()["profiles"][sel_prof] #NOTE this line allows any profile to be overridden by sel_prof
 
-    run_data = pl.pluto_load_profile(sdata.sim_type,sdata.run_name,sel_prof)
-    run_names, profile_choices = run_data['run_names'], run_data['profile_choices'] #loads the run names and selected profiles for runs
+    sdata.profile_choice = sel_prof
+    sdata.load_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    sdata.arr_type = kwargs.get('arr_type', sdata.arr_type)
+    sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
 
-    for run in run_names:
-        sdata.run_name = run
-        # sdata.profile_choice = profile_choices[run][0] #NOTE Not sure why this is here 
-        loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-        sdata.run_name = run
-        sdata.profile_choice = sel_prof
-        sdata.load_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-        sdata.arr_type = kwargs.get('arr_type', sdata.arr_type)
-        sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
+    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-        #TODO REMOVE SILLY REASSIGNMENT OF SDATA 
-        # sdata = pl.SimulationData(
-        #     sdata.sim_type,
-        #     sdata.run_name,
-        #     sdata.profile_choice,
-        #     sdata.subdir_name,
-        #     load_outputs=loaded_outputs,
-        #     arr_type=arr_type,
-        #     ini_file=ini_file
-        #     )
+    pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
 
-        pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+    # Jet only needs to iterate over d_file
+    if pu.sim_type_match(sdata)["is_jet_2d"]:
+        for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+            pdata.d_file = d_file
+            pdata.vars = sdata.get_vars(d_file)
 
-        # Handle list selection
-        if isinstance(loaded_outputs, list):
-            pdata.d_files = [f"data_{i}" for i in loaded_outputs if f"data_{i}" in sdata.d_files]
-        else:
-            pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files
-
-            
-
-        pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
-
-        # Jet only needs to iterate over d_file
-        if pu.sim_type_match(sdata)["is_jet_2d"]:
-            for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
-                pdata.d_file = d_file
-                pdata.vars = sdata.get_vars(d_file)
-
-                plot_label(sdata,pdata,idx)
-                cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
-                plot_axlim(pdata.axes[idx],kwargs)
+            plot_label(sdata,pdata,idx)
+            cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
+            plot_axlim(pdata.axes[idx],kwargs)
 
 
-        # Stellar_Wind needs to iterate  over d_file and var name 
-        if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
-        # if sdata.get_var_info("rho")["ndim"] == 3:
-            plot_vars = sdata.var_choice[2:]
-            plot_idx = 0 #only way to index plot per var 
+    # Stellar_Wind needs to iterate  over d_file and var name 
+    if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+        plot_vars = sdata.var_choice[2:]
+        plot_idx = 0 #only way to index plot per var 
 
-            for d_file in pdata.d_files:
-                pdata.d_file = d_file
-                pdata.vars = sdata.get_vars(d_file)
-                for var_name in plot_vars:
-                    if plot_idx >= len(pdata.axes):
-                        break
-                        
-                    # Plot each variable in its own subplot
-                    cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name)
-                    plot_label(sdata,pdata,plot_idx)
-                    plot_axlim(pdata.axes[plot_idx],kwargs)
+        for d_file in pdata.d_files:
+            pdata.d_file = d_file
+            pdata.vars = sdata.get_vars(d_file)
+            for var_name in plot_vars:
+                if plot_idx >= len(pdata.axes):
+                    break
+                    
+                # Plot each variable in its own subplot
+                value = kwargs.get('value') #value for custom slice
+                slice_idx = kwargs.get('idx') #idx for custom slice
+                cmap_base(sdata,pdata, ax_idx=plot_idx, var_name=var_name,value=value,idx=slice_idx)
+                plot_label(sdata,pdata,plot_idx)
+                plot_axlim(pdata.axes[plot_idx],kwargs)
 
-                    plot_idx += 1
-        
-        plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+                plot_idx += 1
     
+    plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+
     sdata._var_choice = old_profile #returns sdata to original profile to avoid future errors
 
- 
 def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
     """
     Plots 1D slices of selected variables from Pluto simulations.
     """
     # if kwargs.get('arr_type', sdata.arr_type) != "cc":
     #     sdata.change_arr_type("cc")
+
     pdata = PlotData(**kwargs)
     # sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name=sdata.subdir_name)
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
 
-    # if sdata.load_outputs is not None:
-    #     pdata.d_files = sdata.d_files[:sdata.load_outputs] #truncate d_files if loading specific
-    # else:
     pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
     axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs) #,d_files=pdata.d_files
     plot_idx = 0  # Keep track of which subplot index we are using
 
     for d_file in pdata.d_files: # plot across all files
-        pdata.vars = sdata.get_all_vars(d_file)
+        # pdata.vars = sdata.get_all_vars(d_file) NOTE was get_all_vars
+        pdata.vars = sdata.get_vars(d_file)
         extras_data = plot_extras(sdata,pdata)
         xy_labels = extras_data["xy_labels"]
         title = extras_data["title_other"][0]
 
-
-        # for coord, var_name in zip(sel_coord, sel_var): #NOTE 
         var_array = pdata.vars[sel_var]
         coord_array = pdata.vars[sel_coord]
 
@@ -586,9 +527,9 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         var_sliced = var_array[var_profile]
 
         coord_label = sdata.get_var_info(sel_coord)["coord_name"]
-        coord_units = sdata.get_var_info(sel_coord)["si"]
+        coord_units = sdata.get_var_info(sel_coord)["usr_uv"]
         var_label = sdata.get_var_info(sel_var)["var_name"]
-        var_units = (sdata.get_var_info(sel_var)["si"]).to_string('latex')
+        var_units = (sdata.get_var_info(sel_var)["usr_uv"]).to_string('latex')
 
 
         title_str = f"{sdata.sim_type} {var_label}"
@@ -620,7 +561,10 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
             ax.plot(coord_array, np.log10(var_sliced),color = "mediumslateblue")
 
         #Assigning legend
-        legend_coord = sdata.get_var_info({"x2": "x1", "x1": "x2"}.get(sel_coord, sel_coord))["coord_name"]
+        for coord in sdata.coord_names:
+            if sel_coord != coord:
+                legend_coord = sdata.get_var_info(coord)["coord_name"]
+
         value = f"{(coord_sliced / 1e+12):.4f}" #scaling factor makes it easier to read
         legend_str = f"{title_str} @ {legend_coord} = {value}$\\times 10^{{12}}$ {coord_units}"
         ax.legend([legend_str])
