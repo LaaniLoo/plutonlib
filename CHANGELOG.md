@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.2] - 2025-09-02
+
+### 🐛 Bug Fixes
+
+
+- *(config.py)* replaced simple `profiles` dict with function to get correct profiles/array types
+
+this includes the merging of `profiles` and `profiles2()`
+
+- *(plot.py)* fixed `value` kwarg when plotting
+
+
+- *(load.py)* depreciated `get_profiles`, `select_profile`, `pluto_load_profile`, can now load tracer values and particles
+
+* tracer values are accessed through `tr1` varaible from `pluto_loader()` etc
+  * testing implementation of particle loading through `pluto_particles`
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Refactoring
+
+
+- *(analysis.py)* cleaned up `calc_var_prof`
+
+
 ## [0.7.1] - 2025-09-01
 
 ### 🐛 Bug Fixes
