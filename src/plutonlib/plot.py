@@ -75,7 +75,7 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
         plot_vars = None
 
     #NOTE plot sim has two types of plot sizes, two var per subp or one var per subp
-    ndim = sdata.get_var_info("rho")["ndim"] #gets rho ndim info for nplots 
+    ndim = sdata.grid_ndim #gets gird ndim for plots
     called_func = inspect.stack()[1].function
     if called_func == "plot_sim": 
         n_plots = len(pdata.d_files) if ndim == 2 else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
@@ -154,7 +154,12 @@ def plot_extras(sdata,pdata = None, **kwargs):
     #assigning cbar and title labs from rho prs etc
     for var_name in sdata.var_choice[2:4]:
         var_label = sdata.get_var_info(var_name)["var_name"]
-        var_units = (sdata.get_var_info(var_name)["usr_uv"]).to_string('latex')
+
+        try:
+            var_units = (sdata.get_var_info(var_name)["usr_uv"]).to_string('latex')
+        except AttributeError:
+            print(f"skipping {var_name} units due to no available unit values...")
+            var_units = "None"
 
         cbar_labels.append(var_label + " " + f"[{var_units}]")
         labels.append(var_label)
@@ -193,6 +198,8 @@ def plot_extras(sdata,pdata = None, **kwargs):
         "coord_labels": coord_labels, 
         "xy_labels": xy_labels, 
         "title_other": title_other,
+        "var_units" : var_units,
+        "var_label" : var_label,
         "_last_d_file": pdata.d_file #saves last data file, used to regenerate pdata.extras if changes
         }
         
@@ -216,14 +223,14 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
 
     slice_var = sdata.spare_coord #e.g. if plot xz -> profile in y
     #custom slice profiles when using value and idx kwargs 
-    if 'value' in kwargs and value is not None:
-        print("using value")
-        profile = pa.calc_var_prof(sdata,slice_var,value=value)["custom_slice_2D"]
-    if 'idx' in kwargs and slice_idx is not None:
-        print("using idx")
-        profile = pa.calc_var_prof(sdata,slice_var,idx=slice_idx)["custom_slice_2D"]
-    else: #normal midpoint slice behavior 
-        profile = pa.calc_var_prof(sdata,slice_var)["slice_2D"]
+    # if 'value' in kwargs and value is not None:
+    #     print("using value")
+    #     profile = pa.calc_var_prof(sdata,slice_var,value=value)["custom_slice_2D"]
+    # if 'idx' in kwargs and slice_idx is not None:
+    #     print("using idx")
+    #     profile = pa.calc_var_prof(sdata,slice_var,idx=slice_idx)["custom_slice_2D"]
+    # else: #normal midpoint slice behavior 
+    profile = pa.calc_var_prof(sdata,slice_var,value=value)["slice_2D"]
 
     is_log = var_name in ('rho', 'prs')
     vars_data = np.log10(pdata.vars[var_name][profile]) if is_log else pdata.vars[var_name][profile]
@@ -445,7 +452,7 @@ def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
     sel_prof = sdata.profile_choice if sel_prof is None else sel_prof 
 
     old_profile = sdata._var_choice # fixes reassignment of vars?
-    sdata._var_choice = pc.profiles2()["profiles"][sel_prof] #NOTE this line allows any profile to be overridden by sel_prof
+    sdata._var_choice = pc.profiles()["profiles"][sel_prof] #NOTE this line allows any profile to be overridden by sel_prof
 
     sdata.profile_choice = sel_prof
     sdata.load_outputs = kwargs.get('load_outputs', sdata.load_outputs)
@@ -515,6 +522,9 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         xy_labels = extras_data["xy_labels"]
         title = extras_data["title_other"][0]
 
+        var_units = extras_data["var_units"]
+        var_label = extras_data["var_label"]
+
         var_array = pdata.vars[sel_var]
         coord_array = pdata.vars[sel_coord]
 
@@ -522,14 +532,15 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         pdata.sel_var = sel_var
 
         calc_prof_data = pa.calc_var_prof(sdata,sel_coord,**kwargs)
+
         var_profile = calc_prof_data["slice_1D"]
         coord_sliced = calc_prof_data["coord_sliced"]
         var_sliced = var_array[var_profile]
 
         coord_label = sdata.get_var_info(sel_coord)["coord_name"]
         coord_units = sdata.get_var_info(sel_coord)["usr_uv"]
-        var_label = sdata.get_var_info(sel_var)["var_name"]
-        var_units = (sdata.get_var_info(sel_var)["usr_uv"]).to_string('latex')
+        # var_label = sdata.get_var_info(sel_var)["var_name"]
+        # var_units = (sdata.get_var_info(sel_var)["usr_uv"]).to_string('latex')
 
 
         title_str = f"{sdata.sim_type} {var_label}"
@@ -548,7 +559,7 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
                 raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'cc' to plot 1D slice of 3D jet")
             coord_array = coord_array[var_profile]
 
-        if sel_var in ("vx1", "vx2","vx3"):
+        if sel_var in ("vx1", "vx2","vx3",'tr1'):
             ax.set_ylabel(
                 f"{var_label} [{var_units}]"
             )
@@ -565,8 +576,8 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
             if sel_coord != coord:
                 legend_coord = sdata.get_var_info(coord)["coord_name"]
 
-        value = f"{(coord_sliced / 1e+12):.4f}" #scaling factor makes it easier to read
-        legend_str = f"{title_str} @ {legend_coord} = {value}$\\times 10^{{12}}$ {coord_units}"
+        value = f"{(coord_sliced):.4f}" #scaling factor makes it easier to read
+        legend_str = f"{title_str} @ {legend_coord} = {value} {coord_units}"
         ax.legend([legend_str])
 
         plot_idx += 1
