@@ -28,6 +28,8 @@ import inspect
 import os
 from functools import lru_cache
 
+import glob
+
 class SimulationData:
     """
     Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
@@ -55,7 +57,7 @@ class SimulationData:
         if self.arr_type is None:
             raise ValueError(
                 f"{pcolours.WARNING}arr_type is None, please select a coord array of type:"
-                f"\n{pc.profiles2()['coord_prefixes']}"
+                f"\n{pc.profiles()['coord_prefixes']}"
                 f"\n Array Key \n {pc.arr_type_key}"
                 )
         
@@ -281,15 +283,6 @@ class SimulationData:
         # self.load_all()
         return self
     
-    def _select_profile(self):
-        """if None is used as a profile choice, will show available profiles etc..."""
-        if self.run_name is None:
-            raise ValueError("run_name and profile_choice are None, IMPLEMENT RUN_NAMES FROM p_l_f")
-            
-        print("profile_choice is None, using pluto_load_profile to select profile")
-        run_data = pluto_load_profile(self.sim_type,self.run_name,None)
-        return run_data['profile_choices'][self.run_name][0] #loads the run_name names and selected profiles for runs
-
     def _select_dir(self):
         """If no specified directory string (subdir_name) to join to start_dir -> run pc.setup_dir """
 
@@ -401,8 +394,17 @@ class SimulationData:
     def grid_ndim(self):
         if self._units is None:
             self.load_units()
-        return self.get_var_info("rho")["ndim"]
 
+        if 'rho' in self.var_choice:    
+            grid_ndim = self.get_var_info("rho")["ndim"]
+
+        elif self.arr_type in ('nc','cc'):
+            grid_ndim = self.get_var_info("x1")["ndim"]
+        
+        else:
+            raise ValueError("Cannot determine grid dimensions without nc/cc arrays or rho")
+
+        return grid_ndim
     @property    
     def del_cache(self): 
         # print("Deleting Cache...")
@@ -430,100 +432,6 @@ class SimulationData:
 #------------------------#
 #       functions    
 #------------------------#
-
-#---Profile Loading---#
-# def get_profiles(sim_type,run_name,profiles):
-# # def get_profiles(sim_type,run_name):
-
-#     """
-#     Prints available profiles for a specific simulation
-#     """
-#     if isinstance(run_name, list):
-#         run_name = run_name[0]  # Force unwrap if somehow a list gets through
-
-#     data = pluto_loader(sim_type,run_name,"all",load_outputs=(0,),arr_type="m",ini_file="pluto_units") #NOTE pl should be faster than pc #NOTE loads 0th output for speed?
-#     var_choice = data["var_choice"]
-#     # vars = data["vars"]["data_0"]
-#     first_key = list(data["vars"].keys())[0] # This is safer
-#     vars = data["vars"][first_key]
-
-#     for var in var_choice[:-1]: # doesn't include sim_time as it has no size
-#         if vars[var].size == 1:
-#             avail_vars = var_choice
-#             avail_vars.remove(var) # removes e.g. x3 in "Jet" if its only len 1 so x3 profiles aren't included
-
-#     else:
-#         avail_vars = var_choice
-
-#     keys = list(pc.profiles.keys())
-
-#     print("Available profiles:")
-#     for i, prof in enumerate(keys):
-#         vars_set = set(avail_vars)
-#         prof_set = set(pc.profiles[prof])
-#         common = vars_set & prof_set
-
-#         if len(common) >=4: #since the profiles are usually 4 elements make sure at least 4 match
-#             print(f"{i}: {prof}, {pc.profiles[prof]}")
-#             sys.stdout.flush()
-
-#     return keys
-
-# def select_profile(sim_type,run_name,profiles):
-#     """Uses user input to select a profile"""
-#     keys = get_profiles(sim_type,run_name,profiles)
-
-#     while True:
-#         choice = input("Enter the number of the profile you want to select (or 'q' to quit): ").strip()
-#         if choice.lower() == "q":
-#             print("Selection cancelled.")
-#             return None  # Return None if the user quits
-
-#         if choice.isdigit():
-#             choice = int(choice)
-
-#             if 0 <= int(choice) < len(pc.profiles):
-#                 return keys[choice]
-#             else:
-#                 print(f"Invalid choice. Please enter a number between 0 and {len(pc.profiles) - 1}.")
-#         else:
-#             print("Invalid input. Please enter a valid number or 'q' to quit.")
-
-# def pluto_load_profile(sim_type, run_name, sel_prof):
-#     """
-#     Single-run version that:
-#     - Uses get_profiles() exactly like original
-#     - Prints available/selected profiles like original
-#     - Works ONLY with single run_name (string)
-#     """
-#     # Input validation
-#     if not isinstance(run_name, str):
-#         raise TypeError("run_name must be a single string (no lists/None)")
-#     if sel_prof is None:
-#         raise ValueError("sel_prof cannot be None in single-run mode")
-
-#     # Verify run exists (original didn't have this but it's good practice)
-#     run_dir = os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
-#     if not os.path.isdir(run_dir):
-#         raise ValueError(f"Run directory not found: {run_dir}")
-
-#     # Get available profiles (using original get_profiles())
-#     get_profiles(sim_type, run_name, profiles)
-
-#     # Handle profile selection (simplified from original)
-#     profile_choices = defaultdict(list)
-    
-#     try:
-#         profile_choices[run_name].append(sel_prof)
-#         print(f"Selected profile {sel_prof} for run {run_name}: {profiles[sel_prof]}")
-#         print("\n")
-#     except KeyError:
-#         raise KeyError(f"{sel_prof} is not an available profile")
-
-#     return {
-#         'run_names': [run_name],  # Still a list for compatibility
-#         'profile_choices': profile_choices
-#     }
 
 #---Loading Files---#
 def get_file_outputs(wdir):
@@ -638,7 +546,7 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
         #LOADING 
         geometry = data_file.geometry
 
-        prof_vars = pc.profiles2(arr_type = arr_type)["profiles"]["all"]
+        prof_vars = pc.profiles(arr_type = arr_type)["profiles"]["all"]
         var_map = {'x1': prof_vars[0], 'x2': prof_vars[1], 'x3': prof_vars[2]} # used to map any arr_type to x1,x2,x3
         loaded_vars = [v for v in var_choice if hasattr(data_file, var_map.get(v, v))]
 
@@ -649,7 +557,7 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
             #Loads the hdf5 dataset into easily readable 3d array
 
             #NOTE this transposes z,y,x arrays into x,y,z arrays
-            if var_name in ("x1", "x2", "x3",'rho','prs','vx1','vx2','vx3') and file_data[var_name].ndim == 3:
+            if var_name in ("x1", "x2", "x3",'rho','prs','vx1','vx2','vx3','tr1') and file_data[var_name].ndim == 3:
                     file_data[var_name] = np.transpose(file_data[var_name],(2,1,0))
             
     elif is_dbl: #should be deprecated?
@@ -670,6 +578,140 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None):
     returns = {"file_data":file_data,"loaded_vars":loaded_vars,"geometry":geometry,"dtype":dtype}
 
     # print(f"dbl loading: {(time.time() - start):.2f}s")
+    return returns
+
+def get_particle_outputs(wdir,load_outputs=None):
+    '''
+    Gets the number of simulation particle file outputs
+    '''
+    # part_files = []
+    pattern = os.path.join(wdir, "particles.*")
+    particle_paths = sorted(glob.glob(pattern), key=lambda f: int(f.split(".")[-2]))
+    file_ext = particle_paths[0].split(".")[-1]
+    n_outputs = int(particle_paths[-1].split(".")[-2])    
+
+    if not particle_paths:
+        raise FileNotFoundError(f"No files found that match `particles.` in {wdir}")
+
+    max_output = max(load_outputs) if isinstance(load_outputs,tuple) else load_outputs
+    if max_output > n_outputs:
+        raise ValueError(f"Attempting to load output {load_outputs} when there are {n_outputs} outputs")
+
+    if isinstance(load_outputs, tuple):
+        loaded_files = [particle_paths[output_n] for output_n in load_outputs if output_n <= n_outputs]
+    elif isinstance(load_outputs, int):
+        loaded_files = [particle_paths[output_n] for output_n in range(min(load_outputs, n_outputs) + 1)]
+    else:  # Load all
+        loaded_files = particle_paths
+
+    part_files = [f"part_{loaded_file.split('.')[-2]}" for loaded_file in loaded_files]
+
+    returns = {
+        "n_outputs":n_outputs,
+        "files":particle_paths,
+        "loaded_files":loaded_files,
+        "part_files": part_files,
+    }
+    return returns
+
+def get_particle_file_header(line_):
+    file_header = {}
+    if line_.split()[1] != "PLUTO":
+        hlist = line_.split()[1:]
+        if hlist[0] == "field_names":
+            vars_ = hlist[1:]
+            t = tuple([hlist[0], vars_])
+            file_header.update(dict([t]))
+        elif hlist[0] == "field_dim":
+            varsdim_ = [int(fd) for fd in hlist[1:]]
+            t = tuple([hlist[0], varsdim_])
+            file_header.update(dict([t]))
+        elif hlist[0] == "shk_thresh":
+            shk_thresh_list = [float(st) for st in hlist[1:]]
+            t = tuple([hlist[0], shk_thresh_list])
+            file_header.update(dict([t]))
+        else:
+            t = tuple(["".join(hlist[:-1]), hlist[-1]])
+            file_header.update(dict([t]))
+
+    return file_header
+
+def read_particle_file(file_name):
+    # print("Reading Particle Data file : %s"%self.fname)
+    file_header = {}
+    with open(file_name, "rb") as fp_:
+        for l in fp_.readlines():
+            try:
+                ld = l.decode("ascii").strip()
+                if ld.split()[0] == "#":
+                    file_header.update(get_particle_file_header(ld))
+                else:
+                    break
+            except UnicodeDecodeError:
+                break
+    tot_fdim = np.sum(np.array(file_header["field_dim"], dtype=int))
+    HeadBytes_ = int(file_header["nparticles"]) * tot_fdim * 8
+    with open(file_name, "rb") as fp_:
+        scrh_ = fp_.read()
+        data_str = scrh_[len(scrh_) - HeadBytes_ :]
+    
+    hdict = file_header
+    returns = {"hdict":hdict,"data_str":data_str,"tot_fdim":tot_fdim}
+    return returns
+
+def pluto_particles(sim_type,run_name,load_outputs=None):
+    wdir =  os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
+    particle_data = defaultdict(list)  # Stores variables for each particle file
+
+    particle_outputs = get_particle_outputs(wdir,load_outputs)
+    loaded_files = particle_outputs["loaded_files"]
+    part_files = particle_outputs["part_files"]
+
+    for file_idx,file_name in enumerate(loaded_files): #used to loop over file path and particle file string
+        particle_str = part_files[file_idx]
+
+        hdict = read_particle_file(file_name)['hdict']
+        data_str  = read_particle_file(file_name)['data_str']
+        tot_fdim = read_particle_file(file_name)['tot_fdim']
+        vars_ = hdict["field_names"]
+        endianess = "<"
+        if hdict["endianity"] == "big":
+            endianess = ">"
+        dtyp_ = np.dtype(endianess + "dbl"[0])
+        DataDict_ = hdict
+        n_particles = int(DataDict_["nparticles"])
+        data_ = np.fromstring(data_str, dtype=dtyp_)
+
+        fdims = np.array(hdict["field_dim"], dtype=int)
+        indx = np.where(fdims == 1)[0]
+        spl_cnt = len(indx)
+        counter = 0
+
+        if n_particles <= 0 and isinstance(load_outputs,tuple) and len(load_outputs) == 1: 
+            print(DataDict_)
+            raise AttributeError(f"Particle file {file_name} has nparticles = 0")
+        
+        elif n_particles <= 0:
+            # print(f"Particle file {file_name} has nparticles = 0") #debug part files with nparticles = 0 
+            continue
+
+        reshaped_data = data_.reshape(n_particles, tot_fdim)
+        tup_ = []
+
+        ind = 0
+        for c, v in enumerate(vars_):
+            v_data = reshaped_data[:, ind : ind + fdims[c]]
+            if fdims[c] == 1:
+                v_data = v_data.reshape((n_particles))
+            tup_.append((v, v_data))
+            ind += fdims[c]
+        DataDict_.update(dict(tup_))
+
+        particle_data[particle_str] = DataDict_
+
+    returns = {
+        "particle_data":particle_data,
+    }
     return returns
 
 @lru_cache(maxsize=32)  # This caches based on input arguments
@@ -699,7 +741,7 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
     vars = defaultdict(list)  # Stores variables for each D_file
     vars_extra = []
     warnings = []
-    var_choice = pc.profiles2()["profiles"][profile_choice]
+    var_choice = pc.profiles()["profiles"][profile_choice]
 
     # wdir = SimulationData(sim_type, run_name, profile_choice, load_outputs=load_outputs, arr_type=arr_type).wdir
     wdir =  os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
