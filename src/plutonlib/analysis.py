@@ -28,63 +28,33 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
-        sim_type=sdata.sim_type,
-        run_name=sdata.run_name,
-        profile_choice="all",
-        subdir_name = sdata.subdir_name,
-        load_outputs=loaded_outputs,
-        arr_type = arr_type,
-        ini_file = ini_file)
-    
+    ndim = sdata.grid_ndim
+    target = kwargs['value'] if 'value' in kwargs and kwargs['value'] is not None else 0
+
     value_slice_map = { #slices for when using find_nearest 
         "x1": (slice(None),0,0),
         "x2": (0,slice(None),0),
         "x3": (0,0,slice(None)),
     }
 
-    vars_last = sdata.get_vars(sdata.d_last)
-    ndim = vars_last["rho"].ndim #NOTE using rho to find ndim as it is often multi-dimensional 
+    coords_1D = {
+        coord: (
+            sdata.get_coords()[coord][value_slice_map[coord]] if arr_type in ('nc','cc') else sdata.get_coords()[coord]
+        )
+        for coord in ["x1", "x2", "x3"]
+    }
 
-    #TODO add 3d case if statement
-    # used to slice at custom index or specified value
-    if 'value' in kwargs:
-        value_slice = value_slice_map[sel_coord]
-        coords_array = sdata.get_coords()[sel_coord][value_slice] if ndim >2 else sdata.get_coords()[sel_coord]
-        idx = find_nearest(coords_array,kwargs['value'])['idx']
-
-    elif 'idx' in kwargs:
+    if 'idx' in kwargs: #TODO needs fixing only works for 1d case
         idx = kwargs['idx']
 
-    else:
-        # print('Neither idx or value kwargs were given: slicing at idx = 0')
-        idx = 0
+    else: # 
+        idx = find_nearest(coords_1D[sel_coord],target)['idx']
 
     if ndim >2:
-        try:
-            if arr_type in ('nc','cc'): #this method only works for a 3D array
-                x_mid = find_nearest(vars_last["x1"][value_slice_map["x1"]],0)['idx'] #to find nearest idx to 0
-                y_mid = find_nearest(vars_last["x2"][value_slice_map["x2"]],0)['idx'] 
-                z_mid = find_nearest(vars_last["x3"][value_slice_map["x3"]],0)['idx'] 
-            else:
-                x_mid = find_nearest(vars_last["x1"],0)['idx'] 
-                y_mid = find_nearest(vars_last["x2"],0)['idx'] 
-                z_mid = find_nearest(vars_last["x3"],0)['idx'] 
-
-        # try: #NOTE outdated method that only works for symm grids 
-        #     if arr_type == 'nc': #best method for 3D arrays
-        #         x_mid = vars_last["x1"].shape[0] // 2
-        #         y_mid = vars_last["x2"].shape[1] // 2
-        #         z_mid = vars_last["x3"].shape[2] // 2
-    
-        #     else: #NOTE not sure what this method is? for 1D arrays?
-        #         x_mid = len(vars_last["x1"])//2 
-        #         y_mid = len(vars_last["x2"])//2 
-        #         z_mid = len(vars_last["x3"])//2 
+        x_mid = find_nearest(coords_1D['x1'],target)['idx'] #to find nearest idx to 0 or specified value 
+        y_mid = find_nearest(coords_1D['x2'],target)['idx'] 
+        z_mid = find_nearest(coords_1D['x3'],target)['idx'] 
                 
-        except KeyError:
-            raise ValueError("all coord data was not loaded, make sure profile_choice = 'all'")
-        
         slice_map_1D = { #slices in shape of coord
             "x1": (slice(None), y_mid, z_mid),
             "x2": (x_mid, slice(None), z_mid),
@@ -97,12 +67,6 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
             "x3": (slice(None), slice(None), z_mid)
         } 
 
-        custom_slice_map_2D = { #slices in shape of coord
-            "x1": (idx, slice(None), slice(None)),
-            "x2": (slice(None), idx, slice(None)),
-            "x3": (slice(None), slice(None), idx)
-        } 
-
     else:
         slice_map_1D = { #slices in shape of coord
             "x1": (slice(None), idx),
@@ -111,14 +75,12 @@ def calc_var_prof(sdata,sel_coord,**kwargs):
 
     slice_1D = slice_map_1D[sel_coord]
     slice_2D = slice_map_2D[sel_coord] if ndim >2 else None
-    # custom_slice_2D = None if idx == 0 else custom_slice_map_2D[sel_coord] #Not needed if value/idx aren't passed
-    custom_slice_2D = custom_slice_map_2D[sel_coord]
-    coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else sdata.get_coords()[sel_coord][slice_1D][idx]
+    coord_sliced = sdata.get_coords()[sel_coord][slice_1D][idx] if arr_type in ('nc','cc') else sdata.get_coords()[sel_coord][idx]
+    # coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else sdata.get_coords()[sel_coord][slice_1D][idx]
 
     returns = {
         "slice_1D": slice_1D,
         "slice_2D": slice_2D,
-        "custom_slice_2D":custom_slice_2D,
         "coord_sliced": coord_sliced,
     }
     return returns
