@@ -30,7 +30,7 @@ from functools import lru_cache
 
 import glob
 
-class SimulationData:
+class SimulationSetup:
     """
     Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
     converted/raw data, units and var info
@@ -40,8 +40,7 @@ class SimulationData:
     _last_arr_type = None
 
     def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name=None,
-                 load_outputs=None,arr_type=None,ini_file=None,is_conv = 1,warn = 1):
-        self.is_conv = is_conv
+                 load_outputs=None,arr_type=None,ini_file=None,):
 
         self.sim_type = sim_type
         self.run_name = run_name
@@ -53,15 +52,8 @@ class SimulationData:
         self.ini_file = ini_file
 
         self.arr_type = arr_type
-        #Safety measure to ensure correct array is loaded
-        if self.arr_type is None:
-            raise ValueError(
-                f"{pcolours.WARNING}arr_type is None, please select a coord array of type:"
-                f"\n{pc.profiles()['coord_prefixes']}"
-                f"\n Array Key \n {pc.arr_type_key}"
-                )
-        
-        self.profile_choice = profile_choice or self._select_profile() # arg or function to select
+
+        self.profile_choice = profile_choice 
 
         # Saving 
         self.subdir_name = subdir_name
@@ -72,12 +64,128 @@ class SimulationData:
         # self.save_dir = self._select_dir() #saves save_dir 
         self._save_dir = None
 
+        # Files
+        self.avail_sims = os.listdir(pc.sim_dir)
+        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else None #print(f"{pcolours.WARNING}Skipping avail_runs")
+        
+        # Set wdir safely
+        self.wdir = os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else None
+        # if self.wdir is None:
+        #     print(f"{pcolours.WARNING}Skipping wdir because run_name is None")
+
+        # Set start_dir only if wdir exists
+        if self.wdir is not None:
+            self.start_dir = pc.get_start_dir(self.wdir, run_name=self.run_name)["start_dir"]
+        else:
+            self.start_dir = None
+
+        # Vars
+        self._var_choice = None 
+        SimulationSetup._last_arr_type = self.arr_type
+
+    #---Other---#
+    def _select_dir(self):
+        """If no specified directory string (subdir_name) to join to start_dir -> run pc.setup_dir """
+
+        if self.alt_dir is None: #not alt dir -> run setup
+            return  pu.setup_dir(self.start_dir)
+            # return pu.setup_dir(self.wdir)
+        
+        elif self.alt_dir: #alt dir is specified 
+            if os.path.isdir(self.alt_dir): #valid dir -> assign 
+                return self.alt_dir
+
+            else: #isn't a valid dir -> run_name _create_dir()
+                return self._create_dir()
+
+    def _create_dir(self):
+        new_dir = self.alt_dir
+        sys.stdout.flush()
+        print(f"{self.subdir_name} is not a valid folder in start_dir: Would you like to create the dir {new_dir}?")
+
+        save = None 
+        while save not in (0,1):
+            try:
+                save = int(input("Create directory? [1/0]"))
+            except ValueError:
+                print("Invalid input, please enter 1 (yes) or 0 (no).")  
+
+        if save:
+            print(f"Creating {new_dir}")
+            os.makedirs(new_dir)
+            return new_dir
+        
+        elif not save:
+            print("Cancelling operation")
+            raise(AttributeError(f"Please specify a directory in {self.start_dir}"))
+        
+    #---Properties---#
+    @property
+    def save_dir(self):
+        if self._save_dir is None:
+            self._save_dir = self._select_dir()
+        return self._save_dir
+    
+    @property
+    def coord_names(self):
+        coord_names = []
+        for var_name in self.var_choice:
+            if var_name in ('x1','x2','x3'):
+                coord_names.append(var_name)
+
+        return coord_names
+
+    @property
+    def spare_coord(self):
+        '''e.g. returns y if profile is xz etc...'''
+        spare_coord = ({'x1','x2','x3'} - set(self.coord_names)).pop()
+        return spare_coord
+
+    @property
+    def jet_info(self):
+        ini_info = pc.pluto_ini_info(self.wdir)
+        return ini_info["key_params"]
+
+    @property
+    def usr_params(self):
+        ini_info = pc.pluto_ini_info(self.wdir)
+        return ini_info["usr_params"]
+
+    @property
+    def grid_setup(self):
+        ini_info = pc.pluto_ini_info(self.wdir)
+        return ini_info["grid_setup"]
+
+class SimulationData(SimulationSetup):
+    """
+    Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
+    converted/raw data, units and var info
+    """
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None, subdir_name=None,
+                 load_outputs=None, arr_type=None, ini_file=None, is_conv=1, setup=None):
+        if setup is not None:
+            # inherit defaults from setup
+            sim_type = sim_type or setup.sim_type
+            run_name = run_name or setup.run_name
+            profile_choice = profile_choice or setup.profile_choice
+            subdir_name = subdir_name or setup.subdir_name
+            load_outputs = load_outputs or setup.load_outputs
+            ini_file = ini_file or setup.ini_file
+            arr_type = arr_type if arr_type is not None else setup.arr_type            
+
+
+        # Initialize parent class first
+        super().__init__(sim_type, run_name, profile_choice, subdir_name, load_outputs, arr_type, ini_file)
         # Data 
+        self.is_conv = is_conv
         self._raw_data = None
 
         self._conv_data = None
-        self._all_conv_data = None
+        self._grid_data = None
         self._is_loaded = False #used to track loading state
+
+        self.particle_data = None
+        self.particle_files = None
 
         # Extra
         self._units = None
@@ -86,36 +194,14 @@ class SimulationData:
         # Files
         self._d_files = None
         self._d_file = None
-        self.avail_sims = os.listdir(pc.sim_dir)
-        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else print(f"{pcolours.WARNING}Skipping avail_runs")
-        self.wdir =  os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else print(f"{pcolours.WARNING}Skipping wdir")
-        self.start_dir = pc.get_start_dir(self.wdir,run_name = self.run_name)["start_dir"] #starting directory to save files, can create subdirs?
-        # self.ini_path = os.path.join(pc.src_path,ini_name)
-
-        # Vars
-        self._var_choice = None 
-        # self.coord_names = ["x1","x2","x3"] #NOTE DEPRECIATED FOR PROPERTY
-        # self._coords
-
-        # Metadata
-        #Print warnings only when assigning sdata?
-        called_func = inspect.stack()[1].function
-        if called_func == "<module>" and warn == 1:
-            self.get_warnings() 
-
+        
         self.load_time = None
         self.dir_log = None
 
-        # deletes cache if these are changed
-        if SimulationData._last_ini_file is not None and self.ini_file != SimulationData._last_ini_file: #deletes cache if ini is changed
-            print("Changing ini and deleting cache")
-            self.del_cache
-        SimulationData._last_ini_file = self.ini_file
-
-        if SimulationData._last_arr_type is not None and self.arr_type != SimulationData._last_arr_type: #deletes cache if arr_type is changed
-            # print("Changing arr_type and deleting cache")
-            self.del_cache
-        SimulationData._last_arr_type = self.arr_type
+    @classmethod
+    def from_setup(cls, setup,**kwargs):
+        """Create SimulationData from existing SimulationSetup"""
+        return cls(setup=setup,**kwargs)
 
     #---Loading Data---#
     def load_all(self):
@@ -135,7 +221,7 @@ class SimulationData:
         self._d_files = self._raw_data['d_files']
         self._var_choice = self._raw_data['var_choice']
         self._geometry = self._raw_data['vars_extra'][0]
-        # print(f"Pluto Loader: {(time.time() - start):.2f}s")
+        print(f"Pluto Loader: {(time.time() - start):.2f}s")
 
     def load_conv(self,profile=None):
         if self.is_conv:
@@ -145,19 +231,20 @@ class SimulationData:
             start = time.time() #for load time
 
             profile = profile or self.profile_choice
-            self._conv_data =pluto_conv(self.sim_type, self.run_name,profile,self.load_outputs,self.arr_type,self.ini_file)
-            # self._d_files = self._conv_data['d_files']
-            # self._var_choice = self._conv_data['var_choice']
-            # self._geometry = self._conv_data['sim_coord']
+            pluto_conv_data =pluto_conv(self.sim_type, self.run_name,profile,self.load_outputs,self.arr_type,self.ini_file)
 
-
-            if profile == "all": #failsafe to load all data if req
-                self._all_conv_data = self._conv_data
+            if profile == "grid": #failsafe to load all data if req
+                self._grid_data = pluto_conv_data
+            else:
+                self._conv_data = pluto_conv_data
             
-            
-            # print(f"Pluto Conv: {(time.time() - start):.2f}s")
+            print(f"Pluto Conv ({profile}): {(time.time() - start):.2f}s")
         else:
             print(f"{pcolours.WARNING}is_conv = {self.is_conv}, Skipping convert")
+
+    def load_particles(self,load_outputs):
+        self.particle_data = pluto_particles(self.sim_type,self.run_name,load_outputs)['particle_data']
+        self.particle_files = list(self.particle_data.keys())
 
     def load_units(self):
         if self._conv_data is None:
@@ -172,6 +259,10 @@ class SimulationData:
         # print(f"Changing array type to {pc.arr_type_key[self.arr_type]}")
         self.del_cache
 
+    def reload_outputs(self,load_outputs):
+        self.load_outputs = load_outputs
+        return self.reload
+    
     #---Accessing SimulationData---#
     def check_d_file(self,d_file):
         if d_file not in self.d_files:
@@ -195,8 +286,8 @@ class SimulationData:
 
         if system == 'uuv':
             d_file_info = {"d_file" : target_file}
-            self.all_conv_data['vars_uuv'].update(d_file_info)
-            return self.all_conv_data['vars_uuv'][target_file]
+            self.grid_data['vars_uuv'].update(d_file_info)
+            return self.grid_data['vars_uuv'][target_file]
 
         else:
             raise ValueError("system must be in user or code unit values: 'uuv' or 'cuv'")
@@ -206,7 +297,7 @@ class SimulationData:
         target_file = d_file or self.d_last
         self.check_d_file(target_file)
 
-        conv_data = self.all_conv_data['vars_uuv'][target_file]
+        conv_data = self.grid_data['vars_uuv'][target_file]
 
         coords = {
             "x1": conv_data["x1"],
@@ -231,7 +322,14 @@ class SimulationData:
         
 
         return var_info
+    
+    def d_sel(self,slice,start = 0):
+        """Slices d_files to the number specified -> e.g. give me first 3 elements of d_files"""
+        return self.d_files[start:slice]
+    
 
+    #---Properties---#
+    @property
     def get_warnings(self):
         """Prints any warnings from loading process"""
         #---General Warnings---#
@@ -270,55 +368,6 @@ class SimulationData:
             print(warning)
         print(pcolours.ENDC) #ends yellow warning colour 
 
-    def d_sel(self,slice,start = 0):
-        """Slices d_files to the number specified -> e.g. give me first 3 elements of d_files"""
-        return self.d_files[start:slice]
-    
-    #---Other---#
-    def reload(self):
-        """Force reload all data"""
-        self._raw_data = None
-        self._conv_data = None
-        self._units = None
-        # self.load_all()
-        return self
-    
-    def _select_dir(self):
-        """If no specified directory string (subdir_name) to join to start_dir -> run pc.setup_dir """
-
-        if self.alt_dir is None: #not alt dir -> run setup
-            return  pu.setup_dir(self.start_dir)
-            # return pu.setup_dir(self.wdir)
-        
-        elif self.alt_dir: #alt dir is specified 
-            if os.path.isdir(self.alt_dir): #valid dir -> assign 
-                return self.alt_dir
-
-            else: #isn't a valid dir -> run_name _create_dir()
-                return self._create_dir()
-
-    def _create_dir(self):
-        new_dir = self.alt_dir
-        sys.stdout.flush()
-        print(f"{self.subdir_name} is not a valid folder in start_dir: Would you like to create the dir {new_dir}?")
-
-        save = None 
-        while save not in (0,1):
-            try:
-                save = int(input("Create directory? [1/0]"))
-            except ValueError:
-                print("Invalid input, please enter 1 (yes) or 0 (no).")  
-
-        if save:
-            print(f"Creating {new_dir}")
-            os.makedirs(new_dir)
-            return new_dir
-        
-        elif not save:
-            print("Cancelling operation")
-            raise(AttributeError(f"Please specify a directory in {self.start_dir}"))
-        
-    #---Properties---#
     @property
     def raw_data(self):
         if self._raw_data is None:
@@ -332,17 +381,12 @@ class SimulationData:
         return self._conv_data
 
     @property
-    def all_conv_data(self):
-        if self._all_conv_data is None:
-            self.load_conv(profile="all")  # Loads all profile
-        return self._all_conv_data
+    def grid_data(self):
+        if self._grid_data is None:
+            
+            self.load_conv(profile="grid")  # Loads all profile
+        return self._grid_data
     
-    @property
-    def save_dir(self):
-        if self._save_dir is None:
-            self._save_dir = self._select_dir()
-        return self._save_dir
-
     @property
     def units(self):
         if self._units is None:
@@ -376,21 +420,6 @@ class SimulationData:
         return self._var_choice
     
     @property
-    def coord_names(self):
-        coord_names = []
-        for var_name in self.var_choice:
-            if var_name in ('x1','x2','x3'):
-                coord_names.append(var_name)
-
-        return coord_names
-
-    @property
-    def spare_coord(self):
-        '''e.g. returns y if profile is xz etc...'''
-        spare_coord = ({'x1','x2','x3'} - set(self.coord_names)).pop()
-        return spare_coord
-
-    @property
     def grid_ndim(self):
         if self._units is None:
             self.load_units()
@@ -406,29 +435,17 @@ class SimulationData:
 
         return grid_ndim
     @property    
-    def del_cache(self): 
-        # print("Deleting Cache...")
-        self.reload()
+    def reload(self):
+        """Force reload all data"""
         pluto_loader.cache_clear()
         pluto_conv.cache_clear()
-        # self.load_raw()
-        self.load_conv()
+        self._raw_data = None
+        self._conv_data = None
+        self._units = None
+        self.load_raw()
     
-    @property
-    def jet_info(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
-        return ini_info["key_params"]
-
-    @property
-    def usr_params(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
-        return ini_info["usr_params"]
-
-    @property
-    def grid_setup(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
-        return ini_info["grid_setup"]
-
+        return self
+    
 #------------------------#
 #       functions    
 #------------------------#
@@ -601,6 +618,8 @@ def get_particle_outputs(wdir,load_outputs=None):
         loaded_files = [particle_paths[output_n] for output_n in load_outputs if output_n <= n_outputs]
     elif isinstance(load_outputs, int):
         loaded_files = [particle_paths[output_n] for output_n in range(min(load_outputs, n_outputs) + 1)]
+    elif load_outputs == "last":
+        load_outputs = (particle_paths[n_outputs],)
     else:  # Load all
         loaded_files = particle_paths
 
@@ -825,7 +844,7 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None, arr_type
     return {"vars": vars, "var_choice": var_choice, "vars_extra": vars_extra, "d_files": d_files, "warnings": warnings}
 
 @lru_cache(maxsize=32)  # This caches based on input arguments
-def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=None, ini_file=None, **kwargs):
+def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None, arr_type=None, ini_file=None):
     """
     Converts Pluto simulation variables from code units to cuv and uuv units.
 
