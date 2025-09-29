@@ -51,21 +51,19 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
         pdata.axes, pdata.fig
 
     """
+    called_func = inspect.stack()[1].function
     if pdata is None:
         pdata = PlotData()
 
+    if "particles" not in called_func: #use d_files if not particles plotter else use part_files
+        sel_d_files = d_files if d_files is not None else getattr(sdata, 'd_files', [])
 
-    # pdata.d_files = d_files if d_files is not None else sdata.d_files #TODO this line is useful but breaks for sdata
-    pdata.d_files = d_files if d_files is not None else getattr(sdata, 'd_files', [])
+        # Validate we have files to plot
+        if not sdata.d_files:
+            raise ValueError("No data files provided (d_files is empty)")
 
-    #DEBUG
-    # print(f"in subplot_base (called by {inspect.currentframe().f_back.f_code.co_name}):", pdata.d_files)
-
-
-    sim_type = sdata.sim_type
-    # Validate we have files to plot
-    if not sdata.d_files:
-        raise ValueError("No data files provided (d_files is empty)")
+    elif "particles" in called_func: # access particle data files for n plots
+        sel_part_files = getattr(sdata,'particle_files',[])
 
     try: #only some funcs use var_choice hence try except
         plot_vars = sdata.var_choice[2:]
@@ -75,13 +73,16 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
         plot_vars = None
 
     #NOTE plot sim has two types of plot sizes, two var per subp or one var per subp
-    ndim = sdata.grid_ndim #gets gird ndim for plots
-    called_func = inspect.stack()[1].function
+    print("called function:", called_func)
     if called_func == "plot_sim": 
-        n_plots = len(pdata.d_files) if ndim == 2 else len(pdata.d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
+        ndim = sdata.grid_ndim #gets gird ndim for plots
+        n_plots = len(sel_d_files) if ndim == 2 else len(sel_d_files)*len(plot_vars) #NOTE because Jet has two vars per plot
     
+    elif "particles" in called_func:
+        n_plots = len(sel_part_files)
+
     else: #all other functions only need d_file sized plot
-         n_plots = len(pdata.d_files)
+         n_plots = len(sel_d_files)
     
     cols = 3 
     rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
@@ -92,7 +93,8 @@ def subplot_base(sdata, pdata = None,d_files = None,**kwargs): #sets base subplo
     else:
         base_size = 7
 
-    figsize_width = min(base_size * cols, 21)  # Cap maximum width
+    max_width = 9 if "particles" in called_func else 21 # Cap maximum width @ 9 for particles and 21 for other
+    figsize_width = min(base_size * cols, max_width)  
     figsize_height = base_size * rows
 
     pdata.fig, axes = plt.subplots(rows, cols, figsize=(figsize_width, figsize_height),constrained_layout = True) 
@@ -146,10 +148,6 @@ def plot_extras(sdata,pdata = None, **kwargs):
 
             coord_labels.append(coord_label)
             xy_labels[var_name] = (f"{coord_label} [{coord_units}]")  
-
-        #TODO add rest of labels,
-        # else:
-        #     print("else:", var_name)
 
     #assigning cbar and title labs from rho prs etc
     for var_name in sdata.var_choice[2:4]:
@@ -222,25 +220,17 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     var_idx = sdata.var_choice[2:].index(var_name)
 
     slice_var = sdata.spare_coord #e.g. if plot xz -> profile in y
-    #custom slice profiles when using value and idx kwargs 
-    # if 'value' in kwargs and value is not None:
-    #     print("using value")
-    #     profile = pa.calc_var_prof(sdata,slice_var,value=value)["custom_slice_2D"]
-    # if 'idx' in kwargs and slice_idx is not None:
-    #     print("using idx")
-    #     profile = pa.calc_var_prof(sdata,slice_var,idx=slice_idx)["custom_slice_2D"]
-    # else: #normal midpoint slice behavior 
     profile = pa.calc_var_prof(sdata,slice_var,value=value)["slice_2D"]
 
     is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(pdata.vars[var_name][profile]) if is_log else pdata.vars[var_name][profile]
+    vars_data = np.log10(sdata.get_vars(pdata.d_file)[var_name][profile]) if is_log else sdata.get_vars(pdata.d_file)[var_name][profile]
 
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
     im = ax.pcolormesh(
-        pdata.vars[sdata.var_choice[0]][profile],
-        pdata.vars[sdata.var_choice[1]][profile], 
+        sdata.get_vars(pdata.d_file)[sdata.var_choice[0]][profile],
+        sdata.get_vars(pdata.d_file)[sdata.var_choice[1]][profile], 
         vars_data, 
         cmap=c_map
         )
@@ -270,7 +260,7 @@ def pcmesh_2d(sdata,pdata = None, **kwargs):
         is_log = var_name in ('rho', 'prs')
         is_vel = var_name in ('vx1','vx2')
         
-        vars_data = np.log10(pdata.vars[var_name].T) if is_log else pdata.vars[var_name].T
+        vars_data = np.log10(sdata.get_vars(pdata.d_file)[var_name].T) if is_log else sdata.get_vars(pdata.d_file)[var_name].T
         v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
         # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
         #                                   vmin=-5000, vmax=5000.0, base=10)
@@ -280,8 +270,8 @@ def pcmesh_2d(sdata,pdata = None, **kwargs):
         if i % 2 == 0:  # Even index vars on right
             #,vmin = -5000, vmax = 5000
             im = ax.pcolormesh(
-                pdata.vars[sdata.var_choice[0]], 
-                pdata.vars[sdata.var_choice[1]], 
+                sdata.get_vars(pdata.d_file)[sdata.var_choice[0]], 
+                sdata.get_vars(pdata.d_file)[sdata.var_choice[1]], 
                 vars_data, 
                 cmap=extras["c_maps"][i],
                 # norm = norm
@@ -290,8 +280,8 @@ def pcmesh_2d(sdata,pdata = None, **kwargs):
                 )
         else:           # Odd index vars on left (flipped)
             im = ax.pcolormesh(
-                -1 * pdata.vars[sdata.var_choice[0]], 
-                pdata.vars[sdata.var_choice[1]], 
+                -1 * sdata.get_vars(pdata.d_file)[sdata.var_choice[0]], 
+                sdata.get_vars(pdata.d_file)[sdata.var_choice[1]], 
                 vars_data, 
                 cmap=extras["c_maps"][i],
                 # norm = norm
@@ -334,21 +324,17 @@ def cmap_base(sdata,pdata = None, **kwargs):
     if pdata.axes is None:
         logging.warning("pdata.axes is None, calling subplot_base to assign")
         pdata.axes, pdata.fig = subplot_base(sdata,**kwargs)
-        for d_file in sdata.d_files:
-            pdata.vars = sdata.get_vars(d_file)
 
     ax = pdata.axes[idx] # sets the axis as an index
 
     #plotting in 3D for Stellar Wind and 3D jet
     if pu.sim_type_match(sdata)["is_stellar_wind"]:
-        pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax)
+        pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax) #TODO check if stellar wind works with nc
 
     if pu.sim_type_match(sdata)["is_jet_3d"]:
         if kwargs.get('arr_type', sdata.arr_type) != "nc":
             # sdata.change_arr_type("nc")
             raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'nc' to plot 3D jet")
-
-            
         pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax,value=value,idx=slice_idx)
 
     # used for plotting jet,
@@ -359,8 +345,8 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     """
     Generates titles, x/y labels for given plot/s 
     * Note needs to be looped over d_files and var_name for all info to be loaded (see plot_sim)
-
     """
+    
     if pdata is None:
         pdata = PlotData(**kwargs)
 
@@ -370,8 +356,6 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     if pdata.axes is None:
         logging.warning("pdata.axes is None, calling subplot_base to assign")
         pdata.axes, pdata.fig = subplot_base(sdata,**kwargs)
-        for d_file in sdata.d_files:
-            pdata.vars = sdata.get_vars(d_file)
 
     xy_labels = extras_data["xy_labels"]
     title = extras_data["title_other"][0]
@@ -459,15 +443,14 @@ def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
     sdata.arr_type = kwargs.get('arr_type', sdata.arr_type)
     sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
 
-    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+    sel_d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-    pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs)
+    pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=sel_d_files,**kwargs)
 
     # Jet only needs to iterate over d_file
     if pu.sim_type_match(sdata)["is_jet_2d"]:
-        for idx, d_file in enumerate(pdata.d_files):  # Loop over each data file
+        for idx, d_file in enumerate(sel_d_files):  # Loop over each data file
             pdata.d_file = d_file
-            pdata.vars = sdata.get_vars(d_file)
 
             plot_label(sdata,pdata,idx)
             cmap_base(sdata = sdata,ax_idx = idx,pdata = pdata) #puts current plot axis into camp_base
@@ -479,9 +462,8 @@ def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
         plot_vars = sdata.var_choice[2:]
         plot_idx = 0 #only way to index plot per var 
 
-        for d_file in pdata.d_files:
+        for d_file in sel_d_files:
             pdata.d_file = d_file
-            pdata.vars = sdata.get_vars(d_file)
             for var_name in plot_vars:
                 if plot_idx >= len(pdata.axes):
                     break
@@ -510,14 +492,12 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
     # sdata = pl.SimulationData(sim_type=sdata.sim_type,run_name=sdata.run_name,profile_choice="all",subdir_name=sdata.subdir_name)
     sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
 
-    pdata.d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
+    sel_d_files = sdata.d_files if sel_d_files is None else sel_d_files #load all or specific d_file
 
-    axes, fig = subplot_base(sdata,pdata,d_files=pdata.d_files,**kwargs) #,d_files=pdata.d_files
+    axes, fig = subplot_base(sdata,pdata,d_files=sel_d_files,**kwargs)
     plot_idx = 0  # Keep track of which subplot index we are using
 
-    for d_file in pdata.d_files: # plot across all files
-        # pdata.vars = sdata.get_all_vars(d_file) NOTE was get_all_vars
-        pdata.vars = sdata.get_vars(d_file)
+    for d_file in sel_d_files: # plot across all files
         extras_data = plot_extras(sdata,pdata)
         xy_labels = extras_data["xy_labels"]
         title = extras_data["title_other"][0]
@@ -525,11 +505,8 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         var_units = extras_data["var_units"]
         var_label = extras_data["var_label"]
 
-        var_array = pdata.vars[sel_var]
-        coord_array = pdata.vars[sel_coord]
-
-        pdata.sel_coord = sel_coord
-        pdata.sel_var = sel_var
+        var_array = sdata.get_vars(pdata.d_file)[sel_var]
+        coord_array = sdata.get_vars(pdata.d_file)[sel_coord]
 
         calc_prof_data = pa.calc_var_prof(sdata,sel_coord,**kwargs)
 
@@ -539,9 +516,6 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
 
         coord_label = sdata.get_var_info(sel_coord)["coord_name"]
         coord_units = sdata.get_var_info(sel_coord)["usr_uv"]
-        # var_label = sdata.get_var_info(sel_var)["var_name"]
-        # var_units = (sdata.get_var_info(sel_var)["usr_uv"]).to_string('latex')
-
 
         title_str = f"{sdata.sim_type} {var_label}"
         ax = axes[plot_idx]
