@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2025-09-29
+
+### 🚀 Features
+
+
+- *(analysis.py)* added `plot_jet_angle_particles()` to plot and quantify bending angle of jets using a binned mean method
+
+uses the helper functions `binned_mean_tracer_mask()` and `jet_angle_particles()`
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Performance
+
+
+- *(load.py)* replaced `get_all_vars()` with `get_grid_vars()`
+
+It was not necessary to get all vars, more often than not you just need "grid" (x1,x2,x3) and two other vars e.g. (rho,prs)
+
+
+### Refactoring
+
+
+- *(plot.py)* cleaned up mentions of `pdata.vars` and `pdata.d_files`
+
+replaced with `SimulationData.get_vars(pdata.d_file)`,`SimulationData.d_files` -> vars at current d_file and d_files list
+
 ## [0.7.2] - 2025-09-02
 
 ### 🐛 Bug Fixes
