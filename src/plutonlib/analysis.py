@@ -14,6 +14,8 @@ from IPython.display import display, Latex
 import inspect
 
 
+
+
 def find_nearest(array, value):
     """Find closes value in array"""
     array = np.asarray(array)
@@ -633,7 +635,7 @@ def calc_radial_vel(sdata,plot = 0):
 
     v_r = []
 
-    all_vars = sdata.get_all_vars()
+    all_vars = sdata.get_grid_data()
 
     if sdata.sim_type == "Jet": #Jet radius is just Z coord?
         r = all_vars["x2"]
@@ -740,3 +742,173 @@ def EOS(rho=None,prs=None,T=None,mu = 0.60364,prnt = 1):
         rho_prnt = f"Density = {rho:.2e} kgm^-3"
         return rho if not prnt else rho_prnt
 
+#---Jet angle---#
+def binned_mean_tracer_mask(bin_size,x,y,tr_array,tr_cut=None,side=None,**kwargs):
+    x_mean = []
+    y_mean = []
+    empty_arr = True
+    start_bin = kwargs.get("start_bin") if 'start_bin' in kwargs else 1
+    bin_counter = 0 
+    for i in range(0,len(x),bin_size):
+        x_slice = x[i:i+bin_size]
+        y_slice = y[i:i+bin_size]
+        tr_slice = tr_array[i:i+bin_size]
+
+        #simple mask
+        if side == "top":
+            mask = (
+                (y_slice >= 0) &
+                (tr_slice > tr_cut)
+            )
+        elif side == "bot":
+            mask = (
+                (y_slice <= 0) &
+                (tr_slice > tr_cut) 
+            )
+
+        else:
+            raise ValueError("side must be 'top' or 'bot'")
+        
+        x_cut = x[i:i+bin_size][mask]
+        y_cut = y[i:i+bin_size][mask]
+
+        if len(y_cut) == 0:
+            continue
+
+        x_next_mean = np.mean(x_cut)
+        y_next_mean = np.mean(y_cut)
+
+        if bin_counter < start_bin:
+            # always include the first few bins
+            x_mean.append(x_next_mean)
+            y_mean.append(y_next_mean)
+            bin_counter += 1
+            continue        
+
+        last_y = y_mean[-1]
+
+        #find values within 5% of the previous value or reject, y value cant be smaller
+        if side == "top":
+            if (y_next_mean >= last_y) or (abs(y_next_mean - last_y) <= last_y * 0.01):
+                x_mean.append(x_next_mean)
+                y_mean.append(y_next_mean)
+
+        elif side == "bot":
+            if (y_next_mean <= last_y) or (abs(y_next_mean - last_y) <= abs(last_y) * 0.01):
+                x_mean.append(x_next_mean)
+                y_mean.append(y_next_mean)
+
+        bin_counter += 1
+
+    return x_mean,y_mean 
+
+def jet_angle_particles(sdata,load_outputs,tr_cut = None,bin_size =100,**kwargs):
+    jet_angle = []
+    angles_top, angles_bot = [],[]
+    sdata.load_particles(load_outputs)
+    part_output = sdata.particle_data
+    part_files = sdata.particle_files
+
+    for part_file in part_files:
+        particle_data = part_output[part_file]
+        x_bmt, y_bmt = binned_mean_tracer_mask(bin_size,particle_data["x1"],particle_data["x3"],particle_data["tracer"],side = "top",tr_cut=tr_cut,**kwargs)
+        x_bmb, y_bmb = binned_mean_tracer_mask(bin_size,particle_data["x1"],particle_data["x3"],particle_data["tracer"],side = "bot",tr_cut=tr_cut,**kwargs)
+        slope_top = stats.linregress(x_bmt,y_bmt).slope
+        slope_bot = stats.linregress(x_bmb,y_bmb).slope
+
+        angle_top = np.abs(np.rad2deg(np.atan(slope_top)))
+        angle_bot = np.abs(np.rad2deg(np.atan(slope_bot)))
+
+        # print("Angle of top lobe WRT horizontal:",f"{angle_top:.2f} deg")
+        # print("Angle of bottom lobe WRT horizontal:",f"{angle_bot:.2f} deg")
+
+        angles_top.append(angle_top)
+        angles_bot.append(angle_bot)
+        jet_angle.append(angle_top+angle_bot)
+        # print("Angle of jet:",f"{angle_top+angle_bot:.2f} deg")
+        print("Top angle:",f"{angle_top:.2f}","Bottom angle:",f"{angle_bot:.2f}")
+
+        mask_vars = ["x1", "x2", "x3","tracer"]
+        for mask_var in mask_vars:
+            tracer_mask = particle_data["tracer"] > tr_cut # change to tr_cut to actually represent
+
+            particle_data[mask_var] = particle_data[mask_var][tracer_mask]
+
+
+    returns = {
+        "part_output":part_output,"part_files":part_files,"angles_top":angles_top,"angles_bot":angles_bot,"jet_angle":jet_angle,"tr_cut":tr_cut
+    }
+    return returns
+
+def plot_jet_angle_particles(sdata,outputs,tr_cut,bin_size=100,show_means=True,**kwargs):
+    jet_angle_data = jet_angle_particles(sdata,outputs,tr_cut=tr_cut,**kwargs) #smaller cuttoff  is better for later data 
+    part_files = jet_angle_data["part_files"]
+    part_output = jet_angle_data["part_output"]
+    jet_angles = jet_angle_data["jet_angle"]
+
+    pdata = pp.PlotData(**kwargs)
+    pdata.axes,pdata.fig = pp.subplot_base(sdata,fig_resize = 5)
+
+    for ax, part_file,angle in zip(pdata.axes, part_files,jet_angles):
+        data = part_output[part_file]
+
+        # # scatter plot using pre masked data
+        im = ax.scatter(
+            data["x1"], data["x3"],
+            c=data["tracer"],
+            s=2.5
+        )
+
+        ax.text(
+                0.05, 0.98, f"Angle ={angle:.2f}°",
+                transform=ax.transAxes,   # relative to axis (0–1 coords)
+                fontsize=8,
+                verticalalignment="top",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
+        
+        # median points and regression of median points
+        x_bmt, y_bmt = binned_mean_tracer_mask(bin_size,data["x1"],data["x3"],data["tracer"],side = "top",tr_cut=tr_cut,**kwargs)
+        x_bmb, y_bmb = binned_mean_tracer_mask(bin_size,data["x1"],data["x3"],data["tracer"],side = "bot",tr_cut=tr_cut,**kwargs)
+        
+        z1 = np.polyfit(x_bmt, y_bmt, 1)
+        p1 = np.poly1d(z1)
+        ax.plot(x_bmt, p1(x_bmt), "r--")
+
+        z2 = np.polyfit(x_bmb, y_bmb, 1)
+        p2 = np.poly1d(z2)
+        ax.plot(x_bmb, p2(x_bmb), "r--")
+
+        #additional scatter of means
+        if show_means:
+            ax.scatter(x_bmt, y_bmt, color="r", s=2.5) 
+            ax.scatter(x_bmb, y_bmb, color="r", s=2.5)
+
+        #title etc
+        ax.set_aspect("equal")
+        ax.set_xlabel("X / kpc")
+        ax.set_ylabel("Z / kpc")
+        ax.set_title(f"{part_file}")
+
+    # plt.tight_layout()
+    pdata.fig.colorbar(im, ax=pdata.axes, label="log10(density)")#,fraction = 0.05)
+    plt.show()
+
+def plot_jet_angle_tprog(sdata,outputs,tr_cut):
+    jet_angle_data = jet_angle_particles(sdata,outputs,tr_cut=tr_cut) #smaller cuttoff  is better for later data 
+    part_files = jet_angle_data["part_files"]
+    part_output = jet_angle_data["part_output"]
+    jet_angles = jet_angle_data["jet_angle"]
+
+    times = []
+    for output in outputs:
+        times.append(output / 10)
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(times, jet_angles)
+    eqn = f'$\\text{{slope}} = {{{slope:.2f}}} \\pm {std_err:.2f}\\;\\;[\\mathrm{{deg/Myr}}]$'
+    plt.title("Jet angle vs Time ")
+    plt.ylabel("Angle [deg]")
+    plt.xlabel("Time [Myr]")
+    plt.text(0.05, 0.05, eqn, transform=plt.gca().transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
+
+    plt.plot(times,jet_angles)   
