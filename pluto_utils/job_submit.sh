@@ -7,6 +7,6 @@
 cd $PBS_O_WORKDIR
 
 module load HDF5 OpenMPI/4.1.5-GCC-12.3.0-pbs
-# mpirun -mca io ^ompio ./pluto -i $ini_file -maxtime 47.5
+# mpirun -mca io ^ompio ./pluto -i $ini_dir -maxtime 47.5 -h5restart 
 mpirun -mca io ^ompio ./pluto -i $ini_dir -maxtime 47.5
 

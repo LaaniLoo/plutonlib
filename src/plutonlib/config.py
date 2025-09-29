@@ -62,6 +62,7 @@ def profiles(arr_type=None):
 
         "grid_time": [x,y,z,"sim_time"],
         "grid_tracer": [x,y,z,"tr1"],
+        "grid": [x,y,z],
 
         "xy_rho_prs": [x, y, "rho", "prs"],
         "xz_rho_prs": [x, z, "rho", "prs"],
@@ -127,7 +128,6 @@ def pluto_ini_info(sim_dir):
     job_dir_files = glob.glob(f"{job_info_dir}/*.ini") #gets all ini files in job_info_dir 
     latest_ini = max(job_dir_files,key=os.path.getctime)
     ini_name = latest_ini.split("/")[-1]
-    print("\n",f"Displaying latest .ini ({ini_name})...")
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(latest_ini)
@@ -136,14 +136,14 @@ def pluto_ini_info(sim_dir):
     raw_usr_params = config.options("Parameters")
 
     usr_params = {
-        k: v.split(";",1)[0].strip()
+        k: float(v.split(";",1)[0].strip())
         for line in raw_usr_params if " " in line
         for k,v in [line.split(None,1)]
     }
 
     key_params = {key: usr_params[key] for key in ['jet_pwr','jet_spd','jet_chi','env_rho_0','env_temp','wind_vx1','wind_vx2','wind_vx3']}
 
-    returns = {"grid_setup": grid_setup,"usr_params":usr_params,"key_params":key_params}
+    returns = {"grid_setup": grid_setup,"usr_params":usr_params,"key_params":key_params,"ini_name":ini_name}
 
     return returns
 

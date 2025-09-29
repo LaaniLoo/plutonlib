@@ -12,10 +12,11 @@ show_help() {
     echo "-c = cluster, submits job to cluster to run pluto"
     echo "-i = ini_file, changes ini_file from $ini_file"
     echo "-r = run_dir, changes run_dir from $run_dir"
+    echo "-n = ncores, number of mpi cpu cores to run with, defaults to $ncores"
 }
 
 #script options
-while getopts "hci:r:" opt; do
+while getopts "hci:r:n:" opt; do
     case $opt in 
         h) show_help
             exit 0
@@ -25,6 +26,8 @@ while getopts "hci:r:" opt; do
         i) ini_file="$OPTARG"
             ;;
         r) run_dir="$save_dir/$OPTARG"
+            ;;
+        n) ncores="$OPTARG"
             ;;
         *) echo "Usage: $0" 
             show_help
@@ -63,6 +66,21 @@ echo "Saving $ini_file to $job_info_dir"
 mv "$save_dir"/$ini_file "$job_info_dir"
 
 #--Functions--#
+check_log() { 
+    printf "\n"
+    read -p "Check pluto log? [y/n]: " check_log
+    if [[ "$check_log" == "y" ]]; then
+        log_file="$log_dir/pluto.1.log"
+        echo "Waiting for log file..."
+        while [ ! -f "$log_file" ]; do 
+            sleep 5
+        done
+        sleep 2
+        # Show first 200 lines, then a blank line, then follow
+        ( head -n 200 "$log_file"; printf "\n"; tail -f "$log_file" )
+    fi
+}
+
 
 pluto_local() {
     printf "\n"
@@ -75,15 +93,16 @@ pluto_local() {
     trap "printf '\nStopping PLUTO...\n'; kill -INT $pluto_pid 2>/dev/null" INT
     sleep 1
 
-    printf "\n"
-    read -p "Check pluto log? [y/n]:" check_log
-    if [[ "$check_log" == "y" ]]; then
-        log_file="$log_dir/pluto.1.log"
-        echo "Waiting for log file..."
-        while [ ! -f "$log_file" ]; do sleep 5; done
-        sleep 2
-        less "$log_file"
-    fi
+    # printf "\n"
+    # read -p "Check pluto log? [y/n]:" check_log
+    # if [[ "$check_log" == "y" ]]; then
+    #     log_file="$log_dir/pluto.1.log"
+    #     echo "Waiting for log file..."
+    #     while [ ! -f "$log_file" ]; do sleep 5; done
+    #     sleep 2
+    #     less "$log_file"
+    # fi
+    check_log
 
     printf "\n"
     echo "PLUTO running with PID $pluto_pid (Ctrl+C to stop)"
@@ -101,15 +120,16 @@ pluto_cluster() {
 
     sleep 5 
 
-    printf "\n"
-    read -p "Check pluto log? [y/n]:" check_log
-    if [[ "$check_log" == "y" ]]; then
-        log_file="$log_dir/pluto.1.log"
-        echo "Waiting for log file..."
-        while [ ! -f "$log_file" ]; do sleep 5; done
-        sleep 5
-        less "$log_file"
-    fi
+    # printf "\n"
+    # read -p "Check pluto log? [y/n]:" check_log
+    # if [[ "$check_log" == "y" ]]; then
+    #     log_file="$log_dir/pluto.1.log"
+    #     echo "Waiting for log file..."
+    #     while [ ! -f "$log_file" ]; do sleep 5; done
+    #     sleep 5
+    #     less "$log_file"
+    # fi
+    check_log
 }
 
 #-----#
