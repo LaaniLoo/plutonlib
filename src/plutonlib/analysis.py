@@ -1,6 +1,7 @@
 import plutonlib.utils as pu
 import plutonlib.config as pc
 import plutonlib.load as pl
+import plutonlib.simulations as ps
 import plutonlib.plot as pp
 from plutonlib.colours import pcolours 
 
@@ -22,70 +23,128 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return {"idx":idx, "value": array[idx]}
 
-def calc_var_prof(sdata,sel_coord,**kwargs):
-    """
-    automatically calculates the required array slice for an array of >=2 dimensions
-    """
+def calc_var_prof(sdata,sel_coord,ndim = 3,**kwargs):
     loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
     arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file',sdata.ini_file)
+    ini_file = kwargs.get('ini_file', sdata.ini_file)
+    ndim = ndim #TODO replace this with a try except loop
 
-    ndim = sdata.grid_ndim
-    target = kwargs['value'] if 'value' in kwargs and kwargs['value'] is not None else 0
+    # --- Determine whether to use find_nearest or grid midpoints ---
+    use_find_nearest = (
+        ('value' in kwargs and kwargs['value'] is not None)
+        or ('idx' in kwargs and kwargs['idx'] is not None)
+    )
 
-    value_slice_map = { #slices for when using find_nearest 
-        "x1": (slice(None),0,0),
-        "x2": (0,slice(None),0),
-        "x3": (0,0,slice(None)),
-    }
+    if not use_find_nearest: #using ini grid values
+        x_mid = sdata.grid_setup["x1-grid"]["origin_idx"]
+        y_mid = sdata.grid_setup["x2-grid"]["origin_idx"] if ndim > 1 else None
+        z_mid = sdata.grid_setup["x3-grid"]["origin_idx"] if ndim > 2 else None
 
-    coords_1D = {
-        coord: (
-            sdata.get_coords()[coord][value_slice_map[coord]] if arr_type in ('nc','cc') else sdata.get_coords()[coord]
-        )
-        for coord in ["x1", "x2", "x3"]
-    }
 
-    if 'idx' in kwargs: #TODO needs fixing only works for 1d case
-        idx = kwargs['idx']
+    elif use_find_nearest: #using value/idx kwargs
 
-    else: # 
-        idx = find_nearest(coords_1D[sel_coord],target)['idx']
+        target = kwargs['value'] if 'value' in kwargs and kwargs['value'] is not None else 0
 
-    if ndim >2:
-        x_mid = find_nearest(coords_1D['x1'],target)['idx'] #to find nearest idx to 0 or specified value 
-        y_mid = find_nearest(coords_1D['x2'],target)['idx'] 
-        z_mid = find_nearest(coords_1D['x3'],target)['idx'] 
-                
-        slice_map_1D = { #slices in shape of coord
+        if 'idx' in kwargs:
+            idx = kwargs['idx']
+        else:
+            # 1D slices for coordinate lookup
+            value_slice_map = {
+                "x1": (slice(None), 0, 0),
+                "x2": (0, slice(None), 0),
+                "x3": (0, 0, slice(None)),
+            }
+
+            coords_1D = {
+                coord: (
+                    sdata.get_coords()[coord][value_slice_map[coord]]
+                    if arr_type in ('nc', 'cc')
+                    else sdata.get_coords()[coord]
+                )
+                for coord in ["x1", "x2", "x3"]
+            }
+
+            idx = find_nearest(coords_1D[sel_coord], target)['idx']
+
+        # nearest indices for each axis
+        x_mid = find_nearest(coords_1D['x1'], target)['idx']
+        y_mid = find_nearest(coords_1D['x2'], target)['idx'] if ndim > 1 else None
+        z_mid = find_nearest(coords_1D['x3'], target)['idx'] if ndim > 2 else None
+
+    # --- Define slicing maps ---
+    if ndim > 2:
+        slice_map_1D = {
             "x1": (slice(None), y_mid, z_mid),
             "x2": (x_mid, slice(None), z_mid),
-            "x3": (x_mid, y_mid, slice(None))
+            "x3": (x_mid, y_mid, slice(None)),
         }
 
-        slice_map_2D = { #slices in shape of coord
+        slice_map_2D = {
             "x1": (x_mid, slice(None), slice(None)),
             "x2": (slice(None), y_mid, slice(None)),
-            "x3": (slice(None), slice(None), z_mid)
-        } 
-
-    else:
-        slice_map_1D = { #slices in shape of coord
-            "x1": (slice(None), idx),
-            "x2": (idx, slice(None)),
+            "x3": (slice(None), slice(None), z_mid),
         }
 
-    slice_1D = slice_map_1D[sel_coord]
-    slice_2D = slice_map_2D[sel_coord] if ndim >2 else None
-    coord_sliced = sdata.get_coords()[sel_coord][slice_1D][idx] if arr_type in ('nc','cc') else sdata.get_coords()[sel_coord][idx]
-    # coord_sliced = sdata.get_coords()[sel_coord][idx] if ndim <=2 else sdata.get_coords()[sel_coord][slice_1D][idx]
+    else:
+        slice_map_1D = {
+            "x1": (slice(None), y_mid),
+            "x2": (x_mid, slice(None)),
+        }
+        slice_map_2D = None
 
-    returns = {
+    slice_1D = slice_map_1D[sel_coord]
+    slice_2D = slice_map_2D[sel_coord] if ndim > 2 else None
+
+    coord_sliced = None
+    if use_find_nearest:
+        if arr_type in ('nc', 'cc'):
+            coord_sliced = sdata.get_coords()[sel_coord][slice_1D][idx]
+        else:
+            coord_sliced = sdata.get_coords()[sel_coord][idx]
+
+    return {
         "slice_1D": slice_1D,
         "slice_2D": slice_2D,
         "coord_sliced": coord_sliced,
     }
-    return returns
+
+#---Plot Grid structure---#
+def plot_xz_grid_structure(sdata,pdata=None, d_file=None, n_lines=10, **kwargs):
+    """
+    Visualize the stretched grid structure in XZ plane
+    """
+    if sdata.load_slice is None or sdata.slice_shape == "slice_1D":
+        raise ValueError(f"SimulationData load_slice is None or 1D ({sdata.load_slice}), use a 2D slice to plot")
+    
+    if pdata is None:
+        pdata = pp.PlotData()
+
+    if d_file is None:
+        d_file = sdata.d_files[0]
+    
+    # Get coordinate arrays using get_grid_data()
+    x1 = sdata.get_grid_data(d_file)["x1"]  # X coordinates
+    x2 = sdata.get_grid_data(d_file)["x2"]  # Y coordinates  
+    x3 = sdata.get_grid_data(d_file)["x3"]  # Z coordinates
+    
+    pdata.fig, pdata.axes = plt.subplots(1, 1, figsize=(5, 5))
+    # XZ plane view - take middle y-plane
+    y_slice = x1.shape[1] // 2  # Middle y-plane
+    
+    # Plot x-grid lines (constant x1)
+    for i in range(0, x1.shape[0], max(1, x1.shape[0] // n_lines)):
+        pdata.axes.plot(x1[i, :], x3[i, :], 'k-', alpha=0.6, linewidth=0.8)
+
+    # Plot z-grid lines (constant x3)
+    for k in range(0, x1.shape[1], max(1, x1.shape[1] // n_lines)):
+        pdata.axes.plot(x1[:, k], x3[:, k], 'k-', alpha=0.6, linewidth=0.8)
+
+    pp.plot_label(sdata,pdata,idx=0,no_title = True)
+    pdata.axes.set_title(f'{sdata.run_name} XZ Grid Structure')
+    pdata.axes.set_aspect("auto")
+    pdata.axes.grid(True, alpha=0.3)
+    
+    pp.plot_save(sdata,pdata,**kwargs)
 
 #---Peak Finding---#
 def peak_findr(sel_coord,sel_var,sdata,**kwargs):
@@ -97,7 +156,7 @@ def peak_findr(sel_coord,sel_var,sdata,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -136,7 +195,7 @@ def graph_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO Put in peak findr
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -184,7 +243,7 @@ def all_graph_peaks(sel_coord,sel_var,sdata,**kwargs): #NOTE used for plotting s
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -248,7 +307,7 @@ def plot_peaks(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stelar 
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -301,7 +360,7 @@ def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stela
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -360,7 +419,7 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -455,7 +514,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -506,7 +565,7 @@ def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -575,7 +634,7 @@ def calc_radius(sdata,plot =0,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -673,7 +732,7 @@ def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file',sdata.ini_file)
 
-    sdata = pl.SimulationData(
+    sdata = ps.SimulationData(
         sim_type=sdata.sim_type,
         run_name=sdata.run_name,
         profile_choice="all",
@@ -743,66 +802,122 @@ def EOS(rho=None,prs=None,T=None,mu = 0.60364,prnt = 1):
         return rho if not prnt else rho_prnt
 
 #---Jet angle---#
-def binned_mean_tracer_mask(bin_size,x,y,tr_array,tr_cut=None,side=None,**kwargs):
-    x_mean = []
-    y_mean = []
-    empty_arr = True
-    start_bin = kwargs.get("start_bin") if 'start_bin' in kwargs else 1
-    bin_counter = 0 
-    for i in range(0,len(x),bin_size):
+def binned_mean_tracer_mask(bin_size, x, y, tr_array, tr_cut=None, side=None, **kwargs):
+    """
+    Calculates a mean value of x/y across some number of bins for a given tracer cutoff.
+    """
+    x_mean = [0]
+    y_mean = [0]
+    bin_counter = 0
+
+    for i in range(0, len(x), bin_size):
         x_slice = x[i:i+bin_size]
         y_slice = y[i:i+bin_size]
         tr_slice = tr_array[i:i+bin_size]
 
-        #simple mask
+        # simple mask
         if side == "top":
             mask = (
-                (y_slice >= 0) &
-                (tr_slice > tr_cut)
+                (y_slice > 0) &
+                (tr_slice >= tr_cut)
             )
         elif side == "bot":
             mask = (
-                (y_slice <= 0) &
-                (tr_slice > tr_cut) 
+                (y_slice < 0) &
+                (tr_slice >= tr_cut)
             )
-
         else:
             raise ValueError("side must be 'top' or 'bot'")
-        
-        x_cut = x[i:i+bin_size][mask]
-        y_cut = y[i:i+bin_size][mask]
+
+        x_cut = x_slice[mask]
+        y_cut = y_slice[mask]
 
         if len(y_cut) == 0:
             continue
 
         x_next_mean = np.mean(x_cut)
         y_next_mean = np.mean(y_cut)
+  
+        last_y = y_mean[-1]
+        last_x = x_mean[-1]
 
-        if bin_counter < start_bin:
-            # always include the first few bins
+
+        if (np.abs(y_next_mean) / np.abs(last_y) > 0.95):
+        # if x_next_mean/last_x > 0.33:
             x_mean.append(x_next_mean)
             y_mean.append(y_next_mean)
-            bin_counter += 1
-            continue        
 
-        last_y = y_mean[-1]
-
-        #find values within 5% of the previous value or reject, y value cant be smaller
-        if side == "top":
-            if (y_next_mean >= last_y) or (abs(y_next_mean - last_y) <= last_y * 0.01):
-                x_mean.append(x_next_mean)
-                y_mean.append(y_next_mean)
-
-        elif side == "bot":
-            if (y_next_mean <= last_y) or (abs(y_next_mean - last_y) <= abs(last_y) * 0.01):
-                x_mean.append(x_next_mean)
-                y_mean.append(y_next_mean)
 
         bin_counter += 1
 
-    return x_mean,y_mean 
+    return x_mean, y_mean
 
-def jet_angle_particles(sdata,load_outputs,tr_cut = None,bin_size =100,**kwargs):
+def dx_mean_tracer_mask(nslices,x, y, tr_array, tr_cut=None, side=None, **kwargs):
+    """
+    Calculates a mean value of x/y across some number of bins for a given tracer cutoff.
+    """
+    x_mean = [0]
+    y_mean = [0]
+
+    grid_slices = np.linspace(0,x[-1],nslices)
+    for grid_start in grid_slices:
+        dx = grid_slices[1] - grid_slices[0]
+
+        # simple mask
+        if side == "top":
+            mask = (
+                (y >= 0) &
+                (tr_array >= tr_cut) &
+                (x >= grid_start) &
+                (x <= grid_start + dx)
+            )
+        elif side == "bot":
+            mask = (
+                (y <= 0) &
+                (tr_array >= tr_cut) &
+                (x >= grid_start) &
+                (x <= grid_start + dx)
+            )
+        else:
+            raise ValueError("side must be 'top' or 'bot'")
+
+        x_cut = x[mask]
+        y_cut = y[mask]
+
+        if len(y_cut) == 0:
+            continue
+
+        # y_next_mean = np.max(y_cut) if side == "top" else np.min(y_cut)
+        if side == "top":
+            x_next_mean = np.mean(x_cut)
+            # y_next_mean = np.percentile(y_cut,80)
+            y_next_mean = np.max(y_cut)
+            
+        if side == "bot":
+            x_next_mean = np.mean(x_cut)
+            y_next_mean = np.min(y_cut)
+
+            # y_next_mean = np.percentile(y_cut,20)
+
+        if len(x_mean) > 0:
+            last_y = y_mean[-1]
+            last_x = x_mean[-1]
+
+            x_mean.append(x_next_mean)
+            y_mean.append(y_next_mean)
+
+        else:
+            # First valid data point
+            x_mean.append(x_next_mean)
+            y_mean.append(y_next_mean)
+
+
+    return x_mean, y_mean
+
+def jet_angle_linegress(sdata,load_outputs,bin_size,tr_cut = None,**kwargs):
+    """
+    Calculates the jet angle from the binned mean tracer cutoff using a linear regression
+    """
     jet_angle = []
     angles_top, angles_bot = [],[]
     sdata.load_particles(load_outputs)
@@ -840,8 +955,124 @@ def jet_angle_particles(sdata,load_outputs,tr_cut = None,bin_size =100,**kwargs)
     }
     return returns
 
-def plot_jet_angle_particles(sdata,outputs,tr_cut,bin_size=100,show_means=True,**kwargs):
-    jet_angle_data = jet_angle_particles(sdata,outputs,tr_cut=tr_cut,**kwargs) #smaller cuttoff  is better for later data 
+def jet_angle_vector_old(sdata,load_outputs,nslices,tr_cut = None,**kwargs):
+    """
+    Calculates the jet angle from the binned mean tracer cutoff using a linear regression
+    """
+    jet_angle = []
+    angles_top, angles_bot = [],[]
+    sdata.load_particles(load_outputs)
+    part_output = sdata.particle_data
+    part_files = sdata.particle_files
+
+    for part_file in part_files:
+        particle_data = part_output[part_file]
+        x_bmt, y_bmt = dx_mean_tracer_mask(nslices=nslices,x=particle_data["x1"],y=particle_data["x3"],tr_array=particle_data["tracer"],side = "top",tr_cut=tr_cut,**kwargs)
+        x_bmb, y_bmb = dx_mean_tracer_mask(nslices=nslices,x=particle_data["x1"],y=particle_data["x3"],tr_array=particle_data["tracer"],side = "bot",tr_cut=tr_cut,**kwargs)
+
+        A = np.array([x_bmt, y_bmt]) 
+        B = np.array([x_bmb, y_bmb]) 
+
+        # min_len = min(A.shape[1], B.shape[1])
+        # A_trim = A[:, :min_len]  # shape (2, min_len)
+        # B_trim = B[:, :min_len]
+
+        y_max_idx_A = np.argmax(A[1,:])
+        y_min_idx_B = np.argmin(B[1,:])
+
+        start_A = A[:,0]
+        start_B = B[:,0]
+        end_A = A[:,y_max_idx_A]
+        end_B = B[:,y_min_idx_B]
+
+        vec_A = end_A - start_A
+        vec_B = end_B - start_B
+
+        # Dot product & angle
+        dot_product = np.dot(vec_A, vec_B)
+        magnitude_A = np.linalg.norm(vec_A)
+        magnitude_B = np.linalg.norm(vec_B)
+        angle_radians = np.arccos(dot_product / (magnitude_A * magnitude_B))
+        angle_degrees = np.degrees(angle_radians)
+        jet_angle.append(angle_degrees)
+        # print(f"Angle between top and bottom curves: {angle_degrees:.2f} degrees")
+
+
+        mask_vars = ["x1", "x2", "x3","tracer"]
+        for mask_var in mask_vars:
+            tracer_mask = particle_data["tracer"] > tr_cut # change to tr_cut to actually represent
+
+            particle_data[mask_var] = particle_data[mask_var][tracer_mask]
+
+
+    returns = {
+        "part_output":part_output,"part_files":part_files,"jet_angle":jet_angle,"tr_cut":tr_cut
+    }
+    return returns
+
+def jet_angle_vector(sdata,load_outputs,nslices,tr_cut = None,**kwargs):
+    """
+    Calculates the jet angle from the binned mean tracer cutoff using a linear regression
+    """
+    jet_angle = []
+    angles_top, angles_bot = [],[]
+    sdata.load_particles(load_outputs)
+    part_output = sdata.particle_data
+    part_files = sdata.particle_files
+
+    for part_file in part_files:
+        particle_data = part_output[part_file]
+        x_bmt, y_bmt = dx_mean_tracer_mask(nslices=nslices,x=particle_data["x1"],y=particle_data["x3"],tr_array=particle_data["tracer"],side = "top",tr_cut=tr_cut,**kwargs)
+        x_bmb, y_bmb = dx_mean_tracer_mask(nslices=nslices,x=particle_data["x1"],y=particle_data["x3"],tr_array=particle_data["tracer"],side = "bot",tr_cut=tr_cut,**kwargs)
+
+        A = np.array([x_bmt, y_bmt]) 
+        B = np.array([x_bmb, y_bmb]) 
+
+        # min_len = min(A.shape[1], B.shape[1])
+        # A_trim = A[:, :min_len]  # shape (2, min_len)
+        # B_trim = B[:, :min_len]
+
+        y_max_idx_A = np.argmax(A[1,:])
+        y_min_idx_B = np.argmin(B[1,:])
+
+        # y_max_idx_A = np.argmin(np.abs(A[1,:] - np.median(A[1,:])))
+        # y_min_idx_B = np.argmin(np.abs(B[1,:] - np.median(B[1,:])))
+        start_A = A[:,0]
+        start_B = B[:,0]
+        end_A = A[:,y_max_idx_A]
+        end_B = B[:,y_min_idx_B]
+
+        vec_A = end_A - start_A
+        vec_B = end_B - start_B
+
+        # Dot product & angle
+        dot_product = np.dot(vec_A, vec_B)
+        magnitude_A = np.linalg.norm(vec_A)
+        magnitude_B = np.linalg.norm(vec_B)
+        angle_radians = np.arccos(dot_product / (magnitude_A * magnitude_B))
+        angle_degrees = np.degrees(angle_radians)
+        jet_angle.append(angle_degrees)
+        # print(f"Angle between top and bottom curves: {angle_degrees:.2f} degrees")
+
+
+        mask_vars = ["x1", "x2", "x3","tracer"]
+        for mask_var in mask_vars:
+            tracer_mask = particle_data["tracer"] > tr_cut # change to tr_cut to actually represent
+
+            particle_data[mask_var] = particle_data[mask_var][tracer_mask]
+
+
+    returns = {
+        "part_output":part_output,"part_files":part_files,"jet_angle":jet_angle,"tr_cut":tr_cut
+    }
+    return returns
+
+def plot_jet_angle_particles(sdata,outputs,tr_cut,bin_size,show_means=True,**kwargs):
+    """
+    Plots the jet angle across simulation outputs using the two helper functions:
+    `binned_mean_tracer_mask`, `jet_angle_particles`
+    """
+    jet_angle_data = jet_angle_linegress(sdata,outputs,bin_size=bin_size,tr_cut=tr_cut,**kwargs) #smaller cuttoff  is better for later data 
     part_files = jet_angle_data["part_files"]
     part_output = jet_angle_data["part_output"]
     jet_angles = jet_angle_data["jet_angle"]
@@ -885,17 +1116,88 @@ def plot_jet_angle_particles(sdata,outputs,tr_cut,bin_size=100,show_means=True,*
             ax.scatter(x_bmb, y_bmb, color="r", s=2.5)
 
         #title etc
+        # ax.set_aspect("equal")
+        ax.set_xlabel("X / kpc")
+        ax.set_ylabel("Z / kpc")
+        ax.set_title(f"{part_file}")
+
+    # plt.tight_layout()
+    pdata.fig.colorbar(im, ax=pdata.axes, label="Tracer")#,fraction = 0.05)
+    plt.show()
+
+def plot_jet_angle_particles_vector(sdata,outputs,tr_cut,nslices,show_means=True,**kwargs):
+    jet_angle_data = jet_angle_vector(sdata,outputs,nslices=nslices,tr_cut=tr_cut,**kwargs) #smaller cuttoff  is better for later data 
+    part_files = jet_angle_data["part_files"]
+    part_output = jet_angle_data["part_output"]
+    jet_angles = jet_angle_data["jet_angle"]
+
+    pdata = pp.PlotData(**kwargs)
+    pdata.axes,pdata.fig = pp.subplot_base(sdata,fig_resize = 5)
+
+    for ax, part_file,angle in zip(pdata.axes, part_files,jet_angles):
+        data = part_output[part_file]
+
+        # # scatter plot using pre masked data
+        im = ax.scatter(
+            data["x1"], data["x3"],
+            c=data["tracer"],
+            s=2.5
+        )
+
+        ax.text(
+                0.05, 0.98, f"Angle ={angle:.2f}°",
+                transform=ax.transAxes,   # relative to axis (0–1 coords)
+                fontsize=8,
+                verticalalignment="top",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
+        
+        # median points and regression of median points
+        x_bmt, y_bmt = dx_mean_tracer_mask(nslices=nslices,x=data["x1"],y=data["x3"],tr_array=data["tracer"],side = "top",tr_cut=tr_cut,**kwargs)
+        x_bmb, y_bmb = dx_mean_tracer_mask(nslices=nslices,x=data["x1"],y=data["x3"],tr_array=data["tracer"],side = "bot",tr_cut=tr_cut,**kwargs)
+        
+        A = np.array([x_bmt, y_bmt]) 
+        B = np.array([x_bmb, y_bmb]) 
+
+        y_max_idx_A = np.argmax(A[1,:])
+        y_min_idx_B = np.argmin(B[1,:])
+
+        # y_max_idx_A = np.argmin(np.abs(A[1,:] - np.median(A[1,:])))
+        # y_min_idx_B = np.argmin(np.abs(B[1,:] - np.median(B[1,:])))
+
+        start_A = A[:,0]
+        start_B = B[:,0]
+        end_A = A[:,y_max_idx_A]
+        end_B = B[:,y_min_idx_B]
+        vec_A = end_A - start_A
+        vec_B = end_B - start_B
+
+        origin = A[0]
+        ax.quiver(*start_A, *vec_A, angles='xy', scale_units='xy', scale=1, color="black",width = 1.5e-2)
+        ax.quiver(*start_B, *vec_B, angles='xy', scale_units='xy', scale=1, color="black",width = 1.5e-2)
+
+        #additional scatter of means
+        if show_means:
+            ax.scatter(A[0,:], A[1,:], color="r", s=2.0,alpha = 0.4)
+            ax.scatter(B[0,:], B[1,:], color="r", s=2.0,alpha = 0.4)
+
+        #title etc
         ax.set_aspect("equal")
         ax.set_xlabel("X / kpc")
         ax.set_ylabel("Z / kpc")
         ax.set_title(f"{part_file}")
 
     # plt.tight_layout()
-    pdata.fig.colorbar(im, ax=pdata.axes, label="log10(density)")#,fraction = 0.05)
-    plt.show()
+    pdata.fig.colorbar(im, ax=pdata.axes[-1], label="Tracer",pad = 0.0001)#,fraction = 0.05)
 
-def plot_jet_angle_tprog(sdata,outputs,tr_cut):
-    jet_angle_data = jet_angle_particles(sdata,outputs,tr_cut=tr_cut) #smaller cuttoff  is better for later data 
+    plt.show()
+    pp.plot_save(sdata,pdata,**kwargs) 
+
+def jet_angle_tprog_linegress(sdata,outputs,tr_cut,bin_size):
+    """
+    Plots the calculated jet angle across simulation outputs
+    """
+    jet_angle_data = jet_angle_linegress(sdata,outputs,tr_cut=tr_cut,bin_size=bin_size) #smaller cuttoff  is better for later data 
     part_files = jet_angle_data["part_files"]
     part_output = jet_angle_data["part_output"]
     jet_angles = jet_angle_data["jet_angle"]
@@ -912,3 +1214,25 @@ def plot_jet_angle_tprog(sdata,outputs,tr_cut):
     plt.text(0.05, 0.05, eqn, transform=plt.gca().transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
 
     plt.plot(times,jet_angles)   
+
+def jet_angle_tprog_vector(sdata,outputs,tr_cut,nslices):
+    """
+    Plots the calculated jet angle across simulation outputs
+    """
+    jet_angle_data = jet_angle_vector(sdata,outputs,tr_cut=tr_cut,nslices=nslices) #smaller cuttoff  is better for later data 
+    part_files = jet_angle_data["part_files"]
+    part_output = jet_angle_data["part_output"]
+    jet_angles = jet_angle_data["jet_angle"]
+
+    times = []
+    for output in outputs:
+        times.append(output / 10)
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(times, jet_angles)
+    eqn = f'$\\text{{slope}} = {{{slope:.2f}}} \\pm {std_err:.2f}\\;\\;[\\mathrm{{deg/Myr}}]$'
+    plt.title("Jet angle vs Time ")
+    plt.ylabel("Angle [deg]")
+    plt.xlabel("Time [Myr]")
+    plt.text(0.05, 0.05, eqn, transform=plt.gca().transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
+
+    plt.plot(times,jet_angles) 
