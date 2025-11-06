@@ -13,9 +13,8 @@ import numpy as np
 import configparser
 import glob 
 
-from pathlib import Path 
-import time
-from functools import lru_cache
+from collections import defaultdict
+
 
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
@@ -41,7 +40,23 @@ arr_type_key = {
     "cc": "3D cell midpoint arrays [x, y, z]"
     }
 
-def profiles(arr_type=None):
+patch_type_key = {
+    "u":"uniform",
+    "s":"stretched"
+}
+
+coord_systems = {
+    "CYLINDRICAL": ['r','z','theta'],
+    "CARTESIAN": ['x','y','z'],
+    "SPHERICAL": ['r','theta','phi']  
+}
+
+def profiles(sel_prof=None,arr_type=None):
+    # var_map = {
+    #     'X': x, 'Y': y, 'Z': z,
+    #     'x': x, 'y': y, 'z': z,
+    #     'x1': x, 'x2': y, 'x3': z
+    # }
 
     coord_prefixes = {
         "e":  ["ex",  "ey",  "ez"],
@@ -66,6 +81,7 @@ def profiles(arr_type=None):
 
         "xy_rho_prs": [x, y, "rho", "prs"],
         "xz_rho_prs": [x, z, "rho", "prs"],
+        "xz_tracer":  [x, z, "tr1","rho"],
         "yz_rho_prs": [y, z, "rho", "prs"],
 
         "xy_vel":     [x, y, "vx1", "vx2"],
@@ -73,6 +89,9 @@ def profiles(arr_type=None):
         "yz_vel":     [y, z, "vx2", "vx3"],
     }
     returns = {"profiles":profiles,"coord_prefixes":coord_prefixes}
+    # var_choice = profiles[sel_prof]
+    # returns = {"var_choice":var_choice,"coord_prefixes":coord_prefixes}
+
     return returns
 
 #TODO env_var or config file?
@@ -99,12 +118,6 @@ def get_start_dir(origin_dir,**kwargs):
         warnings.append(f"{pcolours.WARNING}{start_dir} (Missing environment variable PLUTONLIB_START_DIR)")
     return {"start_dir":start_dir,"warnings":warnings}
 
-coord_systems = {
-    "CYLINDRICAL": ['r','z','theta'],
-    "CARTESIAN": ['x','y','z'],
-    "SPHERICAL": ['r','theta','phi']  
-}
-
 # Read norm values from ini file
 def get_ini_file(ini_file = None):
     """
@@ -112,16 +125,32 @@ def get_ini_file(ini_file = None):
     should follow naming convention: name_units.ini 
     """
     if ini_file is None:
-        ini_path = os.path.join(src_path,"pluto_units" + ".ini")
+        ini_path = os.path.join(src_path,"units","pluto_units" + ".ini")
     
     else:
-        ini_path = os.path.join(src_path,ini_file + ".ini")
+        ini_path = os.path.join(src_path,"units",ini_file + ".ini")
     
     is_file = os.path.isfile(ini_path)
     if not is_file:
         raise FileNotFoundError(f"{pcolours.WARNING}{ini_path} Not found")
     
     return ini_path 
+
+def get_grid_dimensions(grid_setup):
+    dim_info = {}
+    
+    for coord in ['x1-grid', 'x2-grid', 'x3-grid']:
+        if coord in grid_setup:
+            total_cells = sum(grid_setup[coord]['patch_cells'])
+            dim_info[coord] = {
+                'total_cells': total_cells,
+                'is_active': total_cells > 1
+            }
+    
+    # Count active dimensions (dimensions with more than 1 cell)
+    active_dims = sum(1 for coord_info in dim_info.values() if coord_info['is_active'])
+     
+    return active_dims
 
 def pluto_ini_info(sim_dir):
     job_info_dir = os.path.join(sim_dir,"job_info")
@@ -132,9 +161,61 @@ def pluto_ini_info(sim_dir):
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(latest_ini)
 
-    grid_setup = config.options("Grid")
-    raw_usr_params = config.options("Parameters")
+    raw_grids = config.options("Grid")
+    grid_setup = defaultdict(dict)
 
+    for grid in raw_grids: #loop across all ini grids
+        grid_raw = grid.split(" ") #raw grid data
+        grid_contents = list(filter(None,grid_raw))
+        grid_coord = grid_contents[0] #current grid coord
+        n_patches = int(grid_contents[1]) #number of grid patches
+        grid_patches = grid_contents[2:] #list of all grid patches
+
+        #idxs for grid patch start and end, there are 4 elements -> Patch Start	| Grid Cells | Patch Type | Patch End
+        patch_start_idx = np.arange(0,len(grid_patches)-3,3) 
+        patch_end_idx = np.arange(4,len(grid_patches)+1,3)
+
+        grid_setup[grid_coord]["n_patches"] = n_patches
+        starts,ends,n_cells,types = [],[],[],[]
+        for i in range(0,n_patches):
+            patch = grid_patches[patch_start_idx[i]:patch_end_idx[i]]
+            starts.append(float(patch[0]))
+            ends.append(float(patch[-1]))
+            n_cells.append(float(patch[1]))
+            types.append(patch_type_key[patch[2]])
+
+        grid_setup[grid_coord]["start"] =  starts
+        grid_setup[grid_coord]["end"] = ends
+        grid_setup[grid_coord]["patch_cells"] = n_cells
+        # grid_setup[grid_coord]["n_cells"] = sum(n_cells)
+        grid_setup[grid_coord]["type"] = types
+
+
+
+    for grid_coord in grid_setup.keys():
+
+        grid = grid_setup[grid_coord]
+        starts = grid["start"]
+        ends = grid["end"]
+        patch_cells = grid["patch_cells"]
+
+        for patch in range(grid["n_patches"]):
+            if starts[patch] <= 0 <= ends[patch]:
+                if grid["type"][patch] == "uniform":
+                    patch_length = ends[patch] - starts[patch]                    
+                    position_from_start = 0 - starts[patch]              
+                    dx = position_from_start / patch_length  
+                    patch_idx = int(dx * patch_cells[patch]) #'midpoint' of patch containing x/y/z = 0
+
+                    origin_idx = int(sum(patch_cells[:patch])+patch_idx) # offset by previous grid cells
+
+                else:
+                    raise NotImplementedError("Finding origin idx only working with uniform patches")
+
+        grid["origin_idx"] = origin_idx
+    grid_setup["dimensions"] = get_grid_dimensions(grid_setup)
+
+    raw_usr_params = config.options("Parameters")
     usr_params = {
         k: float(v.split(";",1)[0].strip())
         for line in raw_usr_params if " " in line
@@ -170,19 +251,62 @@ def get_pluto_units(sim_coord,ini_file):
     usr_unit_values = {k: u.Unit(v) for k, v in config["usr_unit_values"].items()}
 
     pluto_units = {
-        "x1": {"code_uv": code_unit_values["x1"], "usr_uv": usr_unit_values["x1"], "var_name": "x1", "coord_name": f"{sel_coords[0]}"},
-        "x2": {"code_uv": code_unit_values["x2"], "usr_uv": usr_unit_values["x2"], "var_name": "x2", "coord_name": f"{sel_coords[1]}"},
-        "x3": {"code_uv": code_unit_values["x3"], "usr_uv": usr_unit_values["x3"], "var_name": "x3", "coord_name": f"{sel_coords[2]}"},
-        "rho": {"code_uv": code_unit_values["rho"], "usr_uv": usr_unit_values["rho"], "var_name": "Density"},
-        "prs": {"code_uv": code_unit_values["prs"], "usr_uv": usr_unit_values["prs"], "var_name": "Pressure"},
-        "vx1": {"code_uv": code_unit_values["vx1"], "usr_uv": usr_unit_values["vx1"], "var_name": f"{sel_coords[0]}_Velocity"},
-        "vx2": {"code_uv": code_unit_values["vx2"], "usr_uv": usr_unit_values["vx2"], "var_name": f"{sel_coords[1]}_Velocity"},
-        "vx3": {"code_uv": code_unit_values["vx3"], "usr_uv": usr_unit_values["vx3"], "var_name": f"{sel_coords[2]}_Velocity"},
-        "tr1" : {"code_uv": None, "usr_uv": None, "var_name": "Tracer_1"},
-        "sim_time": {"code_uv": code_unit_values["sim_time"], "usr_uv": usr_unit_values["sim_time"], "var_name": "Time"},
-        "ini_file": ini_file,
+        "x1": {
+            "code_uv": code_unit_values["x1"],
+            "usr_uv": usr_unit_values["x1"],
+            "var_name": f"${sel_coords[0]}$",
+            "coord_name": f"${sel_coords[0]}$"
+        },
+        "x2": {
+            "code_uv": code_unit_values["x2"],
+            "usr_uv": usr_unit_values["x2"],
+            "var_name": f"${sel_coords[1]}$",
+            "coord_name": f"${sel_coords[1]}$"
+        },
+        "x3": {
+            "code_uv": code_unit_values["x3"],
+            "usr_uv": usr_unit_values["x3"],
+            "var_name": f"${sel_coords[2]}$",
+            "coord_name": f"${sel_coords[2]}$"
+        },
+        "rho": {
+            "code_uv": code_unit_values["rho"],
+            "usr_uv": usr_unit_values["rho"],
+            "var_name": r"$\rho$"
+        },
+        "prs": {
+            "code_uv": code_unit_values["prs"],
+            "usr_uv": usr_unit_values["prs"],
+            "var_name": r"$P$"
+        },
+        "vx1": {
+            "code_uv": code_unit_values["vx1"],
+            "usr_uv": usr_unit_values["vx1"],
+            "var_name": f"$V_{{{sel_coords[0]}}}$"
+        },
+        "vx2": {
+            "code_uv": code_unit_values["vx2"],
+            "usr_uv": usr_unit_values["vx2"],
+            "var_name": f"$V_{{{sel_coords[1]}}}$"
+        },
+        "vx3": {
+            "code_uv": code_unit_values["vx3"],
+            "usr_uv": usr_unit_values["vx3"],
+            "var_name": f"$V_{{{sel_coords[2]}}}$"
+        },
+        "tr1": {
+            "code_uv": None,
+            "usr_uv": None,
+            "var_name": "Tracer_1"
+        },
+        "sim_time": {
+            "code_uv": code_unit_values["sim_time"],
+            "usr_uv": usr_unit_values["sim_time"],
+            "var_name": "Time"
+        },
+        "ini_file": ini_file
     }
-    
+        
     return pluto_units 
 
 def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
