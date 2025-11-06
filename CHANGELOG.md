@@ -2,7 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.8.0] - 2025-09-29
+## [v0.9.0] - 2025-11-06
+
+### 🚀 Features
+
+
+- *(load.py)* Can now load slices of hdf5 files, majorly decreasing loading times
+
+Done through `load_slice = (slice(None, None, None),75,75)`, needs to be a tuple in `pluto_loader`/`pluto_conv` is converted to a hashable input in `Simulation` classes (see `utils` helper functions). In `SimulationData` `slice_type` can be used to automatically calculate slice e.g. `slice_type = "slice_2D"`
+
+- *(config.py)* `pc.pluto_ini_info(wdir)['grid_setup']` now has fully structured grid setup details
+
+e.g. `defaultdict(dict, {'x1-grid': {'n_patches': 1, 'start': [-15.0], 'end': [15.0], 'patch_cells': [150.0], 'type': ['uniform'], 'origin_idx': 75}, 'x2-grid': ...}`
+
+
+### Other
+
+
+- *(plot.py)* testing plotting with external array profiles
+
+see `SimulationData` `slice_type` and  `load_slice`, is currently a test case, need to implement both external and calculated profiles
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.8.0 → 0.9.0
+
+
+
+### Performance
+
+
+- *(analysis.py)* `calc_var_prof` now uses the `origin_idx` from grid setup to find idx closest to 0
+
+This is done by finding the gird patch containing 0 from the ini file and counting the grid cells to that point, saves loading time due to not requiring all`xx` arrays
+
+
+### Refactoring
+
+
+- *(simulations.py)* Added `simulations.py`, migrated from `load.py` and split `SimulationData` class into `SimulationSetup`,`SimulationData(SimulationSetup)`
+
+Simulation class objects are now located in simulations.py, created new `SimulationSetup`  class to contain the simulation information e.g. `setup = ps.SimulationSetup(sim_type = "Jet_wind",run_name = 'ptest2',arr_type="nc", profile_choice="xz_rho_prs",ini_file="jet_units")` then the data object `SimulationData` can accept `SimulationSetup` e.g. `sim_test = ps.SimulationData.from_setup(setup)`. This allows the `setup` object to be shared and provides easier access to information like `setup.wdir` without having to load data
+
+## [v0.8.0] - 2025-09-29
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🚀 Features
 
@@ -16,6 +66,9 @@ uses the helper functions `binned_mean_tracer_mask()` and `jet_angle_particles()
 
 
 - *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.7.2 → 0.8.0
 
 
 
@@ -34,7 +87,14 @@ It was not necessary to get all vars, more often than not you just need "grid" (
 
 replaced with `SimulationData.get_vars(pdata.d_file)`,`SimulationData.d_files` -> vars at current d_file and d_files list
 
-## [0.7.2] - 2025-09-02
+## [v0.7.2] - 2025-09-02
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🐛 Bug Fixes
 
@@ -58,6 +118,9 @@ this includes the merging of `profiles` and `profiles2()`
 - *(general)* doc cleanup and misc changes
 
 
+- *(general)* version 0.7.1 → 0.7.2
+
+
 
 ### Refactoring
 
@@ -65,7 +128,14 @@ this includes the merging of `profiles` and `profiles2()`
 - *(analysis.py)* cleaned up `calc_var_prof`
 
 
-## [0.7.1] - 2025-09-01
+## [v0.7.1] - 2025-09-01
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🐛 Bug Fixes
 
@@ -88,8 +158,17 @@ Unit conversion is now done via the unit values in the pluto_units/jet_units ini
 - *(general)* doc cleanup and misc changes
 
 
+- *(general)* version 0.7.0 → 0.7.1
+
+
 ## [v0.7.0] - 2025-08-26
-## [0.7.0] - 2025-08-26
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### Other
 
@@ -97,7 +176,17 @@ Unit conversion is now done via the unit values in the pluto_units/jet_units ini
 - *(added-`SimulationData.jet_info`,`SimulationData.grid_setup`-and-`SimulationData.usr_params`)* Used to quickly acess `pluto_ini_info()` for a certain simulation
 
 
-## [0.6.1] - 2025-08-18
+- *(general)* version 0.6.1 → 0.7.0
+
+
+## [v0.6.1] - 2025-08-18
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🐛 Bug Fixes
 
@@ -112,7 +201,17 @@ Unit conversion is now done via the unit values in the pluto_units/jet_units ini
 - *(general)* doc cleanup and misc changes
 
 
-## [0.6.0] - 2025-08-18
+- *(general)* version 0.6.0 → 0.6.1
+
+
+## [v0.6.0] - 2025-08-18
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
 
 ### 🚀 Features
 
@@ -148,6 +247,9 @@ throw error if not arr_type = 'nc' in cmap_base.
 - *(general)* doc cleanup and misc changes
 
 
+- *(general)* version 0.5.1 → 0.6.0
+
+
 ## [v0.5.1] - 2025-07-16
 
 ### Documentation
@@ -177,6 +279,22 @@ throw error if not arr_type = 'nc' in cmap_base.
 
 
 - *(general)* test propper hdf5 loading with arr_type
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try different pcmesh_3d_nc
+
+
+- *(general)* try transpose xz_jet data
+
 
 - *(general)* pre commit before load optimisation
 
@@ -216,10 +334,171 @@ can load only specific files with load_outputs (tuple), added lru_cache for cach
 
 pu.bcolors was causing a circular error in config.py, created colours.py to fix
 
+- *(general)* attempt to fix hdf5
+
+
+- *(general)* hdf5 fix, plutkore edit
+
+
+- *(general)* cluster-slowness
+
+
+- *(general)* import select d_files with load_outputs
+
+
+- *(general)* plot.py loading all d_files
+
+
+- *(general)* plotting when loading select d_files
+
+
+- *(general)* profile-loading functions load all d_files
+
+
+- *(general)* attempt to fix 3D plotting of jet
+
+
+- *(general)* plotting correct d_files
+
+
+- *(general)* can load_outputs as list
+
+
+- *(general)* added pluto_units.ini
+
+
+- *(general)* cach loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* cache loaded data for speedup
+
+
+- *(general)* can now load both dbl and h5
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* try np.meshgrid() for cluster plot
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* simple 3d plot capability
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* added Jet_Cluster sim type
+
+
+- *(general)* removed Jet_Cluster, added dim check
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* diff'd plot cases
+
+
+- *(general)* fixed pu.py_reload_all()
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* subplot_base 3d case
+
+
+- *(general)* attempt to fix plotting same var on both subplots
+
+
+
 ### Other
 
 
 - *(general)* version 0.4.3 → 0.4.4
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* debug slow pluto_loader for cluster
+
+
+- *(general)* attempt to get plot.py to work on cluster
+
+
+- *(general)* test fix for 3D plots
+
+
+- *(general)* slice for 3D plotting
+
+
+- *(general)* plot jet with profile
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* diff slice
+
+
+- *(general)* test commit before tag
+
+
+- *(general)* meshgrid
+
 
 - *(general)* doc cleanup and misc changes
 
