@@ -54,6 +54,7 @@ cp "$script_dir/job_submit.sh" "$save_dir/job_submit.sh"
 cp "$script_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
 cp "$script_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
 cp "$script_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
+cp "$script_dir/reset_sim.sh" "$save_dir/reset_sim.sh"
 
 printf "\n"
 read -p "Run jet-setup? [y/n]: " setup
@@ -73,6 +74,7 @@ fi
 build_pluto(){
     read -p "Build pluto? [y/n]: " build_pluto
     if [[ "$build_pluto" == "y" ]]; then
+        sleep 1 
         cd "$save_dir"
         ./build
     fi

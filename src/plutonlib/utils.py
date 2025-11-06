@@ -7,6 +7,7 @@ import sys
 from time import sleep
 import importlib
 from glob import glob 
+import psutil
 
 def py_reload(module):
     if isinstance(module,str):
@@ -99,3 +100,24 @@ def sim_type_match(sdata):
     }
 
     return returns
+
+def _slice_to_hashable(slice_obj):
+    """Convert slice object to hashable tuple representation"""
+    if slice_obj is None:
+        return None
+    if isinstance(slice_obj, slice):
+        return ('slice', slice_obj.start, slice_obj.stop, slice_obj.step)
+    if isinstance(slice_obj, tuple):
+        return tuple(_slice_to_hashable(s) for s in slice_obj)
+    return slice_obj
+
+def _hashable_to_slice(hashable_obj):
+    """Convert hashable tuple representation back to slice object"""
+    if hashable_obj is None:
+        return None
+    if isinstance(hashable_obj, tuple) and len(hashable_obj) == 4 and hashable_obj[0] == 'slice':
+        return slice(hashable_obj[1], hashable_obj[2], hashable_obj[3])
+    if isinstance(hashable_obj, tuple):
+        return tuple(_hashable_to_slice(s) for s in hashable_obj)
+    return hashable_obj
+

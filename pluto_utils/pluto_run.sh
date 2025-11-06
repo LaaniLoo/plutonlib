@@ -92,16 +92,6 @@ pluto_local() {
     # trap "echo 'Stopping PLUTO...'; kill -INT $pluto_pid 2>/dev/null" INT
     trap "printf '\nStopping PLUTO...\n'; kill -INT $pluto_pid 2>/dev/null" INT
     sleep 1
-
-    # printf "\n"
-    # read -p "Check pluto log? [y/n]:" check_log
-    # if [[ "$check_log" == "y" ]]; then
-    #     log_file="$log_dir/pluto.1.log"
-    #     echo "Waiting for log file..."
-    #     while [ ! -f "$log_file" ]; do sleep 5; done
-    #     sleep 2
-    #     less "$log_file"
-    # fi
     check_log
 
     printf "\n"
@@ -114,21 +104,9 @@ pluto_cluster() {
     echo "Submitting pluto job ($ini_file)..."
     jobid=$(qsub -v ini_dir="$ini_dir",save_dir="$save_dir",job_info_dir="$job_info_dir" "./job_submit.sh")
     echo "Submitted job $jobid"
-
     jobnum=$(echo "$jobid" | cut -d. -f1)
     touch "$job_info_dir/$jobnum"
-
     sleep 5 
-
-    # printf "\n"
-    # read -p "Check pluto log? [y/n]:" check_log
-    # if [[ "$check_log" == "y" ]]; then
-    #     log_file="$log_dir/pluto.1.log"
-    #     echo "Waiting for log file..."
-    #     while [ ! -f "$log_file" ]; do sleep 5; done
-    #     sleep 5
-    #     less "$log_file"
-    # fi
     check_log
 }
 
