@@ -7,6 +7,9 @@ from plutonlib.colours import pcolours
 import sys
 import time
 import os
+from pathlib import Path
+
+import plutokore.pluto_simulation as pk_sim
 
 coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
@@ -14,18 +17,18 @@ PLUTODIR = pc.plutodir
 
 class SimulationSetup:
     """
-    Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
-    converted/raw data, units and var info
+    Class used to initialise PLUTO simulation information, e.g. run_name names, save directories, simulation types, ini information etc.
     """
 
     _last_ini_file = None
     _last_arr_type = None
 
-    def __init__(self, sim_type=None, run_name=None, profile_choice=None,subdir_name=None,
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,
                  load_outputs=None,arr_type=None,ini_file=None,):
 
         self.sim_type = sim_type
         self.run_name = run_name
+
 
         self.load_outputs = load_outputs
         
@@ -38,76 +41,41 @@ class SimulationSetup:
 
         self.profile_choice = profile_choice 
 
-        # Saving 
-        self.subdir_name = subdir_name
-
-        # self.alt_dir = os.path.join(pc.start_dir,subdir_name) if self.subdir_name else None #used if want to skip setup_dir
-        self.alt_dir = None
-
-        # self.save_dir = self._select_dir() #saves save_dir 
-        self._save_dir = None
-
         # Files
-        self.avail_sims = os.listdir(pc.sim_dir)
-        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else None #print(f"{pcolours.WARNING}Skipping avail_runs")
+        self.wdir = os.path.join(pc.sim_dir, self.sim_type, self.run_name) if self.run_name else None
+        # self.wdir = os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else None
         
-        # Set wdir safely
-        self.wdir = os.path.join(PLUTODIR, "Simulations", self.sim_type, self.run_name) if self.run_name else None
-        # if self.wdir is None:
-        #     print(f"{pcolours.WARNING}Skipping wdir because run_name is None")
-
-        # Set start_dir only if wdir exists
-        if self.wdir is not None:
-            self.start_dir = pc.get_start_dir(self.wdir, run_name=self.run_name)["start_dir"]
-        else:
-            self.start_dir = None
-
+        if self.wdir and not os.path.isdir(self.wdir):
+            raise FileNotFoundError(f"Working directory does not exist: {self.wdir}, current sims: {os.listdir(pc.sim_dir)}")
+        
+        self.avail_sims = os.listdir(pc.sim_dir)
+        self.avail_runs =  os.listdir(os.path.join(pc.sim_dir,self.sim_type)) if self.sim_type else None 
+        
         # Vars
         self._var_choice = None 
         SimulationSetup._last_arr_type = self.arr_type
-
-    #---Other---#
-    def _select_dir(self):
-        """If no specified directory string (subdir_name) to join to start_dir -> run pc.setup_dir """
-
-        if self.alt_dir is None: #not alt dir -> run setup
-            return  pu.setup_dir(self.start_dir)
-            # return pu.setup_dir(self.wdir)
-        
-        elif self.alt_dir: #alt dir is specified 
-            if os.path.isdir(self.alt_dir): #valid dir -> assign 
-                return self.alt_dir
-
-            else: #isn't a valid dir -> run_name _create_dir()
-                return self._create_dir()
-
-    def _create_dir(self):
-        new_dir = self.alt_dir
-        sys.stdout.flush()
-        print(f"{self.subdir_name} is not a valid folder in start_dir: Would you like to create the dir {new_dir}?")
-
-        save = None 
-        while save not in (0,1):
-            try:
-                save = int(input("Create directory? [1/0]"))
-            except ValueError:
-                print("Invalid input, please enter 1 (yes) or 0 (no).")  
-
-        if save:
-            print(f"Creating {new_dir}")
-            os.makedirs(new_dir)
-            return new_dir
-        
-        elif not save:
-            print("Cancelling operation")
-            raise(AttributeError(f"Please specify a directory in {self.start_dir}"))
         
     #---Properties---#
     @property
-    def save_dir(self):
-        if self._save_dir is None:
-            self._save_dir = self._select_dir()
-        return self._save_dir
+    def save_dir(self,start_dir = None):
+        if not start_dir:
+            output_dir = os.path.join(os.environ["HOME"],"plutonlib_output")
+        else:
+            output_dir = os.path.join(start_dir,"plutonlib_output")
+
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+            print(f"Creating plutonlib_output directory: {output_dir}")
+
+        if not self.sim_type or not self.run_name:
+            raise ValueError("Either sim.sim_type or sim.run_name are not defined.")
+        else:
+            save_dir = os.path.join(output_dir,self.sim_type,self.run_name)
+            if not os.path.isdir(save_dir):
+                os.makedirs(save_dir)
+                print(f"Creating save directory: {save_dir}")
+            
+            return save_dir
     
     @property
     def coord_names(self):
@@ -138,26 +106,29 @@ class SimulationSetup:
     def grid_setup(self):
         ini_info = pc.pluto_ini_info(self.wdir)
         return ini_info["grid_setup"]
+    
+    @property
+    def grid_ndim(self):
+        grid_ndim = self.grid_setup["dimensions"]
+        return grid_ndim
 
 class SimulationData(SimulationSetup):
     """
-    Class used to load and store any PLUTO output/input data, e.g. run_name names, save directories, simulation types, 
-    converted/raw data, units and var info
+    Class used to load/convert PLUTO simulations as well as containing from SimulationSetup 
     """
-    def __init__(self, sim_type=None, run_name=None, profile_choice=None, subdir_name=None,
+    def __init__(self, sim_type=None, run_name=None, profile_choice=None,
                  load_outputs=None,load_slice=None,slice_type=None, arr_type=None, ini_file=None, is_conv=1, setup=None):
         if setup is not None:
             # inherit defaults from setup
             sim_type = sim_type or setup.sim_type
             run_name = run_name or setup.run_name
             profile_choice = profile_choice or setup.profile_choice
-            subdir_name = subdir_name or setup.subdir_name
             load_outputs = load_outputs or setup.load_outputs
             load_slice = load_slice 
             ini_file = ini_file or setup.ini_file
             arr_type = arr_type if arr_type is not None else setup.arr_type            
         # Initialize parent class first
-        super().__init__(sim_type, run_name, profile_choice, subdir_name, load_outputs, arr_type, ini_file)
+        super().__init__(sim_type, run_name, profile_choice, load_outputs, arr_type, ini_file)
 
         self.slice_type = slice_type
         self.load_slice = load_slice
@@ -213,7 +184,6 @@ class SimulationData(SimulationSetup):
                 - sim_type: str - Simulation type
                 - run_name: str - Run name
                 - profile_choice: str - Profile choice
-                - subdir_name: str - Subdirectory name
                 - load_outputs: tuple - Outputs to load
                 - load_slice: slice - Slice to load
                 - arr_type: str - Array type
@@ -313,13 +283,10 @@ class SimulationData(SimulationSetup):
                 self.ini_file,
             )
 
-        # if profile == "grid":
-        #     continue
-        #     # self._grid_data = pluto_conv_data
-        # else:
         self._conv_data = pluto_conv_data
 
         print(f"Pluto Conv ({profile}): {(time.time() - start):.2f}s")
+    
     def load_particles(self,load_outputs):
         self.particle_data = pl.pluto_particles(self.sim_type,self.run_name,load_outputs)['particle_data']
         self.particle_files = list(self.particle_data.keys())
@@ -404,6 +371,20 @@ class SimulationData(SimulationSetup):
         """Slices d_files to the number specified -> e.g. give me first 3 elements of d_files"""
         return self.d_files[start:slice]
 
+    #---Swap to plutokore sim---#
+    def to_plutokore(self):
+        """
+        Converts SimulationData objet into plutokore PlutoSimulation object
+        """
+        sim = pk_sim.PlutoSimulation(
+            simulation_name=self.run_name,                
+            simulation_directory=Path(self.wdir),      
+            simulation_description="",        
+            datatype=self.dtype,                      
+            dimensions=self.grid_ndim,                           
+        )
+
+        return sim
     # ---Properties---#
     @property
     def get_warnings(self):
@@ -425,15 +406,13 @@ class SimulationData(SimulationSetup):
         if not is_wdir:
             raise ValueError(f"{pcolours.WARNING}{self.wdir} doesn't contain the run {self.run_name}, {warn_run}")
 
-        if self.alt_dir:
-            dir_log = f"Final selected save directory: {self.save_dir}"
-            print(dir_log)
+
 
         # --directory warnings--#
         print(f"{pcolours.WARNING}---SimulationData Info---")
         print("\n")
         print(f"{pcolours.WARNING}Current Working Directory:", self.wdir)
-        print("Save Directory:",pc.get_start_dir(self.wdir,run_name = self.run_name)["warnings"][0])
+        print("Save Directory:",self.save_dir)
         print(f"Units file: {pc.get_ini_file(self.ini_file)}") # Prints current units.ini file
         print("\n")
         print(f"{pcolours.WARNING}Array Type: {pc.arr_type_key[self.arr_type]}")
@@ -465,6 +444,22 @@ class SimulationData(SimulationSetup):
         return self._grid_data
 
     @property
+    def dtype(self):
+        is_dbl_h5 = os.path.isfile(os.path.join(self.wdir,r"dbl.h5.out"))
+        is_flt_h5 = os.path.isfile(os.path.join(self.wdir,r"flt.h5.out"))
+        is_dbl = os.path.isfile(os.path.join(self.wdir,r"dbl.out"))
+
+        if pu.is_dbl_and_flt(self.wdir): #combination of float and double -> get only float for analysis 
+            dext = "float" 
+        
+        elif is_dbl_h5 or is_flt_h5:
+            dext = "float" if is_flt_h5 else "double" #assigns correct dtype for loading, preferentially load float
+        
+        elif is_dbl:
+            dext = "double"         
+        return dext
+    
+    @property
     def units(self):
         if self._units is None:
             self.load_units()
@@ -491,30 +486,6 @@ class SimulationData(SimulationSetup):
     @property
     def var_choice(self):
         return pc.profiles()["profiles"][self.profile_choice]
-        # old method where pluto_loader var choice was different
-        # if self._var_choice is None:
-        #     self.load_raw()
-        # raise ValueError("Missing var_choice data")
-        # return self._var_choice
-
-    @property
-    def grid_ndim(self):
-        grid_ndim = self.grid_setup["dimensions"]
-
-        # NOTE Old method using vars doesn't work if loading slices
-        # if self._units is None:
-        #     self.load_units()
-
-        # if 'rho' in self.var_choice:
-        #     grid_ndim = self.get_var_info("rho")["ndim"]
-
-        # elif self.arr_type in ('nc','cc'):
-        #     grid_ndim = self.get_var_info("x1")["ndim"]
-
-        # else:
-        #     raise ValueError("Cannot determine grid dimensions without nc/cc arrays or rho")
-
-        return grid_ndim
 
     @property
     def slice_shape(self):
