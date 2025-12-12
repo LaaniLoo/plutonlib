@@ -24,6 +24,35 @@ import inspect
 # ------------------------#
 
 # ---Loading Files---#
+
+# def set_hdf5_grid_info(grid_object):
+"""
+Taken from plutokore
+"""
+    # # Set the 1D cell edge coordinate arrays
+    # setattr(grid_object, "ex", grid_object.ncx[0, 0, :])
+    # setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
+    # setattr(grid_object, "ez", grid_object.ncz[:, 0, 0])
+
+    # Set the 1D cell midpoint cooordinate arrays
+    # setattr(grid_object, "mx", grid_object.ccx[:, 0, 0])
+    # setattr(grid_object, "my", grid_object.ccy[0, :, 0])
+    # setattr(grid_object, "mz", grid_object.ccz[0, 0, :])
+
+    # # Set the 1D cell edge coordinate arrays
+    # setattr(grid_object, "ex", grid_object.ncx[:, 0, 0])
+    # setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
+    # setattr(grid_object, "ez", grid_object.ncz[0, 0, :])
+
+
+    # setattr(grid_object, "dx", np.diff(grid_object.ex))
+    # setattr(grid_object, "dy", np.diff(grid_object.ey))
+    # setattr(grid_object, "dz", np.diff(grid_object.ez))
+
+    # setattr(grid_object, "dx1", grid_object.dx)
+    # setattr(grid_object, "dx2", grid_object.dy)
+    # setattr(grid_object, "dx3", grid_object.dz)
+
 def get_file_outputs(wdir):
     """
     Gets number of simulation file outputs
@@ -59,155 +88,54 @@ def get_file_outputs(wdir):
     
     return last_output
 
-def set_hdf5_grid_info(grid_object):
+def get_all_written_files(wdir):
     """
-    Taken from plutokore
+    gets the file names of all fully-written PLUTO outputs NOT including compressed files
     """
-    # # Set the 1D cell edge coordinate arrays
-    # setattr(grid_object, "ex", grid_object.ncx[0, 0, :])
-    # setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
-    # setattr(grid_object, "ez", grid_object.ncz[:, 0, 0])
+    written_outputs = get_file_outputs(wdir) + 1 #to fix indexing
 
-    # Set the 1D cell midpoint cooordinate arrays
-    setattr(grid_object, "mx", grid_object.ccx[:, 0, 0])
-    setattr(grid_object, "my", grid_object.ccy[0, :, 0])
-    setattr(grid_object, "mz", grid_object.ccz[0, 0, :])
-
-    # Set the 1D cell edge coordinate arrays
-    setattr(grid_object, "ex", grid_object.ncx[:, 0, 0])
-    setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
-    setattr(grid_object, "ez", grid_object.ncz[0, 0, :])
-
-
-    setattr(grid_object, "dx", np.diff(grid_object.ex))
-    setattr(grid_object, "dy", np.diff(grid_object.ey))
-    setattr(grid_object, "dz", np.diff(grid_object.ez))
-
-    setattr(grid_object, "dx1", grid_object.dx)
-    setattr(grid_object, "dx2", grid_object.dy)
-    setattr(grid_object, "dx3", grid_object.dz)
-
-def load_file_output_old(wdir,load_output,var_choice,arr_type=None,load_slice=None):
     is_dbl_h5 = os.path.isfile(os.path.join(wdir,r"dbl.h5.out"))
     is_flt_h5 = os.path.isfile(os.path.join(wdir,r"flt.h5.out"))
     is_dbl = os.path.isfile(os.path.join(wdir,r"dbl.out"))
-    dtype = []
 
-    if is_dbl_h5 or  is_flt_h5:
-        # start = time.time()
-        dext = "dbl.h5" if is_dbl_h5 else "flt.h5" #assigns correct dtype for loading
-        dtype.append("hdf5_double" if is_dbl_h5 else "hdf5_float")
-        data_file_path = wdir / Path(f"data.{load_output:04d}.{dext}")
+    # compressed_files = glob.glob(os.path.join(wdir,f"*.compressed")) #check if there exists a single compressed file
+    # is_compressed = os.path.isfile(compressed_files[0]) if compressed_files else False
 
-        data_file = h5py.File(
-            data_file_path, 
-            mode="r",
-            rdcc_nbytes=512 * 1024 * 1024,  # 512 MB
-            rdcc_nslots=2_000_003,          # prime number of slots
-            rdcc_w0=0.75                    # cache eviction aggressiveness
-            )
+    if pu.is_dbl_and_flt(wdir): #combination of float and double -> get only float for analysis 
+        dext = "flt.h5" 
 
-        # print(data_file.attrs.keys()) #debug attributes
-        # print(list(data_file.keys()))  # top-level groups
-        # print(list(data_file["Timestep_0"]['vars'].keys()))  # groups inside timestep
-        # print(data_file["Timestep_0"].attrs.keys())  # attributes of that timestep
-
-        setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
-        setattr(data_file, "variable_path", f"Timestep_{load_output}/vars")
-        setattr(data_file, "geometry", "CARTESIAN")
-        
-        # Set the variables
-        variables = list(data_file[data_file.variable_path])
-        for v in variables:
-            setattr(data_file, v, data_file[f"{data_file.variable_path}/{v}"])
-        setattr(data_file, "vars", variables)
-
-        # Set the coords
-        coords = ["X", "Y", "Z"]
-        for c in coords:
-            setattr(data_file, f"cc{c.lower()}", data_file[f"/cell_coords/{c}"])
-            setattr(data_file, f"nc{c.lower()}", data_file[f"/node_coords/{c}"])
-
-        set_hdf5_grid_info(data_file)
-
-        # Set the tracer count
-        setattr(data_file, "ntracers", len([t for t in variables if "tr" in t]))
-
-        #LOADING 
-        geometry = data_file.geometry
-
-        prof_vars = pc.profiles(arr_type = arr_type)["profiles"]["all"]
-        var_map = {'x1': prof_vars[0], 'x2': prof_vars[1], 'x3': prof_vars[2]} # used to map any arr_type to x1,x2,x3
-        loaded_vars = [v for v in var_choice if hasattr(data_file, var_map.get(v, v))]
-
-        # file_data = {v: getattr(data_file, var_map.get(v, v)) for v in loaded_vars}
-        # print(file_data)
-        # for var_name in file_data.keys():
-
-        #     if load_slice is not None:
-        #         # input slice is xyz, hdf5 arrays are zyx so needs to be flipped
-        #         reversed_slice = tuple(load_slice[::-1])
-        #         data_slice = file_data[var_name][reversed_slice][()]
-
-        #     else:
-        #         data_slice = file_data[var_name][()]
-
-        #     if data_slice.ndim == 3:
-        #         #NOTE this transposes z,y,x arrays into x,y,z arrays
-        #         file_data[var_name] = np.ascontiguousarray(np.transpose(data_slice, (2, 1, 0)))
-        file_data = {}
-        for v in loaded_vars:
-            var_key = var_map.get(v, v)
-            dataset = getattr(data_file, var_key)
-
-            if hasattr(dataset, 'shape') and dataset.shape == (): #if is just a value like sim_time, load it
-                file_data[v] = dataset[()]  
-
-            else:   
-                if load_slice is not None:
-                    # input slice is xyz, hdf5 arrays are zyx so needs to be flipped
-                    reversed_slice = tuple(load_slice[::-1])
-                    data_slice = dataset[reversed_slice]
-                    data_array = np.asarray(data_slice) #loads straight into np arrays rather than hdf5
-
-                else:
-                    data_array = np.asarray(dataset[()])
-
-                if data_array.ndim == 3: #NOTE this transposes z,y,x arrays into x,y,z arrays
-                    file_data[v] = np.ascontiguousarray(np.transpose(data_array, (2, 1, 0)))
-
-                else:
-                    file_data[v] = data_array
-                
-        data_file.close()
-
-    elif is_dbl: #should be deprecated?
-        out_fname = "dbl.out"
-        dtype.append("double")
-
-        # data_file = pk_io.pload(load_output, w_dir=wdir)
-
-        #only want to do this calculation once
-        geometry = data_file.geometry
-        loaded_vars = [v for v in var_choice if hasattr(data_file, v)]
-
-        file_data = {v: getattr(data_file, v) for v in loaded_vars}
-
-    else:
-        raise FileNotFoundError("Either .out is missing or file is not of type [flt.h5,dbl.h5,.dbl]")
+        files = sorted(glob.glob(os.path.join(wdir,f'data.*.{dext}')))
     
-    returns = {"file_data":file_data,"loaded_vars":loaded_vars,"geometry":geometry,"dtype":dtype}
+    elif is_dbl_h5 or is_flt_h5:
+        dext = "flt.h5" if is_flt_h5 else "dbl.h5" #assigns correct dtype for loading, preferentially load float
 
-    # print(f"dbl loading: {(time.time() - start):.2f}s")
-    return returns
+        files = sorted(glob.glob(os.path.join(wdir,f'data.*.{dext}')))
+    
+    elif is_dbl:
+        dext = "dbl"         
+        files = sorted(glob.glob(os.path.join(wdir,f'data.*.{dext}')))
+
+    return files[:written_outputs]
 
 def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
+    f"""
+    loads a single file output from a PLUTO simulation, automatically detects file extension     
+    :param wdir: str
+        working directory where simulation files are included
+    :param load_output: int
+        integer of which output you want to load
+    :param var_choice: list
+        list of variables from the simulation file you want to load, e.g. ['x1','x2','rho','prs'] 
+    :param arr_type: str
+        Different arrays for different cell/grid coordinates see {pc.arr_type_key}
+    :param load_slice: tuple
+        Array slice to load, instead of loading whole hdf5 array
+
+    """
     if arr_type is None:
         raise ValueError(f"arr_type set to None, see {pc.arr_type_key}")
-    # is_dbl_h5 = os.path.isfile(os.path.join(wdir,r"dbl.h5.out"))
-    # is_flt_h5 = os.path.isfile(os.path.join(wdir,r"flt.h5.out"))
-    is_dbl_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5"))
-    is_flt_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5"))
+    is_dbl_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5.compressed"))
+    is_flt_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5.compressed"))
     is_dbl = os.path.isfile(os.path.join(wdir,r"dbl.out"))
     # print(is_dbl_h5,is_flt_h5,is_dbl)
     dtype = []
@@ -219,32 +147,33 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
         dtype.append("hdf5_double" if is_dbl_h5 else "hdf5_float")
 
         file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}")
-        chunked_file_path = os.path.join(wdir,f"data.{load_output:04d}_chunked.{dext}")
-        is_chunked = os.path.isfile(chunked_file_path)
+        compressed_file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}.compressed")
+        is_compressed = os.path.isfile(compressed_file_path)
 
-        if is_chunked: #use available chunked data
-            data_file_path = chunked_file_path
-            print("Using chunked data")
+        if is_compressed: #use available chunked data
+            data_file_path = compressed_file_path
+            print("Using compressed data")
         else:
             data_file_path = file_path
-            print(f"Using {dext} extension for {load_output}")
+            # print(f"Using {dext} extension for {load_output}")
 
         with h5py.File(data_file_path, "r", 
-               rdcc_nbytes=512 * 1024 * 1024,
+               rdcc_nbytes=32 * 1024 * 1024, #was 512
                rdcc_nslots=2_000_003,
                rdcc_w0=0.75) as data_file:
             
-            # for var_name in list(data_file[f"Timestep_{load_output}/vars"].keys()):
-            #     dataset = data_file[f"Timestep_{load_output}/vars/{var_name}"]
-            #     print(f"{var_name}: chunked={dataset.chunks is not None}, chunks={dataset.chunks}")
-
-            setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
-            geometry = "CARTESIAN"
+            # setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
+            geometry = "CARTESIAN" #NOTE this should be able to be read from grid.out
 
             prof_vars = pc.profiles(arr_type = arr_type)["profiles"]["all"]
             var_map = {'x1': prof_vars[0], 'x2': prof_vars[1], 'x3': prof_vars[2]} # used to map any arr_type to x1,x2,x3
-            
+            reverse_var_map = {v: k for k, v in var_map.items()}
+
+            file_data = {}
+            file_data["sim_time"] = data_file[f"Timestep_{load_output}"].attrs["Time"]
+
             avail_vars = [v for v in list(data_file[f"Timestep_{load_output}/vars"].keys()) if v in [var_map.get(x, x) for x in var_choice]]
+            
             for v in avail_vars: #only reads avail vars from var_choice
                 dataset_path = f"Timestep_{load_output}/vars/{v}"
 
@@ -255,15 +184,12 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
                     data_array = data_file[dataset_path][()]
 
                 if data_array.ndim == 3: #NOTE this transposes z,y,x arrays into x,y,z arrays
-                    # data_array = np.ascontiguousarray(np.transpose(data_array, (2, 1, 0)))
-                    data_array = (np.transpose(data_array, (2, 1, 0)))
-
+                    file_data[v] = (np.transpose(data_array, (2, 1, 0)))
                     
                 elif data_array.ndim == 2:
-                    # data_array = np.ascontiguousarray(np.transpose(data_array, (1, 0)))
-                    data_array = (np.transpose(data_array, (1, 0)))
+                    file_data[v] = (np.transpose(data_array, (1, 0)))
 
-                setattr(data_file, v, data_array) #store sliced data in attributes
+                # setattr(data_file, v, data_array) #store sliced data in attributes
             
             coord_vars = [var_map.get(v, v) for v in var_choice if var_map.get(v, v) in ['ncx', 'ncy', 'ncz', 'ccx', 'ccy', 'ccz']]
             for coord_var in coord_vars: #only read required coords
@@ -271,36 +197,25 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
                 coord_dim = coord_var[2].upper()  # X, Y, Z
                 dataset = data_file[f"/{coord_type}/{coord_dim}"]
 
+                coord_key = reverse_var_map.get(coord_var,coord_var) #swaps ncx to x1 etc
+
                 # Apply the same slicing to coordinates
                 if load_slice is not None:
                     reversed_slice = tuple(load_slice[::-1])
                     data_array = np.asarray(dataset[reversed_slice])
                 else:
                     data_array = np.asarray(dataset[()])
-                
+             
                 if data_array.ndim == 3:
-                    data_array = np.ascontiguousarray(np.transpose(data_array, (2, 1, 0)))
-                
+                    file_data[coord_key] = (np.transpose(data_array, (2, 1, 0)))
+               
                 elif data_array.ndim == 2:
                     # 2D slice: just swap the two axes [y,x] -> [x,y] or [z,y] -> [y,z] etc.
-                    data_array = np.ascontiguousarray(np.transpose(data_array, (1, 0)))
+                    file_data[coord_key] = (np.transpose(data_array, (1, 0)))
 
-                setattr(data_file, coord_var, data_array)
+                # setattr(data_file, coord_var, data_array)
 
-            loaded_vars = [v for v in var_choice if hasattr(data_file, var_map.get(v, v))] #avail vars after attr setting
-            file_data = {}
-            for v in loaded_vars: #copying over and setting the sliced and transposed data 
-                var_key = var_map.get(v, v)
-                dataset = getattr(data_file, var_key)
-
-                # if hasattr(dataset, 'shape'):
-                #     print(f"DEBUG: {var_key} shape after processing: {dataset.shape}")
-
-                if v == "sim_time":
-                    file_data[v] = dataset
-                else:
-                    # All other variables and coordinates are already sliced and transposed
-                    file_data[v] = dataset
+            loaded_vars = [v for v in var_choice if v in file_data or var_map.get(v,v) in file_data] #avail vars after attr setting
 
     elif is_dbl: #should be deprecated?
         out_fname = "dbl.out"
@@ -405,7 +320,7 @@ def read_particle_file(file_name):
 
 # @lru_cache(maxsize=32)  # This caches based on input arguments
 def pluto_particles(sim_type,run_name,load_outputs=None):
-    wdir =  os.path.join(PLUTODIR, "Simulations", sim_type, run_name)
+    wdir =  os.path.join(pc.sim_dir, sim_type, run_name)
     particle_data = defaultdict(list)  # Stores variables for each particle file
 
     particle_outputs = get_particle_outputs(wdir,load_outputs)
@@ -425,7 +340,8 @@ def pluto_particles(sim_type,run_name,load_outputs=None):
         dtyp_ = np.dtype(endianess + "dbl"[0])
         DataDict_ = hdict
         n_particles = int(DataDict_["nparticles"])
-        data_ = np.fromstring(data_str, dtype=dtyp_)
+        data_ = np.frombuffer(data_str, dtype=dtyp_)
+
 
         fdims = np.array(hdict["field_dim"], dtype=int)
         indx = np.where(fdims == 1)[0]
