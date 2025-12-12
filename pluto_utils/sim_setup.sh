@@ -51,6 +51,7 @@ fi
 
 echo "Copying .sh/.ini files..." 
 cp "$script_dir/job_submit.sh" "$save_dir/job_submit.sh"
+cp "$script_dir/job_submit_compression.sh" "$save_dir/job_submit_compression.sh"
 cp "$script_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
 cp "$script_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
 cp "$script_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
@@ -66,8 +67,9 @@ if [[ "$setup" == "y" ]]; then
     printf "\n"
     read -p "Edit setup.py? [y/n]: " python_setup
     if [[ "$python_setup" == "y" ]]; then
-        cd "./src"
+        pushd "$save_dir/src" > /dev/null  # Move to src directory
         python "$PLUTO_DIR"/setup.py #env_var PLUTO_DIR
+        popd > /dev/null  # Return to previous directory
     fi
 fi
 

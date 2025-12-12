@@ -1,3 +1,8 @@
+command -v git-cliff >/dev/null 2>&1 || {
+    echo "❌ git-cliff not found! Please install it before bumping a release."
+    exit 1
+}
+
 bump_release() {
     printf "\n"
     read -p "Bump and push? [y = yes, n = no]: " push
@@ -26,4 +31,4 @@ bump_release() {
 }
 
 cd ~/plutonlib
-bump_release
+bump_releasez

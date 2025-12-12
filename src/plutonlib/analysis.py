@@ -28,22 +28,23 @@ def calc_var_prof(sdata,sel_coord,ndim = 3,**kwargs):
     arr_type = kwargs.get('arr_type', sdata.arr_type)
     ini_file = kwargs.get('ini_file', sdata.ini_file)
     ndim = ndim #TODO replace this with a try except loop
-
+    value = 0 if not kwargs.get('value') else kwargs.get('value')
     # --- Determine whether to use find_nearest or grid midpoints ---
+    
     use_find_nearest = (
-        ('value' in kwargs and kwargs['value'] is not None)
+        (value is not None and value != 0) #use find_nearest if value is not 0 
         or ('idx' in kwargs and kwargs['idx'] is not None)
     )
 
-    if not use_find_nearest: #using ini grid values
+    if value == 0 and not use_find_nearest: #using ini grid values if value is 0, -> midpoint
         x_mid = sdata.grid_setup["x1-grid"]["origin_idx"]
         y_mid = sdata.grid_setup["x2-grid"]["origin_idx"] if ndim > 1 else None
         z_mid = sdata.grid_setup["x3-grid"]["origin_idx"] if ndim > 2 else None
 
 
-    elif use_find_nearest: #using value/idx kwargs
-
-        target = kwargs['value'] if 'value' in kwargs and kwargs['value'] is not None else 0
+    elif value !=0 and use_find_nearest: #using value/idx kwargs only if value is not 0
+        print("calc_var_prof: using find_nearest")
+        target = value  if 'value' in kwargs and value  is not None else 0
 
         if 'idx' in kwargs:
             idx = kwargs['idx']
@@ -440,12 +441,12 @@ def tprog_phelper(sel_coord,r,sdata,type,**kwargs):
         t_values.append(sdata.get_vars(data)["sim_time"])
 
     #Legend assignment based on sim_time
-    if pu.sim_type_match(sdata)["is_jet_2d"]:
+    if sdata.grid_setup["dimensions"] == 2:
         longest_array = get_jet_length_dim(sdata) # used to avoid confusion btwn jet length and width
         measurement = "length" if sel_coord == longest_array else "width"
         legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius ({measurement})" #names legend based on width or length
 
-    elif pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+    elif sdata.grid_setup["dimensions"] == 3:
         legend_base = f"{sdata.sim_type} {var_info['coord_name']}-Radius"
     
     if type == "def": #default type plot
@@ -527,7 +528,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
     r = []
 
 
-    if pu.sim_type_match(sdata)["is_jet_2d"]:
+    if sdata.grid_setup["dimensions"] == 2:
         sel_var = "rho" #graph peaks doesn't care which var is used, a peak is a peak?
         peak_data = graph_peaks(sel_coord,sel_var,sdata) 
         var_peak_idx = peak_data["var_peak_idx"]
@@ -541,7 +542,7 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
             else:
                 r.append(0)
 
-    elif pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+    elif sdata.grid_setup["dimensions"] == 3:
         #TODO fix below assignment -> fix peak_findr 
         coord_dim = sel_coord.strip("x")
         sel_var = "vx" + coord_dim #NOTE peak_findr DOES care which var is used, set to vel?
@@ -1236,3 +1237,10 @@ def jet_angle_tprog_vector(sdata,outputs,tr_cut,nslices):
     plt.text(0.05, 0.05, eqn, transform=plt.gca().transAxes, fontsize=11,bbox=dict(facecolor='white', alpha=0.8)) 
 
     plt.plot(times,jet_angles) 
+
+def jet_kinetic_power(radius,rho,vel):
+    eqn = 0.5*4*np.pi*(radius**2)*rho*(vel**3)
+    return eqn.si
+# rkpc = 4.5 * u.kpc
+# rho = (1e-2*(5/3 * 1e-28)) * (u.gram / u.cm**3)
+# jet_kinetic_power(rkpc.to(u.m),rho.si,2.5e7 * (u.meter / u.second))

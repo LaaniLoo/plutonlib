@@ -1,10 +1,11 @@
 #!/bin/bash
 ncores=6 #number of cpu cores to run pluto on
-ini_file="pluto_template.ini"
+# ini_file="pluto_template.ini"
+ini_file="temp.ini"
 save_dir="."
 run_dir="$save_dir/temp"
 cluster_run=false
-
+auto_name=false
 script_dir="$PLUTONLIB/pluto_utils"
 
 show_help() {
@@ -12,11 +13,12 @@ show_help() {
     echo "-c = cluster, submits job to cluster to run pluto"
     echo "-i = ini_file, changes ini_file from $ini_file"
     echo "-r = run_dir, changes run_dir from $run_dir"
+    echo "-a = auto-name, automatically changes run directory based on passed ini file" 
     echo "-n = ncores, number of mpi cpu cores to run with, defaults to $ncores"
 }
 
 #script options
-while getopts "hci:r:n:" opt; do
+while getopts "hci:r:an:" opt; do
     case $opt in 
         h) show_help
             exit 0
@@ -27,6 +29,8 @@ while getopts "hci:r:n:" opt; do
             ;;
         r) run_dir="$save_dir/$OPTARG"
             ;;
+        a) auto_name=true
+            ;;
         n) ncores="$OPTARG"
             ;;
         *) echo "Usage: $0" 
@@ -35,6 +39,22 @@ while getopts "hci:r:n:" opt; do
             ;;
     esac
 done
+
+if [ ! -f "$ini_file" ]; then
+    echo "Error: ini file '$ini_file' not found"
+    exit 1
+fi
+
+if [[ "$auto_name" == "true" ]]; then #setup run_dir with auto naming from ini
+    ini_basename="${ini_file##*/}"
+    run_name="${ini_basename%.*}"
+    run_dir=$save_dir/$run_name
+fi
+
+if [[ "$run_dir" == "$save_dir/temp" ]]; then
+    echo "Error: run_dir set to $run_dir, please change to different directory"
+    exit 1
+fi
 
 while [[ "$change_output" != "y" && "$change_output" != "n" ]]; do
     read -p "Change run name? (output_dir = $run_dir) [y/n]:" change_output
@@ -49,7 +69,7 @@ fi
 
 log_dir="$run_dir/log"
 job_info_dir="$run_dir"/job_info
-ini_dir="$job_info_dir/$ini_file"
+ini_dir="$job_info_dir/${ini_file##*/}" #this should allow any ini file dir to be used
 
 # Update the 'output_dir/log_dir' in the ini file
 sed -i "s|^\(output_dir\s*\).*|\1$run_dir|" $ini_file
@@ -58,6 +78,7 @@ sed -i "s|^\(log_dir\s*\).*|\1$run_dir/log|" $ini_file
 #check if the run directory exists, if not, create
 if [ ! -d "$run_dir" ]; then
     mkdir -p "$run_dir"
+    cp "$script_dir/compression_script.py" "$run_dir/compression_script.py"
     mkdir -p "$job_info_dir"
     mkdir -p "$log_dir"
 fi
@@ -85,18 +106,24 @@ check_log() {
 pluto_local() {
     printf "\n"
     echo "Running pluto ($ini_file) executable with $ncores CPU cores..."
+    # echo "Running compression script"
+    # python "$run_dir/compression_script.py" &
+    # comp_pid=$!
+
     mpirun --use-hwthread-cpus -np $ncores ./pluto -i $ini_dir &
     pluto_pid=$! #pluto process ID
 
     # If user presses Ctrl+C, kill Pluto too
-    # trap "echo 'Stopping PLUTO...'; kill -INT $pluto_pid 2>/dev/null" INT
-    trap "printf '\nStopping PLUTO...\n'; kill -INT $pluto_pid 2>/dev/null" INT
+    trap "echo 'Stopping PLUTO...'; kill -INT $pluto_pid 2>/dev/null" INT
+    # trap "echo -e '\nStopping PLUTO and compression script...'; kill -INT $pluto_pid $comp_pid 2>/dev/null; exit 1" INT
+    
     sleep 1
     check_log
 
     printf "\n"
     echo "PLUTO running with PID $pluto_pid (Ctrl+C to stop)"
     wait $pluto_pid   # keeps script tied to Pluto, Ctrl+C cleans up properly
+    wait $comp_pid
 }
 
 pluto_cluster() {
@@ -104,9 +131,12 @@ pluto_cluster() {
     echo "Submitting pluto job ($ini_file)..."
     jobid=$(qsub -v ini_dir="$ini_dir",save_dir="$save_dir",job_info_dir="$job_info_dir" "./job_submit.sh")
     echo "Submitted job $jobid"
+
     jobnum=$(echo "$jobid" | cut -d. -f1)
-    touch "$job_info_dir/$jobnum"
-    sleep 5 
+    touch "$job_info_dir/job_$jobnum"
+
+    sleep 5
+
     check_log
 }
 

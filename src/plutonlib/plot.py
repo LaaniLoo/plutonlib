@@ -173,12 +173,12 @@ def plot_extras(sdata,pdata = None, **kwargs):
         labels.append(var_label)
 
     #assigning title if jet: two vars per subplot
-    if pu.sim_type_match(sdata)["is_jet_2d"]:
+    if sdata.grid_setup["dimensions"] == 2:
         title = f"{sdata.sim_type} {labels[1]}/{labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append(title)
 
     #assigning title if other: one var per subplot
-    if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+    if sdata.grid_setup["dimensions"] == 3:
         title_L = f"{sdata.sim_type} {labels[0]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_R = f"{sdata.sim_type} {labels[1]} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name}, {pdata.d_file})"
         title_other.append([title_L,title_R])
@@ -216,7 +216,7 @@ def plot_extras(sdata,pdata = None, **kwargs):
         
     return pdata.extras
 
-def pcmesh_3d_nc(sdata,pdata = None, **kwargs):    
+def pcmesh_3d(sdata,pdata = None, **kwargs):    
     """
     Assigns the pcolormesh data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
     Also assigns colour bar and label
@@ -230,21 +230,26 @@ def pcmesh_3d_nc(sdata,pdata = None, **kwargs):
     if var_name is None or extras is None or ax is None:
         raise ValueError("Missing one of required kwargs: 'var_name', 'extras' (dict: c_map,cbar_label), 'ax'")
 
-    if sdata.load_slice is None or sdata.slice_shape == "slice_1D":
-        raise ValueError(f"SimulationData load_slice is None or 1D ({sdata.load_slice}), use a 2D slice to plot")
+    if sdata.slice_shape == "slice_1D":
+        raise ValueError(f"SimulationData load_slice is 1D ({sdata.load_slice}), use a 2D slice to plot")
     
     var_idx = sdata.var_choice[2:].index(var_name)
 
-    is_log = var_name in ('rho', 'prs')
-    vars_data = np.log10(sdata.get_vars(pdata.d_file)[var_name]) if is_log else sdata.get_vars(pdata.d_file)[var_name]
+    if not sdata.load_slice:
+        slice_var = sdata.spare_coord #e.g. if plot xz -> profile in y
+        profile = pa.calc_var_prof(sdata,slice_var,value=value)["slice_2D"]
+    elif sdata.load_slice:
+        profile = slice(None) 
 
+    is_log = var_name in ('rho', 'prs')
+    vars_data = np.log10(sdata.get_vars(pdata.d_file)[var_name][profile]) if is_log else sdata.get_vars(pdata.d_file)[var_name][profile]
 
     c_map = extras["c_maps"][var_idx]
     cbar_label = extras["cbar_labels"][var_idx]
 
     im = ax.pcolormesh(
-        sdata.get_vars(pdata.d_file)[sdata.var_choice[0]],
-        sdata.get_vars(pdata.d_file)[sdata.var_choice[1]], 
+        sdata.get_vars(pdata.d_file)[sdata.var_choice[0]][profile],
+        sdata.get_vars(pdata.d_file)[sdata.var_choice[1]][profile], 
         vars_data, 
         cmap=c_map
         )
@@ -341,18 +346,14 @@ def cmap_base(sdata,pdata = None, **kwargs):
 
     ax = pdata.axes[idx] # sets the axis as an index
 
-    #plotting in 3D for Stellar Wind and 3D jet
-    if pu.sim_type_match(sdata)["is_stellar_wind"]:
-        pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax) #TODO check if stellar wind works with nc
-
-    if pu.sim_type_match(sdata)["is_jet_3d"]:
+    if sdata.grid_setup["dimensions"] == 3:
         if kwargs.get('arr_type', sdata.arr_type) != "nc":
             # sdata.change_arr_type("nc")
             raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'nc' to plot 3D jet")
-        pcmesh_3d_nc(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax,value=value,idx=slice_idx)
+        pcmesh_3d(sdata, pdata=pdata, var_name=var_name, extras=extras, ax=ax,value=value,idx=slice_idx)
 
     # used for plotting jet,
-    if pu.sim_type_match(sdata)["is_jet_2d"]:
+    if sdata.grid_setup["dimensions"] == 2:
         pcmesh_2d(sdata, pdata=pdata, extras=extras, ax=ax)
 
 def plot_label(sdata,pdata=None,idx= 0,**kwargs):
@@ -388,10 +389,10 @@ def plot_label(sdata,pdata=None,idx= 0,**kwargs):
     if "no_title" in kwargs:
         ax.set_title(" ")
     else:
-        if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+        if sdata.grid_setup["dimensions"] == 3:
             ax.set_title(f"{title[0]}") if idx % 2 == 0 else ax.set_title(f"{title[1]}")
 
-        elif pu.sim_type_match(sdata)["is_jet_2d"]:
+        elif sdata.grid_setup["dimensions"] == 2:
             ax.set_title(f"{title}")
 
 def plot_axlim(ax,kwargs):
@@ -470,7 +471,7 @@ def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
     pdata.axes, pdata.fig = subplot_base(sdata,pdata,d_files=sel_d_files,**kwargs)
 
     # Jet only needs to iterate over d_file
-    if pu.sim_type_match(sdata)["is_jet_2d"]:
+    if sdata.grid_setup["dimensions"] == 2:
         for idx, d_file in enumerate(sel_d_files):  # Loop over each data file
             pdata.d_file = d_file
 
@@ -480,7 +481,7 @@ def plot_sim(sdata,sel_d_files = None,sel_prof = None, pdata = None,**kwargs):
 
 
     # Stellar_Wind needs to iterate  over d_file and var name 
-    if pu.sim_type_match(sdata)["is_stellar_wind"] or pu.sim_type_match(sdata)["is_jet_3d"]:
+    if sdata.grid_setup["dimensions"] == 3:
         plot_vars = sdata.var_choice[2:]
         plot_idx = 0 #only way to index plot per var 
 
@@ -537,6 +538,9 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         coord_array = sdata.get_vars(pdata.d_file)[sel_coord]
         
         #NOTE current method for using pre-specified slice
+        if sdata.slice_type == "slice_2D":
+            raise ValueError(f"SimulationData load_slice is 2D ({sdata.load_slice}), use a 1D slice to plot")
+
         if sdata.load_slice:
             idx = pa.find_nearest(sdata.get_coords()[sel_coord], target,**kwargs)['idx']
             var_profile = slice(None)
@@ -562,7 +566,7 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
         )
         ax.set_xlabel(f"{xy_labels[sel_coord]}")
 
-        if pu.sim_type_match(sdata)["is_jet_3d"]: #3D array case
+        if sdata.grid_setup["dimensions"] == 3: #3D array case
             if kwargs.get('arr_type', sdata.arr_type) != "cc":
             #     sdata.change_arr_type("cc")
                 raise ValueError(f"{pcolours.WARNING}array type is set to '{kwargs.get('arr_type', sdata.arr_type)}', please set to 'cc' to plot 1D slice of 3D jet")
@@ -585,8 +589,14 @@ def plotter(sel_coord,sel_var,sdata,sel_d_files = None,**kwargs):
             if sel_coord != coord:
                 legend_coord = sdata.get_var_info(coord)["coord_name"]
 
-        value = f"{(coord_sliced):.4f}" #scaling factor makes it easier to read
-        legend_str = f"{title_str} @ {legend_coord} = {value} {coord_units}"
+        if coord_sliced:
+            value = f"{(coord_sliced):.4f}" #scaling factor makes it easier to read
+            legend_str = f"{title_str} @ {legend_coord} = {value} {coord_units}"
+        
+        elif not coord_sliced:
+            coord_sliced = 0
+            value = f"{(coord_sliced):.4f}" #scaling factor makes it easier to read
+            legend_str = f"{title_str} @ {legend_coord} $\\approx$ {value} {coord_units}"
         ax.legend([legend_str])
 
         plot_idx += 1
