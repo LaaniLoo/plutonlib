@@ -8,6 +8,7 @@ from time import sleep
 import importlib
 from glob import glob 
 import psutil
+import h5py
 
 def py_reload(module):
     if isinstance(module,str):
@@ -34,73 +35,6 @@ def py_reload_all():
 
         print(f"{module_name} Last Saved:",time.ctime(os.path.getmtime(module.__file__))) # Checks last modification time
 
-def list_subdirectories(directory):
-    """Return a list of subdirectories in the given directory."""
-    return [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
-
-def choose_directory(start_dir):
-    """Allow the user to select a subdirectory and navigate deeper."""
-    current_dir = start_dir
-
-    while True:
-        subdirectories = list_subdirectories(current_dir)
-
-        if not subdirectories:
-            print('\n')
-            print(f"No subdirectories found in {current_dir}.")
-            break
-
-        # sleep(0.5)
-        print("Running setup_dir...")
-        print(f"Starting directory: {current_dir}")
-        print('\n')
-        sys.stdout.flush()
-        print("Subdirectories:")
-
-        for idx, subdir in enumerate(subdirectories, start=1):
-            print(f"{idx}: {subdir}")
-            sys.stdout.flush()
-        
-        # Prompt the user to select a subdirectory or exit
-        choice = input(f"Select a subdirectory (1-{len(subdirectories)}), or 'q' to quit: ").strip()
-        
-        if choice.lower() == 'q':
-            print("Exiting...")
-            break
-        
-        try:
-            choice = int(choice)
-            if 1 <= choice <= len(subdirectories):
-                current_dir = os.path.join(current_dir, subdirectories[choice - 1])
-            else:
-                print("Invalid choice. Please select a valid number.")
-        except ValueError:
-            print("Invalid input. Please enter a number or 'q' to quit.")
-    
-    return current_dir
-
-def setup_dir(start_dir):
-
-    # Let the user select the directory (printing of subdirectories is handled inside the function)
-    save_dir = choose_directory(start_dir)
-
-    print(f"Final selected save directory: {save_dir}")
-
-    return save_dir
-
-def sim_type_match(sdata):
-    is_jet_2d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 2
-    is_jet_3d = sdata.sim_type.split("_")[0] in ("Jet") and sdata.grid_ndim == 3
-    is_stellar_wind = "_".join(sdata.sim_type.split("_",2)[:2]) in ("Stellar_Wind")
-    
-    returns = {
-        "is_jet_2d":is_jet_2d,
-        "is_jet_3d":is_jet_3d,
-        "is_stellar_wind":is_stellar_wind,
-    }
-
-    return returns
-
 def _slice_to_hashable(slice_obj):
     """Convert slice object to hashable tuple representation"""
     if slice_obj is None:
@@ -121,3 +55,50 @@ def _hashable_to_slice(hashable_obj):
         return tuple(_hashable_to_slice(s) for s in hashable_obj)
     return hashable_obj
 
+def is_num_or_str(x):
+    try:
+        x = float(x)
+        return int(x) if x.is_integer() else x
+    except ValueError:
+        return x
+
+def is_dbl_and_flt(wdir):
+    """
+    Checks pluto.ini to see if sim outputs both dbl and flt h5 files
+    """
+    grid_output = pc.pluto_ini_info(wdir)["grid_output"]
+    dbl = grid_output["dbl.h5"][0]
+    flt = grid_output["flt.h5"][0]
+    is_dbl = True if dbl != -1 else False
+    is_flt = True if flt != -1 else False
+
+    if is_dbl and is_flt:
+        return True
+    else:
+        return False
+
+def pluto_is_written_out(file,chk_time):
+    """
+    Checks if PLUTO output is fully written as sometimes even if in .dbl.out the cluster hasn't fully written the file 
+    """
+    if not os.path.exists(file):
+        return False
+    
+    s0 = os.path.getsize(file)
+    time.sleep(chk_time)
+    s1 = os.path.getsize(file)
+    if s1 == s0:
+        return True
+    else:
+        return False
+    
+def inspect_pluto_h5(file):
+    """
+    Displays shape and size (in GB) of PLUTO HDF5 file datasets
+    """
+    with h5py.File(file,"r") as f:
+        def dset_info(name,obj):
+            if isinstance(obj,h5py.Dataset):
+                print(f"{name} size: {obj.nbytes / 1e9:.2f} GB, Shape: {obj.shape}")
+
+        f.visititems(dset_info)
