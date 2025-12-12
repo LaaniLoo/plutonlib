@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2025-12-12
+
+### 🚀 Features
+
+
+- *(compression.py)* added hdf5 compression and chunking
+
+Can now compress and chunk simulations using `compress_simulation_chunked_single` which compresses a single simulation output and creates a chunked structure. See pluto_utils for a script that automatically compresses outputs during simulation.
+
+
+### 🐛 Bug Fixes
+
+
+- *(simulations.py)* New `save_dir` functionality,`to_plutokore()` method
+
+`save_dir` now defaults to `/home/user/plutonlib_output/sim_type/run_name` storing all plot saves in ordered dirs. Can now convert `SimulationData` to `PlutoSimulation` class using method `to_plutokore()`
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Performance
+
+
+- *(load.py)* optimised load to not copy arrays, reduced memory impact
+
+
+
+### Refactoring
+
+
+- *(config.py)* Deprecated `PLUTONLIB_START_DIR` and other unused directory functions
+
+
+- *(utils.py)* Deprecated `sim_type_match`
+
+`sim_type_match` is replaced by `grid_setup["dimensions"]` to determine sim match
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [v0.9.0] - 2025-11-06
 
 ### 🚀 Features
