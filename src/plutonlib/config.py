@@ -1,4 +1,4 @@
-# import plutonlib.utils as pu
+import plutonlib.utils as pu
 # import plutonlib.plot as pp
 from plutonlib.colours import pcolours
 
@@ -20,7 +20,7 @@ from collections import defaultdict
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
 src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
-
+main_path = os.path.join(os.path.expanduser('~'),'plutonlib/')
 try: #Checks for PLUTO_DIR env var
     plutodir = os.environ["PLUTO_DIR"]
 except KeyError:
@@ -95,28 +95,6 @@ def profiles(sel_prof=None,arr_type=None):
     return returns
 
 #TODO env_var or config file?
-def get_start_dir(origin_dir,**kwargs):
-    warnings = []
-    try: #Checks if PLUTON_START_DIR is an env var
-        start_dir = os.environ["PLUTONLIB_START_DIR"]
-        warnings.append(f"{pcolours.WARNING}{start_dir} (PLUTONLIB_START_DIR)")
-
-    except KeyError: #if not env var creates a plutonlib_output folder at origin_dir
-        if 'run_name' in kwargs: #make plutonlib_output folder more descriptive if run_name is passed
-            run_name = kwargs['run_name']
-            new_dir = os.path.join(origin_dir,f"{run_name}_plutonlib_output")
-        else:
-            new_dir = os.path.join(origin_dir,"plutonlib_output")
-
-        is_dir = os.path.isdir(new_dir)
-        if not is_dir:
-            os.makedirs(new_dir)
-            print(f"{pcolours.WARNING}Creating plutonlib_output folder in {origin_dir}") 
-            print("\n")
-
-        start_dir = new_dir
-        warnings.append(f"{pcolours.WARNING}{start_dir} (Missing environment variable PLUTONLIB_START_DIR)")
-    return {"start_dir":start_dir,"warnings":warnings}
 
 # Read norm values from ini file
 def get_ini_file(ini_file = None):
@@ -125,10 +103,10 @@ def get_ini_file(ini_file = None):
     should follow naming convention: name_units.ini 
     """
     if ini_file is None:
-        ini_path = os.path.join(src_path,"units","pluto_units" + ".ini")
-    
+        ini_path = os.path.join(main_path,"units","pluto_units" + ".ini")
+
     else:
-        ini_path = os.path.join(src_path,"units",ini_file + ".ini")
+        ini_path = os.path.join(main_path,"units",ini_file + ".ini")
     
     is_file = os.path.isfile(ini_path)
     if not is_file:
@@ -222,9 +200,17 @@ def pluto_ini_info(sim_dir):
         for k,v in [line.split(None,1)]
     }
 
+    raw_grid_output = config.options("Static Grid Output")
+    grid_output = {
+        # k: str(v.split(";",1)[0].strip())
+        k: [pu.is_num_or_str(x) for x in v.split() ]
+        for line in raw_grid_output if " " in line
+        for k,v in [line.split(None,1)]
+    }
+
     key_params = {key: usr_params[key] for key in ['jet_pwr','jet_spd','jet_chi','env_rho_0','env_temp','wind_vx1','wind_vx2','wind_vx3']}
 
-    returns = {"grid_setup": grid_setup,"usr_params":usr_params,"key_params":key_params,"ini_name":ini_name}
+    returns = {"grid_setup": grid_setup,"grid_output":grid_output,"usr_params":usr_params,"key_params":key_params,"ini_name":ini_name}
 
     return returns
 
