@@ -31,4 +31,4 @@ bump_release() {
 }
 
 cd ~/plutonlib
-bump_releasez
+bump_release
