@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2025-12-23
+
+### 🚀 Features
+
+
+- *(analysis.py)* `calc_var_prof()` no longer loads full arrays
+
+- `calc_var_prof()` now uses `get_grid_idx()` which finds the grid patch and array index containing the slice value e.g. at x1 = 0, meaning that we no longer require `np.argmin()` to find a specific value, improving performance.
+  - Added some misc analysis functions to find sound speed, injection region etc
+
+- *(utils.py)* added some helper functions to map variable names e.g. `ncx`->`x1`
+
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Performance
+
+
+- *(config.py)* `code_to_usr_units` now more memory effiecient
+
+-`code_to_usr_units()` no longer copies full arrays into memory, it now just overwrites the array input.
+
+
+### Refactoring
+
+
+- *(plot.py)* restructured all functions for performance ease of use
+
+- `PlotData` now contains colourmaps, `spare_coord`,`plane` (e.g. plot in "xz" plane),`var_choice`
+  - refactored all functions e.g. now only one 3D pcolourmesh function `pcmesh_3d()`, removed `cmap_base()`
+  - renamed `plot_sim()` and `plotter()` to `plot_sim_fluid()` and `plot_1D_slice()`
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.10.0] - 2025-12-12
 
 ### 🚀 Features
