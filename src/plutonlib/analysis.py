@@ -9,13 +9,12 @@ import numpy as np
 import scipy as sp
 from scipy import stats
 from scipy import constants
+from astropy import units as u
+
 import matplotlib.pyplot as plt
 from collections import defaultdict 
 from IPython.display import display, Latex
 import inspect
-
-
-
 
 def find_nearest(array, value):
     """Find closes value in array"""
@@ -23,90 +22,108 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return {"idx":idx, "value": array[idx]}
 
-def calc_var_prof(sdata,sel_coord,ndim = 3,**kwargs):
-    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-    arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file', sdata.ini_file)
-    ndim = ndim #TODO replace this with a try except loop
-    value = 0 if not kwargs.get('value') else kwargs.get('value')
-    # --- Determine whether to use find_nearest or grid midpoints ---
-    
-    use_find_nearest = (
-        (value is not None and value != 0) #use find_nearest if value is not 0 
-        or ('idx' in kwargs and kwargs['idx'] is not None)
-    )
+def get_grid_idx(value,sdata,coord):
+    """
+    Method for finding array index of a specific value without loading full PLUTO grid arrays,
+    note that this only works if the value and the pluto ini grid are in the same units, and if the grid patch
+    containing `value` resides in a uniform patch. 
 
-    if value == 0 and not use_find_nearest: #using ini grid values if value is 0, -> midpoint
-        x_mid = sdata.grid_setup["x1-grid"]["origin_idx"]
-        y_mid = sdata.grid_setup["x2-grid"]["origin_idx"] if ndim > 1 else None
-        z_mid = sdata.grid_setup["x3-grid"]["origin_idx"] if ndim > 2 else None
+    value: value to find grid idx
+    sdata: SimulationData object
+    coord: dimension to find value for e.g. "x1","x2" or "x3"
+    """
+    coord = pu.map_coord_name(coord) #this lets you put in ncx and x1 etc 
+    grid = sdata.grid_setup[f"{coord}-grid"]
+    starts = grid["start"]
+    ends = grid["end"]
+    patch_cells = grid["patch_cells"]
 
+    for patch in range(grid["n_patches"]): #loop across each grid patch to find which one contains origin
+        cur_patch = f"[{starts[patch]} {patch_cells[patch]} {grid['type'][patch][0]} {ends[patch]}]"
+        start = starts[patch]
+        end = ends[patch]
+        
+        if starts[patch] <= value <= ends[patch]: #find the patch where value is located            
+            if grid["type"][patch] == "uniform":
+                start_disp = (value - start) #distance from start of patch 
+                patch_length = (end-start) #total length of patch 
+                patch_idx = (start_disp / patch_length)*patch_cells[patch] #fraction of distance to total patch scaled by number of cells gives the grid cell of value.
+                idx = int(sum(patch_cells[:patch])+patch_idx) # since there can be multiple patches, need to add previous patch cells to above calculation 
+                return idx
 
-    elif value !=0 and use_find_nearest: #using value/idx kwargs only if value is not 0
-        print("calc_var_prof: using find_nearest")
-        target = value  if 'value' in kwargs and value  is not None else 0
+            else:
+                raise NotImplementedError(f"{coord} = {value} lies in stretched patch: {cur_patch}, need to numerically solve the grid stretching ratio")
+                #NOTE would  
+            
+    raise ValueError(f"Value {coord} = {value} is outside the grid extent for {cur_patch}")
 
-        if 'idx' in kwargs:
-            idx = kwargs['idx']
+def calc_var_prof(sdata,sel_coord,value_2D: float = None,value_1D: dict = None,**kwargs):
+    """
+    Calculates the array profile for two cases e.g. for sel_coord = "x1", value = 0:
+        slice_1D : (slice(None, None, None), 600, 733) 
+            -> 1D slice along x1 at x2_mid, x3_mid
+            -> Shape: (n_x1,)
+
+        slice_2D: (800, slice(None, None, None), slice(None, None, None)) 
+            -> 2D plane in x2,x3 sliced in x1 at x1_mid
+            -> Shape: (n_x2, n_x3)
+
+    Parameters:
+    sdata: 
+        SimulationData object
+    sel_coord: 
+        Selected coordinate to slice in or about
+    value_2D: 
+        Value to slice at for 2D slice, e.g x1 = 20kpc, defaults to value_2D = 0 (midpoint)
+    value_1D: 
+        Used to make a slice at value for different coord to sel_coord for 1D slice, 
+        e.g. slice at x1 = 20kpc and x2 = 0kpc 
+
+    """
+    sel_coord = pu.map_coord_name(sel_coord) #strips array_type from sel_coord e.g. ncx -> x1
+    x,y,z = "x1","x2","x3" 
+
+    idx_map = {x:None, y:None,z:None}   
+    for coord in idx_map.keys():
+        if value_1D and coord in value_1D:
+            idx_map[coord] = get_grid_idx(value=value_1D[coord],sdata=sdata,coord=coord) 
+        
+        elif value_2D is not None and coord == sel_coord:
+            idx_map[coord] = get_grid_idx(value=value_2D,sdata=sdata,coord=coord)
+        
         else:
-            # 1D slices for coordinate lookup
-            value_slice_map = {
-                "x1": (slice(None), 0, 0),
-                "x2": (0, slice(None), 0),
-                "x3": (0, 0, slice(None)),
-            }
+            idx_map[coord] = get_grid_idx(value=0,sdata=sdata,coord=coord)
 
-            coords_1D = {
-                coord: (
-                    sdata.get_coords()[coord][value_slice_map[coord]]
-                    if arr_type in ('nc', 'cc')
-                    else sdata.get_coords()[coord]
-                )
-                for coord in ["x1", "x2", "x3"]
-            }
 
-            idx = find_nearest(coords_1D[sel_coord], target)['idx']
 
-        # nearest indices for each axis
-        x_mid = find_nearest(coords_1D['x1'], target)['idx']
-        y_mid = find_nearest(coords_1D['x2'], target)['idx'] if ndim > 1 else None
-        z_mid = find_nearest(coords_1D['x3'], target)['idx'] if ndim > 2 else None
 
     # --- Define slicing maps ---
-    if ndim > 2:
+    if sdata.grid_ndim > 2:
         slice_map_1D = {
-            "x1": (slice(None), y_mid, z_mid),
-            "x2": (x_mid, slice(None), z_mid),
-            "x3": (x_mid, y_mid, slice(None)),
+            x : (slice(None), idx_map[y], idx_map[z]),
+            y: (idx_map[x], slice(None), idx_map[z]),
+            z: (idx_map[x], idx_map[y], slice(None)),
         }
 
         slice_map_2D = {
-            "x1": (x_mid, slice(None), slice(None)),
-            "x2": (slice(None), y_mid, slice(None)),
-            "x3": (slice(None), slice(None), z_mid),
+            x: (idx_map[x], slice(None), slice(None)),
+            y: (slice(None), idx_map[y], slice(None)),
+            z: (slice(None), slice(None), idx_map[z]),
         }
 
     else:
         slice_map_1D = {
-            "x1": (slice(None), y_mid),
-            "x2": (x_mid, slice(None)),
+            x: (slice(None), idx_map[y]),
+            y: (idx_map[x], slice(None)),
         }
         slice_map_2D = None
 
     slice_1D = slice_map_1D[sel_coord]
-    slice_2D = slice_map_2D[sel_coord] if ndim > 2 else None
-
-    coord_sliced = None
-    if use_find_nearest:
-        if arr_type in ('nc', 'cc'):
-            coord_sliced = sdata.get_coords()[sel_coord][slice_1D][idx]
-        else:
-            coord_sliced = sdata.get_coords()[sel_coord][idx]
+    slice_2D = slice_map_2D[sel_coord] if sdata.grid_ndim > 2 else None
 
     return {
         "slice_1D": slice_1D,
         "slice_2D": slice_2D,
-        "coord_sliced": coord_sliced,
     }
 
 #---Plot Grid structure---#
@@ -780,7 +797,14 @@ def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
     else:    
         return returns
 
-def EOS(rho=None,prs=None,T=None,mu = 0.60364,prnt = 1):
+def jet_kinetic_power(radius,rho,vel):
+    eqn = 0.5*4*np.pi*(radius**2)*rho*(vel**3)
+    return eqn.si
+# rkpc = 4.5 * u.kpc
+# rho = (1e-2*(5/3 * 1e-28)) * (u.gram / u.cm**3)
+# jet_kinetic_power(rkpc.to(u.m),rho.si,2.5e7 * (u.meter / u.second))
+
+def EOS(rho=None,prs=None,T=None,mu = 0.60364):
     """
     Simple Equation of state calculator to get Temp for a given density and pressure etc...
     """
@@ -788,19 +812,41 @@ def EOS(rho=None,prs=None,T=None,mu = 0.60364,prnt = 1):
     kb = constants.k
     
     if not T:
-        T = (prs*mu*m_H)/(rho*kb)
-        T_prnt = f"Temperature = {T:.2e} K"
-        return T if not prnt else T_prnt
+        unit = (u.Kelvin)
+        T = (prs*mu*m_H)/(rho*kb)*unit
+        return T 
     
     if not prs:
-        prs = (kb*rho*T)/(mu*m_H)
-        prs_prnt = f"Pressure = {prs:.2e} Pa"
-        return prs if not prnt else prs_prnt
+        unit = (u.pascal)
+        prs = (kb*rho*T)/(mu*m_H)*unit
+        return prs 
     
     if not rho:
-        rho = (prs*mu*m_H)/(T*kb)
-        rho_prnt = f"Density = {rho:.2e} kgm^-3"
-        return rho if not prnt else rho_prnt
+        unit = (u.kg)/(u.m**3)
+        rho = (prs*mu*m_H)/(T*kb)*unit
+        return rho 
+
+def central_sound_speed(rho_0,T):
+   prs_0 = EOS(rho =rho_0,T = T).value
+   nonrel_gamma = 5/3
+   unit = u.m / u.s
+   return (np.sqrt((nonrel_gamma * prs_0) / (rho_0)))*unit
+
+def get_inlet_speed(rho_0,T,wind_vxx):
+   inlet_vxx = []
+   for vx in wind_vxx:
+      inlet_vxx.append((vx*central_sound_speed(rho_0=rho_0,T=T)).to(u.kpc / u.Myr))
+   return inlet_vxx
+
+def locate_injection_region(rho_0,T,wind_vxx,sim_time):
+    sim_time = sim_time * u.Myr
+    inlet_vxx = get_inlet_speed(rho_0=rho_0,T=T,wind_vxx=wind_vxx)
+    inj_xyz = []
+    for vx in inlet_vxx:
+        inj_xyz.append(-vx*sim_time)
+    return inj_xyz
+
+
 
 #---Jet angle---#
 def binned_mean_tracer_mask(bin_size, x, y, tr_array, tr_cut=None, side=None, **kwargs):
@@ -1238,9 +1284,90 @@ def jet_angle_tprog_vector(sdata,outputs,tr_cut,nslices):
 
     plt.plot(times,jet_angles) 
 
-def jet_kinetic_power(radius,rho,vel):
-    eqn = 0.5*4*np.pi*(radius**2)*rho*(vel**3)
-    return eqn.si
-# rkpc = 4.5 * u.kpc
-# rho = (1e-2*(5/3 * 1e-28)) * (u.gram / u.cm**3)
-# jet_kinetic_power(rkpc.to(u.m),rho.si,2.5e7 * (u.meter / u.second))
+def calc_var_prof_old(sdata,sel_coord,ndim = 3,**kwargs):
+    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    arr_type = kwargs.get('arr_type', sdata.arr_type)
+    ini_file = kwargs.get('ini_file', sdata.ini_file)
+    ndim = ndim #TODO replace this with a try except loop
+    value = 0 if not kwargs.get('value') else kwargs.get('value')
+    x,y,z = pu.get_coord_names()
+
+    sel_coord = pu.unmap_coord_name(sel_coord,arr_type=arr_type)
+    # --- Determine whether to use find_nearest or grid midpoints ---
+    
+    use_find_nearest = (
+        (value is not None and value != 0) #use find_nearest if value is not 0 
+        or ('idx' in kwargs and kwargs['idx'] is not None)
+    )
+
+    if value == 0 and not use_find_nearest: #using ini grid values if value is 0, -> midpoint
+        x_mid = sdata.grid_setup["x1-grid"]["origin_idx"]
+        y_mid = sdata.grid_setup["x2-grid"]["origin_idx"] if ndim > 1 else None
+        z_mid = sdata.grid_setup["x3-grid"]["origin_idx"] if ndim > 2 else None
+
+
+    elif value !=0 and use_find_nearest: #using value/idx kwargs only if value is not 0
+        print("calc_var_prof: using find_nearest")
+        target = value  if 'value' in kwargs and value  is not None else 0
+
+        if 'idx' in kwargs:
+            idx = kwargs['idx']
+        else:
+            # 1D slices for coordinate lookup
+            value_slice_map = {
+                x : (slice(None), 0, 0),
+                y : (0, slice(None), 0),
+                z : (0, 0, slice(None)),
+            }
+            coords_1D = {
+                coord: (
+                    sdata.fluid_data(coord,load_slice=None)[coord][value_slice_map[coord]]
+                    if arr_type in ('nc', 'cc')
+                    else sdata.sdata.fluid_data(coord,load_slice=None)[coord]
+                )
+                for coord in list(pu.get_coord_names()) #returns ncx,ncy,ncz etc depending on arr_type
+            }
+
+            idx = find_nearest(coords_1D[sel_coord], target)['idx']
+
+        # nearest indices for each axis
+        x_mid = find_nearest(coords_1D[x], target)['idx']
+        y_mid = find_nearest(coords_1D[y], target)['idx'] if ndim > 1 else None
+        z_mid = find_nearest(coords_1D[z], target)['idx'] if ndim > 2 else None
+
+    # --- Define slicing maps ---
+    if ndim > 2:
+        slice_map_1D = {
+            x : (slice(None), y_mid, z_mid),
+            y: (x_mid, slice(None), z_mid),
+            z: (x_mid, y_mid, slice(None)),
+        }
+
+        slice_map_2D = {
+            x: (x_mid, slice(None), slice(None)),
+            y: (slice(None), y_mid, slice(None)),
+            z: (slice(None), slice(None), z_mid),
+        }
+
+    else:
+        slice_map_1D = {
+            x: (slice(None), y_mid),
+            y: (x_mid, slice(None)),
+        }
+        slice_map_2D = None
+
+    slice_1D = slice_map_1D[sel_coord]
+    slice_2D = slice_map_2D[sel_coord] if ndim > 2 else None
+
+    coord_sliced = None
+    if use_find_nearest:
+        if arr_type in ('nc', 'cc'):
+            coord_sliced = sdata.fluid_data(sel_coord)[sel_coord][slice_1D][idx]
+        else:
+            coord_sliced = sdata.fluid_data(sel_coord)[sel_coord][idx]
+
+    return {
+        "slice_1D": slice_1D,
+        "slice_2D": slice_2D,
+        "coord_sliced": coord_sliced,
+    }
