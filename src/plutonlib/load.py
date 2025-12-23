@@ -10,7 +10,9 @@ from pathlib import Path
 import os
 
 from concurrent.futures import ThreadPoolExecutor, as_completed,ProcessPoolExecutor
-from functools import lru_cache
+from dataclasses import dataclass, field
+from typing import Dict, Any, List
+# from functools import lru_cache
 from collections import defaultdict 
 import h5py as h5py
 import numpy as np
@@ -18,40 +20,26 @@ import numpy as np
 import time
 import glob
 import inspect
+@dataclass
+class HDF5Metadata:
+    file_path: str
+    sim_time: float
+    dataset_paths: Dict[str, str]
+    load_output: int
+
+    t_load: float = 0
+    geometry: str = "CARTESIAN"
+    dtype: str = "hdf5_float"
+    is_compressed: bool = False   
+    is_conv: bool = True
+    time_str: str = "0 Myr"
+    extra_info: Dict[str, Any] = field(default_factory=dict)
 
 # ------------------------#
 #       functions
 # ------------------------#
 
 # ---Loading Files---#
-
-# def set_hdf5_grid_info(grid_object):
-"""
-Taken from plutokore
-"""
-    # # Set the 1D cell edge coordinate arrays
-    # setattr(grid_object, "ex", grid_object.ncx[0, 0, :])
-    # setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
-    # setattr(grid_object, "ez", grid_object.ncz[:, 0, 0])
-
-    # Set the 1D cell midpoint cooordinate arrays
-    # setattr(grid_object, "mx", grid_object.ccx[:, 0, 0])
-    # setattr(grid_object, "my", grid_object.ccy[0, :, 0])
-    # setattr(grid_object, "mz", grid_object.ccz[0, 0, :])
-
-    # # Set the 1D cell edge coordinate arrays
-    # setattr(grid_object, "ex", grid_object.ncx[:, 0, 0])
-    # setattr(grid_object, "ey", grid_object.ncy[0, :, 0])
-    # setattr(grid_object, "ez", grid_object.ncz[0, 0, :])
-
-
-    # setattr(grid_object, "dx", np.diff(grid_object.ex))
-    # setattr(grid_object, "dy", np.diff(grid_object.ey))
-    # setattr(grid_object, "dz", np.diff(grid_object.ez))
-
-    # setattr(grid_object, "dx1", grid_object.dx)
-    # setattr(grid_object, "dx2", grid_object.dy)
-    # setattr(grid_object, "dx3", grid_object.dz)
 
 def get_file_outputs(wdir):
     """
@@ -158,11 +146,10 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
             # print(f"Using {dext} extension for {load_output}")
 
         with h5py.File(data_file_path, "r", 
-               rdcc_nbytes=32 * 1024 * 1024, #was 512
+               rdcc_nbytes=512 * 1024 * 1024, #was 512
                rdcc_nslots=2_000_003,
                rdcc_w0=0.75) as data_file:
             
-            # setattr(data_file, "sim_time", data_file[f"Timestep_{load_output}"].attrs["Time"])
             geometry = "CARTESIAN" #NOTE this should be able to be read from grid.out
 
             prof_vars = pc.profiles(arr_type = arr_type)["profiles"]["all"]
@@ -213,15 +200,11 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
                     # 2D slice: just swap the two axes [y,x] -> [x,y] or [z,y] -> [y,z] etc.
                     file_data[coord_key] = (np.transpose(data_array, (1, 0)))
 
-                # setattr(data_file, coord_var, data_array)
-
             loaded_vars = [v for v in var_choice if v in file_data or var_map.get(v,v) in file_data] #avail vars after attr setting
 
     elif is_dbl: #should be deprecated?
         out_fname = "dbl.out"
         dtype.append("double")
-
-        # data_file = pk_io.pload(load_output, w_dir=wdir)
 
         #only want to do this calculation once
         geometry = data_file.geometry
@@ -236,6 +219,149 @@ def load_file_output(wdir,load_output,var_choice,arr_type=None,load_slice=None):
 
     # print(f"dbl loading: {(time.time() - start):.2f}s")
     return returns
+
+def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
+    """
+    Loads certain metadata from a single HDF5 file with minimal performance and memory impact,
+    stores information in the HDF5Metadata dataclass.
+
+    Parameters:
+    -----------
+    wdir : str
+        Working directory where simulation files are located.
+    load_output : int
+        Integer of which output file to load metadata from (e.g., 0 for data.0000.flt.h5).
+    
+    Returns:
+    --------
+    HDF5Metadata
+        Dataclass containing:
+        - file_path: Path to the HDF5 file (compressed or uncompressed)
+        - sim_time: Simulation time at this output
+        - dataset_paths: Dictionary mapping variable names to their HDF5 dataset paths
+        - load_output: The output number loaded
+        - geometry: Coordinate system geometry (default "CARTESIAN")
+        - dtype: Data type string ("hdf5_float" or "hdf5_double")
+        - is_compressed: Boolean indicating if file is compressed
+    """
+    
+    is_dbl_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5.compressed"))
+    is_flt_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5.compressed"))
+    dext = "flt.h5" if is_flt_h5 else "dbl.h5" #assigns correct dtype for loading, preferentially load float
+    dtype = ("hdf5_double" if is_dbl_h5 else "hdf5_float")
+
+    if not is_dbl_h5 and not is_flt_h5:
+        raise FileNotFoundError #quick error as metadata only works for hdf5
+
+    file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}")
+    compressed_file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}.compressed")
+    is_compressed = os.path.isfile(compressed_file_path)
+
+    if is_compressed: #use available chunked data
+        file_path = compressed_file_path
+        # print("Using compressed data")
+
+    data_file = h5py.File(file_path, "r", 
+        rdcc_nbytes=512 * 1024 * 1024, #was 512
+        rdcc_nslots=2_000_003,
+        rdcc_w0=0.75)
+
+    try:
+        geometry = "CARTESIAN" #NOTE this should be able to be read from grid.out
+        sim_time = data_file[f"Timestep_{load_output}"].attrs["Time"]
+        file_vars = [v for v in list(data_file[f"Timestep_{load_output}/vars"].keys())]
+
+        dataset_paths = {}
+        for var in file_vars:
+            dataset_paths[var] = f"Timestep_{load_output}/vars/{var}"
+
+        if "node_coords" in data_file:
+            for dim in ['X', 'Y', 'Z']:
+                if dim in data_file["node_coords"]:
+                    coord_name = f"nc{dim.lower()}"  # ncx, ncy, ncz
+                    dataset_paths[coord_name] = f"node_coords/{dim}"
+
+        # Cell coordinates: cell_coords/X,Y,Z -> ccx, ccy, ccz
+        if "cell_coords" in data_file:
+            for dim in ['X', 'Y', 'Z']:
+                if dim in data_file["cell_coords"]:
+                    coord_name = f"cc{dim.lower()}"  # ccx, ccy, ccz
+                    dataset_paths[coord_name] = f"cell_coords/{dim}"
+    finally:
+        data_file.close()
+
+    return HDF5Metadata(
+        file_path=file_path,
+        sim_time=sim_time,
+        dataset_paths=dataset_paths,
+        load_output=load_output,
+        geometry=geometry,
+        dtype=dtype,
+        is_compressed=is_compressed
+    )
+
+def load_hdf5_lazy(wdir,load_output,var_choice,load_slice = None):
+    """
+    Loads specific variables from a single HDF5 file output using metadata for efficient access.
+    
+    This function uses load_hdf5_metadata to locate datasets, then loads only the requested
+    variables from the HDF5 file. Arrays are automatically transposed from PLUTO's [z,y,x]
+    ordering to [x,y,z] ordering for compatibility.
+    
+    Parameters:
+    -----------
+    wdir : str
+        Working directory where simulation files are located.
+    load_output : int
+        Integer of which output file to load (e.g., 0 for data.0000.flt.h5).
+    var_choice : list or str
+        List of variable names to load from the file (e.g., ['rho', 'prs', 'ncx', 'ncy']).
+        Includes both field variables and coordinate arrays.
+    load_slice : tuple, optional
+        Array slice to load a subset of data instead of the full array (e.g., (slice(0,100), slice(0,50))).
+        Slice is applied in [z,y,x] order before transposition.
+    
+    Returns:
+    --------
+    dict
+        Dictionary containing:
+        - sim_time: Simulation time at this output
+        - {var_name}: Loaded and transposed arrays for each requested variable
+
+    """
+    
+    metadata = load_hdf5_metadata(wdir=wdir,load_output=load_output)
+    dataset_paths = metadata.dataset_paths
+
+    file_data = {}
+    file_data["sim_time"] = metadata.sim_time
+    data_file = h5py.File(metadata.file_path, "r", 
+            rdcc_nbytes=512 * 1024 * 1024, #was 512
+            rdcc_nslots=2_000_003,
+            rdcc_w0=0.75)
+    
+    try:
+        vars_to_load = [v for v in metadata.dataset_paths if v in var_choice]
+        for v in vars_to_load:
+            if load_slice is not None: #load in chunks though slicing the data
+                reversed_slice = tuple(load_slice[::-1])
+                data_array = data_file[dataset_paths[v]][reversed_slice] # avail_vars[v] = 'rho': 'Timestep_16/vars/rho', load this dataset 
+            else: #no slicing
+                data_array = data_file[dataset_paths[v]][()]
+            
+
+            if data_array.ndim == 3: #NOTE this transposes z,y,x arrays into x,y,z arrays
+                file_data[v] = (np.transpose(data_array, (2, 1, 0)))
+                
+            elif data_array.ndim == 2:
+                file_data[v] = (np.transpose(data_array, (1, 0)))
+            else:
+                file_data[v] = data_array
+
+    finally:
+        data_file.close()
+
+    return file_data
 
 def get_particle_outputs(wdir,load_outputs=None):
     '''
@@ -375,7 +501,7 @@ def pluto_particles(sim_type,run_name,load_outputs=None):
     }
     return returns
 
-@lru_cache(maxsize=32)  # This caches based on input arguments
+# @lru_cache(maxsize=32)  # This caches based on input arguments
 def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None,load_slice=None, arr_type=None,ini_file=None):
     f"""
     Loads simulation data from a specified Pluto simulation.
@@ -506,7 +632,103 @@ def pluto_loader(sim_type, run_name, profile_choice, load_outputs=None,load_slic
 
     return {"vars": vars, "var_choice": var_choice, "vars_extra": vars_extra, "d_files": d_files, "warnings": warnings}
 
-@lru_cache(maxsize=32)  # This caches based on input arguments
+def pluto_loader_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=None,conv=True):
+    """
+    Loads and optionally converts multiple HDF5 simulation outputs with metadata tracking.
+    
+    This is the main high-level loading function that combines metadata extraction, lazy loading,
+    and optional unit conversion. It processes multiple outputs in sequence and attaches metadata
+    to each output's data dictionary.
+    
+    Parameters:
+    -----------
+    wdir : str
+        Working directory where simulation files are located.
+    var_choice : list or str
+        List (or single string) of variable names to load (e.g., ['rho', 'prs', 'ncx', 'ncy']).
+    load_outputs : tuple, int, or "last", optional
+        Which outputs to load:
+        - tuple: Load specific outputs (e.g., (0, 5, 10))
+        - int: Load outputs from 0 to load_outputs (inclusive)
+        - "last": Load only the last available output
+        - None: Load the last available output (default)
+    load_slice : tuple, optional
+        Array slice to load a subset of data (e.g., (slice(None, None, None), slice(None, None, None), 733)).
+    ini_file : str, optional
+        INI file name (without extension) to use for unit conversion e.g. jet_units.
+    conv : bool, optional
+        If True, convert data from code units to user units (default True).
+        If False, return raw code unit data.
+    
+    Returns:
+    --------
+    dict
+        Dictionary with structure pluto_data[output] containing:
+        - {var_name}: Arrays for each requested variable (converted or raw)
+        - metadata: HDF5Metadata dataclass with additional fields:
+            - t_load: Time taken to load this output (seconds)
+            - time_str: Formatted time string (e.g., "$1.5 \\; [Myr]$")
+            - sim_time: Simulation time in user units
+            - is_conv: Boolean indicating if data was converted
+    
+    """
+    
+    t_start = time.time()
+    var_choice = [var_choice] if isinstance(var_choice,str) else var_choice
+    pluto_data = defaultdict(list)  # Stores variables for each D_file
+    warnings = []
+    d_files = []
+    tsteps = []
+    
+    n_outputs = get_file_outputs(wdir)
+    warnings.append(f"{pcolours.WARNING}Outputs: {n_outputs}")
+    if load_outputs == None:
+        load_outputs = n_outputs
+    elif load_outputs == "last":
+        load_outputs = (get_file_outputs(wdir),)
+    if isinstance(load_outputs, int) and load_outputs > n_outputs:
+        raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
+    
+    for output in load_outputs:
+        metadata = load_hdf5_metadata(wdir=wdir,load_output=output)
+        time_val = pc.code_to_usr_units("sim_time",metadata.sim_time,ini_file="jet_units")["conv_data_uuv"]
+        time_unit = str(pc.get_pluto_units("CARTESIAN",ini_file)["sim_time"]["usr_uv"])
+        time_str = f"${time_val:.2f} \\; [{time_unit}]$"
+
+        basename = (os.path.basename(metadata.file_path))
+        d_files.append('.'.join(basename.split('.')[:2]))
+        tsteps.append(time_str)
+
+        if not conv:
+            pluto_data[output] = load_hdf5_lazy(wdir=wdir,load_output=output,var_choice=var_choice,load_slice=load_slice)
+            metadata.is_conv = False
+
+        if conv:
+            raw_data = load_hdf5_lazy(wdir=wdir,load_output=output,var_choice=var_choice,load_slice=load_slice)
+            def convert_var(var_name):
+                conv = pc.code_to_usr_units(
+                    var_name=var_name,
+                    raw_data=raw_data[var_name],
+                    ini_file=ini_file
+                )
+                return var_name, conv["conv_data_uuv"]
+            
+            file_results = {}
+            with ThreadPoolExecutor() as exe:
+                futures = [exe.submit(convert_var, v) for v in var_choice]
+                for f in as_completed(futures):
+                    v, conv_arr = f.result()
+                    file_results[v] = conv_arr
+            pluto_data[output] = file_results
+            metadata.is_conv = True
+        
+        metadata.t_load = (round(time.time()-t_start,2))
+        metadata.time_str = time_str
+        metadata.sim_time = time_val
+        pluto_data[output]["metadata"] = metadata
+    return pluto_data
+
+# @lru_cache(maxsize=32)  # This caches based on input arguments
 def pluto_conv(sim_type, run_name, profile_choice, load_outputs=None,load_slice=None, arr_type=None, ini_file=None):
     f"""
     Converts Pluto simulation variables from code units to cuv and uuv units.
