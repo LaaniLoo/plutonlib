@@ -141,7 +141,6 @@ def pluto_ini_info(sim_dir):
 
     raw_grids = config.options("Grid")
     grid_setup = defaultdict(dict)
-
     for grid in raw_grids: #loop across all ini grids
         grid_raw = grid.split(" ") #raw grid data
         grid_contents = list(filter(None,grid_raw))
@@ -165,18 +164,18 @@ def pluto_ini_info(sim_dir):
         grid_setup[grid_coord]["start"] =  starts
         grid_setup[grid_coord]["end"] = ends
         grid_setup[grid_coord]["patch_cells"] = n_cells
-        # grid_setup[grid_coord]["n_cells"] = sum(n_cells)
+
         grid_setup[grid_coord]["type"] = types
 
 
-
+    all_cells = []
     for grid_coord in grid_setup.keys():
 
         grid = grid_setup[grid_coord]
         starts = grid["start"]
         ends = grid["end"]
         patch_cells = grid["patch_cells"]
-
+        all_cells.append(int(sum(patch_cells)))
         for patch in range(grid["n_patches"]):
             if starts[patch] <= 0 <= ends[patch]:
                 if grid["type"][patch] == "uniform":
@@ -191,7 +190,9 @@ def pluto_ini_info(sim_dir):
                     raise NotImplementedError("Finding origin idx only working with uniform patches")
 
         grid["origin_idx"] = origin_idx
+        grid["dx"] =  np.sum(np.abs(starts+ends)) / np.sum(patch_cells)
     grid_setup["dimensions"] = get_grid_dimensions(grid_setup)
+    grid_setup["arr_shape"] = tuple((cells) for cells in all_cells)
 
     raw_usr_params = config.options("Parameters")
     usr_params = {
@@ -301,27 +302,28 @@ def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
     """
     pluto_units = get_pluto_units("CARTESIAN",ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
 
-    code_uv =  pluto_units[var_name]["code_uv"]
-    usr_uv = pluto_units[var_name]["usr_uv"]
-    # norm = pluto_units[var_name]["norm"]
+    mapped_var_name = pu.map_coord_name(var_name) #makes sure to convert diff XYZ arrays to x1,x2,x3
+    
+    code_uv = pluto_units[mapped_var_name]["code_uv"]
+    usr_uv = pluto_units[mapped_var_name]["usr_uv"]
 
     np.asarray(raw_data) if np.any(raw_data) and not isinstance(raw_data,np.ndarray) else raw_data #calc only works if raw_data is numpy array 
 
     #convert raw_data
     if code_uv is None or usr_uv is None:  #skips if it doesn't need converting
-        conv_to_code_units = raw_data
-        conv_data_cuv = raw_data  #equiv to arrays in cgs units
+        # conv_to_code_units = raw_data #NOTE not sure what this line is for
+        # conv_data_cuv = raw_data  #equiv to arrays in cgs units
         conv_data_uuv = raw_data
         uv_usr = None
     else:
-        conv_to_code_units = (raw_data*code_uv)  
-        conv_data_cuv = conv_to_code_units.value  #equiv to arrays in cgs units
-        conv_data_uuv = conv_to_code_units.to(usr_uv).value #equiv to arrays in si units
         uv_usr = (1*code_uv).to(usr_uv).value
+        raw_data *= uv_usr
+        # conv_data_cuv = (raw_data/uv_usr)*(1*code_uv).value  #equiv to arrays in cgs units
+        conv_data_uuv = raw_data
 
     returns = {
         "uv_usr":uv_usr, #like a scale factor??
-        "conv_data_cuv":conv_data_cuv, 
+        # "conv_data_cuv":conv_data_cuv, 
         "conv_data_uuv":conv_data_uuv 
     }
 
