@@ -10,6 +10,9 @@ from glob import glob
 import psutil
 import h5py
 
+from scipy import constants
+from astropy import units as u
+
 def py_reload(module):
     if isinstance(module,str):
         module_name = module
@@ -77,6 +80,91 @@ def is_dbl_and_flt(wdir):
     else:
         return False
 
+def guess_arr_type(coord_name):
+
+    if not isinstance(coord_name, str):
+        raise TypeError(f"coord_name must be string, got {type(coord_name)}")
+    
+    # Direct mapping: check if it matches any known pattern
+    coord_patterns = {
+        'nc': ['ncx', 'ncy', 'ncz'],
+        'cc': ['ccx', 'ccy', 'ccz'],
+        'e': ['ex', 'ey', 'ez'],
+        'm': ['mx', 'my', 'mz'],
+        'd': ['dx', 'dy', 'dz'],
+    }
+    
+    for arr_type, coords in coord_patterns.items():
+        if coord_name in coords:
+            return arr_type
+    
+    # If it's x1/x2/x3 or unrecognized, return None (default)
+    if coord_name in ['x1', 'x2', 'x3']:
+        return None
+    
+    # If we get here, it's unrecognized
+    raise ValueError(f"Unrecognized coordinate name: '{coord_name}'. "
+                    f"Expected one of: {[c for coords in coord_patterns.values() for c in coords] + ['x1', 'x2', 'x3']}")
+
+def get_coord_names(arr_type = "nc",coord = None):
+    coord_prefixes = {
+    "e":  ["ex",  "ey",  "ez"],
+    "m":  ["mx",  "my",  "mz"],
+    "d":  ["dx",  "dy",  "dz"],
+    # "x":  ["x1",  "x2",  "x3"],
+    "nc": ["ncx", "ncy", "ncz"],
+    "cc": ["ccx", "ccy", "ccz"],
+    None: ["x1",  "x2",  "x3"],  # default if None
+    }
+
+    if arr_type not in coord_prefixes:
+        raise KeyError(f"{arr_type} not recognised array type, see {coord_prefixes}")
+
+    # Get the correct coordinate labels, defaults to mx ...
+    coords = coord_prefixes.get(arr_type, ["x1", "x2", "x3"])
+    x, y, z = coords
+    coord_idx = {"x1":0,"x2":1,"x3":2}
+
+    if not coord:
+        return x,y,z  
+    else:
+        return coords[coord_idx[coord]]
+
+
+
+def map_coord_name(var):
+    coord_map = {
+    'ncx': 'x1', 'ncy': 'x2', 'ncz': 'x3',
+    'ccx': 'x1', 'ccy': 'x2', 'ccz': 'x3',
+    'ex': 'x1', 'ey': 'x2', 'ez': 'x3',
+    'mx': 'x1', 'my': 'x2', 'mz': 'x3',
+    'dx': 'x1', 'dy': 'x2', 'dz': 'x3'
+    }
+    
+    return coord_map.get(var, var)
+
+def unmap_coord_name(coord):
+    arr_type = guess_arr_type(coord)
+    if arr_type:
+        if coord.startswith(arr_type) and coord[-1] in ('x', 'y', 'z'):
+            return coord
+
+        axis_map = {
+            'x1': 'x',
+            'x2': 'y',
+            'x3': 'z',
+        }
+
+        return f"{arr_type}{axis_map.get(coord, coord)}"
+    else:
+        return coord    
+
+def is_coord(var):
+    mapped_var = map_coord_name(var)
+    is_coord = True if mapped_var in ("x1","x2","x3") else False
+
+    return is_coord
+
 def pluto_is_written_out(file,chk_time):
     """
     Checks if PLUTO output is fully written as sometimes even if in .dbl.out the cluster hasn't fully written the file 
@@ -102,3 +190,15 @@ def inspect_pluto_h5(file):
                 print(f"{name} size: {obj.nbytes / 1e9:.2f} GB, Shape: {obj.shape}")
 
         f.visititems(dset_info)
+
+def ergs_to_watt(val):
+    conv_unit = u.W
+    original_unit = (u.erg / u.s)
+    conv_value = original_unit.to(conv_unit)
+    return val * conv_value
+
+def gcm3_to_kgm3(val):
+    conv_unit = (u.kg/u.m**3)
+    original_unit = (u.g / u.cm**3)
+    conv_value = original_unit.to(conv_unit)
+    return (val * conv_value)
