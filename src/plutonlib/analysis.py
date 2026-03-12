@@ -5,13 +5,22 @@ import plutonlib.simulations as ps
 import plutonlib.plot as pp
 from plutonlib.colours import pcolours 
 
+import plutokore.radio as pk_radio
+
 import numpy as np
 import scipy as sp
 from scipy import stats
 from scipy import constants
+
 from astropy import units as u
+from astropy import cosmology as cosmo  # Astropy cosmology
+import astropy.constants as astro_const
+
+from scipy.spatial.transform import Rotation
+from astropy.convolution import convolve, Gaussian2DKernel  # Astropy convolutions
 
 import matplotlib.pyplot as plt
+
 from collections import defaultdict 
 from IPython.display import display, Latex
 import inspect
@@ -73,11 +82,11 @@ def calc_var_prof(sdata,sel_coord,value_2D: float = None,value_1D: dict = None,*
         SimulationData object
     sel_coord: 
         Selected coordinate to slice in or about
-    value_2D: 
+    value_2D (float): 
         Value to slice at for 2D slice, e.g x1 = 20kpc, defaults to value_2D = 0 (midpoint)
-    value_1D: 
+    value_1D (dict): 
         Used to make a slice at value for different coord to sel_coord for 1D slice, 
-        e.g. slice at x1 = 20kpc and x2 = 0kpc 
+        e.g. slice at x1 = 20kpc and x2 = 0kpc -> value_1D = {"x1":20,"x2":0} 
 
     """
     sel_coord = pu.map_coord_name(sel_coord) #strips array_type from sel_coord e.g. ncx -> x1
@@ -126,6 +135,232 @@ def calc_var_prof(sdata,sel_coord,value_2D: float = None,value_1D: dict = None,*
         "slice_2D": slice_2D,
     }
 
+#---Praise Setup---#
+def setup_obs_properties_praise(sdata,redshift,angle,plane="xz"):
+    #--------------------------------------------------------#
+    #            Set up the observing properties             #  
+    #--------------------------------------------------------#
+
+    pixel_size = 1 * u.arcsec
+    beam_fwhm = 3 * u.arcsec  # generally this should be ~3x bigger than pixel size
+
+    arcsec2kpc = cosmo.Planck15.kpc_proper_per_arcmin(redshift).to(u.kpc/u.arcsec)
+    pixel_size_kpc = (pixel_size * arcsec2kpc).to(u.kpc)
+    beam_kpc = (beam_fwhm * arcsec2kpc).to(u.kpc)
+
+    # beam equations
+    fwhm_to_sigma = 1 / (8 * np.log(2)) ** 0.5
+    beam_sigma = beam_fwhm * fwhm_to_sigma
+    omega_beam = 2 * np.pi * beam_sigma ** 2  # Area for a circular 2D gaussian
+
+    # part_ind = part_outputs   
+
+    ## integration grid cell size
+    grid_spacing = pixel_size_kpc.value * 1.0 #0th redshift?
+
+    # set a min and max of the grid
+    grid_setup = sdata.grid_setup
+    plane_grid_map = {
+    "xy" : [grid_setup["x1-grid"]["grid_extent"],grid_setup["x2-grid"]["grid_extent"]],
+    "xz" : [grid_setup["x1-grid"]["grid_extent"],grid_setup["x3-grid"]["grid_extent"]],
+    "yz" : [grid_setup["x2-grid"]["grid_extent"],grid_setup["x3-grid"]["grid_extent"]],
+    }
+    grid_lim_x = plane_grid_map[plane][0] #e.g if xz-plane 0th element is x limits e.g. (-80,80)
+    grid_lim_y = plane_grid_map[plane][1]
+
+    # ray properties
+    delta_r = 0.3         
+    ray_depth_min = -200
+    ray_depth_max = 200
+
+    # specify our grid
+    grid_x = np.arange(grid_lim_x[0], grid_lim_x[1], grid_spacing)
+    grid_y = np.arange(grid_lim_y[0], grid_lim_y[1], grid_spacing)
+    grid_mx = np.diff(grid_x) * 0.5 + grid_x[:-1]
+    grid_my = np.diff(grid_y) * 0.5 + grid_y[:-1]
+
+    # grid_mx = test.fluid_data("ccx",load_slice=(0,0,slice(None)))["ccx"]
+    # grid_my = test.fluid_data("ccz",load_slice=(0,0,slice(None)))["ccz"]
+
+    rot_mat = Rotation.from_euler("X", angle, degrees=True).as_matrix()
+    gaussian_sigma = (beam_kpc.value * fwhm_to_sigma) / grid_spacing
+    gaussian_kernel = Gaussian2DKernel(gaussian_sigma)  # create our gaussian convlution kernel
+
+    returns = {
+        "grid_x":grid_x,
+        "grid_y":grid_y,
+        "grid_mx":grid_mx,
+        "grid_my":grid_my,
+        "delta_r":delta_r,
+        "omega_beam":omega_beam,
+        "ray_depth_min":ray_depth_min,
+        "ray_depth_max":ray_depth_max,
+        "rot_mat":rot_mat,
+        "gaussian_kernel": gaussian_kernel
+    }
+
+    return returns
+
+def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angle=0,plane="xz"):
+    """
+    Calculates the particle emssion using PRAiSE (pk_radio) under adiabatic, sychrotron and inverse compton losses.
+    Surface brightness is then calculated by integrating emissivity with raytracing.    
+    :param sdata: Description
+    :param freqs: Description
+    :param redshift: Description
+    :param particle_outputs: Description
+    :param angle: Description
+    """
+    pk_sim = sdata.to_plutokore() #convert SimulationData object to plutokore PlutoSimulation
+    particle_outputs = [pl.get_particle_outputs(sdata.wdir)] if particle_outputs == "last" else particle_outputs
+    particle_spacing = sdata.part_to_simtime(particle_outputs[0]) / particle_outputs[0]
+    s=2.2   # for injection spectral index alpha=-0.55. NOTE: the PRAiSE default is also 2.2
+
+    particle_data = sdata.load_particle_data()
+    particle_times = sdata.load_particle_data()["particle_times"]
+    particle_emis = pk_radio.praise2.praise(
+        sim=pk_sim,
+        max_output=particle_outputs[-1],
+        emit_outputs=particle_outputs, #calc emission for these outputs
+        output_system="particles", #idx in grid or particles
+        freqs=(freqs*u.GHz).si.value, #list of GHz freqs to calc for 
+        part_data=particle_data, 
+        part_times=particle_times,
+        particle_spacing=particle_spacing * u.Myr, #particle outputs per Myr 
+        redshift=redshift, # 0.05 redshift
+        lst_index=2, #last shock time index, lowest to highest str -> 2 = only strong shocks
+        losses=4, #idx to include losses: adiab, synch, inverse compton losses -> 4 = include all losses
+    )
+
+    # Remove the NaNs for each output 
+    # create an empty list of particle coordinates, velocities and the nan masks which will all be different for each simulation output. 
+    all_part_coords = []  
+    all_vel_vec = []
+    all_nan_masks = []
+    sb_arr = []
+    integ_emis = []
+    for i in  range(0, len(particle_outputs), 1):    
+        part_ind = particle_outputs[i]
+        nan_mask = ~np.isnan(particle_data["id"][:, part_ind]) 
+        all_nan_masks.append(nan_mask)
+        
+        part_coords = np.c_[
+            (
+                particle_data["x1"][:, part_ind][nan_mask],
+                particle_data["x2"][:, part_ind][nan_mask],
+                particle_data["x3"][:, part_ind][nan_mask],
+            )
+        ]
+        all_part_coords.append(part_coords)
+        
+        # set up particle velocities
+        vel_vec = np.c_[
+            particle_data["vx1"][:, part_ind][nan_mask],
+            particle_data["vx2"][:, part_ind][nan_mask],
+            particle_data["vx3"][:, part_ind][nan_mask],
+        ]
+        all_vel_vec.append(vel_vec)
+
+        obs_properties = setup_obs_properties_praise(sdata=sdata,redshift=redshift,angle=angle,plane=plane)
+        integrated_emissivity = pk_radio.raytracing.raytrace_particles_multiple_freq(
+            grid=(obs_properties["grid_mx"], obs_properties["grid_my"]),
+            ray_depth_lim=(obs_properties["ray_depth_min"], obs_properties["ray_depth_max"]),
+            rot_mat=obs_properties["rot_mat"],
+            s= s,
+            delta_r=obs_properties["delta_r"],
+            coords=all_part_coords[i],
+            dist_upper_bound = 2,      # <-- NOTE the praise default is 20... this will mess up your results. 2 is better
+            vel_vec=all_vel_vec[i],
+            obs_normal=[0, 1, 0],
+            # particle_emissivities=part_emis['full'][i]['emis'][all_nan_masks[i],:,:]  #only the non-nan particles, all frequencies, and the ith snapshot
+            particle_emissivities=particle_emis['full'][i]['emis'][all_nan_masks[i],:,0] #only the non-nan particles, all frequencies, and the ith snapshot 
+        )
+        integ_emis.append(integrated_emissivity)
+
+        # we multiple our integrated emissivity by kpc (to account for integration), and divide by 4pi to account for solid angle
+        surface_brightness = (integrated_emissivity * u.kpc / (4 * np.pi)).to(u.mJy / u.beam, equivalencies=u.beam_angular_area(obs_properties["omega_beam"]))
+        sb_arr.append(surface_brightness)
+    
+    for freq_ind in range(len(freqs)):
+        sb_arr[i][:,:,freq_ind] = np.nan_to_num(sb_arr[i][:,:,freq_ind], copy=True, nan=0.0, posinf=0.0, neginf=0.0) # get rid of NaNs (replace with zero)
+
+    return sb_arr
+
+def plot_surface_brightness(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angle=0,plane="xz",**kwargs):
+    # if pdata is None:
+    # loop over all outputs and all frequencies
+    particle_outputs = [pl.get_particle_outputs(sdata.wdir)] if particle_outputs == "last" else particle_outputs
+    pdata = pp.PlotData(var_choice=freqs,plane=plane,load_outputs = particle_outputs,**kwargs)
+    pdata.plot_idx = 0
+    pdata.axes, pdata.fig = pp.subplot_base(sdata=sdata,pdata=pdata,load_outputs=particle_outputs)
+    extras = pp.plot_extras(sdata,pdata)
+
+    obs_properties = setup_obs_properties_praise(sdata=sdata,redshift=redshift,angle=angle,plane=plane)
+    sb_arr = calc_surface_brightness_praise(
+        sdata=sdata,
+        freqs=freqs,
+        redshift=redshift,
+        particle_outputs=particle_outputs,
+        angle=angle,
+        plane=plane,
+    )
+    for i in range(0, len(particle_outputs), 1):
+        for freq_ind, freq in enumerate(freqs):
+            pdata.output = particle_outputs[i]
+
+            # sb_arr[i][:,:,freq_ind] = np.nan_to_num(sb_arr[i][:,:,freq_ind], copy=True, nan=0.0, posinf=0.0, neginf=0.0) # get rid of NaNs (replace with zero)
+            freq_sb = convolve(sb_arr[i][:, :, freq_ind].to(u.mJy / u.beam), obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam) #convolve the surface brightness
+            freq_sb[freq_sb == 0] = np.nan # replace 0 SB areas with nan
+            max_sb_lim = np.log10(np.nanpercentile(freq_sb, 99).value) # calculate sensible limits
+            min_sb_lim = max_sb_lim - 1
+            sb_contours = np.linspace(min_sb_lim, max_sb_lim, 3) # calculate contours
+
+            # a = np.log10(freq_sb.value.T) # replace 0 SB areas with suitably low value
+            # a[np.isnan(a)] = -100
+            ax = pdata.axes[pdata.plot_idx]
+    
+            im = ax.pcolormesh(obs_properties["grid_x"], obs_properties["grid_y"], np.log10(freq_sb.value.T), vmin= min_sb_lim, vmax=max_sb_lim)
+            cbar = pdata.fig.colorbar(im,ax=ax,fraction = 0.05)
+            cbar.set_label(f"$\log_{{10}}$(SB [$\mathrm{{mJy \; beam^{{-1}}}}$])")
+
+            ax.contour(obs_properties["grid_mx"], obs_properties["grid_my"], np.log10(freq_sb.value.T), levels=sb_contours, colors='white')
+
+            ax.set_aspect("equal")
+            ax.set_title(f"Surface Brightness [{freq}$GHz$] ({sdata.run_name})")
+            ax.set_xlabel(extras["xy_labels"][pdata.coord_choice[0]])
+            ax.set_ylabel(extras["xy_labels"][pdata.coord_choice[1]])
+            pdata.plot_idx += 1
+
+
+
+            time_str = f"{sdata.part_to_simtime(pdata.output):.1f} Myr"
+            ax.annotate(
+                f'{time_str}',
+                xy=(0.05, 0.95),
+                xycoords='axes fraction',
+                fontsize=10,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    edgecolor="gray",
+                    alpha=0.8
+                )
+            )
+
+            ax.annotate(
+                f'angle = ${angle}^\circ$',
+                xy=(0.05, 0.90),
+                xycoords='axes fraction',
+                fontsize=10,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    edgecolor="gray",
+                    alpha=0.8
+                )
+            )
+
+
 #---Plot Grid structure---#
 def plot_xz_grid_structure(sdata,pdata=None, d_file=None, n_lines=10, **kwargs):
     """
@@ -163,6 +398,7 @@ def plot_xz_grid_structure(sdata,pdata=None, d_file=None, n_lines=10, **kwargs):
     pdata.axes.grid(True, alpha=0.3)
     
     pp.plot_save(sdata,pdata,**kwargs)
+
 
 #---Peak Finding---#
 def peak_findr(sel_coord,sel_var,sdata,**kwargs):
@@ -422,8 +658,7 @@ def plot_troughs(sel_coord,sel_var,sdata,**kwargs): #TODO doesn't work for stela
     pp.plot_save(sdata,pdata,custom=1)
 
 
-
-#---Plot length/radius across sim_time---#
+# ---Analysis plots---#
 def get_jet_length_dim(sdata):
     """Gets the array with the longest grid size, used for Jet length as safety net"""
     coords = sdata.get_coords() #loads all coords at d_last
@@ -571,238 +806,56 @@ def plot_time_prog(sel_coord,sdata,type="def",**kwargs): #NOTE removed sel_var a
 
     slope = tprog_phelper(sel_coord,r,sdata,type,**kwargs)
 
-     
-#---Energy, Density, Radius Calculations---#
-def calc_energy(sdata,sel_coord = "x2",type = "sim",plot=0,**kwargs):
-    """
-    Calculates the Q value for a simulation given its density and velocity
-    * type = "sim": calculates the observed value using simulation values
-    * type = "calc": calculates the theoretical value using calculated density from calc_density()
-    """
-    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-    arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file',sdata.ini_file)
+def plot_ram_pressure(sdata,load_outputs= None,**kwargs):
 
-    sdata = ps.SimulationData(
-        sim_type=sdata.sim_type,
-        run_name=sdata.run_name,
-        profile_choice="all",
-        subdir_name = sdata.subdir_name,
-        load_outputs=loaded_outputs,
-        arr_type = arr_type,
-        ini_file = ini_file)
+    pdata = pp.PlotData(var_choice=["vx3"],**kwargs)
+    pdata.arr_type = "cc"
+    pdata.var_name = "vx3"
 
-    peak_data = peak_findr("x2","vx2",sdata=sdata) #NOTE USE OF PREDET VARS
-    radius = peak_data["radius"] # calculated shell/jet radii at sim_time from max vx2
-    vel = peak_data["peak_var"] # corresponding velocity at the above radii 
-    locs = peak_data["locs"] #index location where max occurs
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+    axes, fig = pp.subplot_base(sdata,pdata,load_outputs=pdata.load_outputs,**kwargs)
+    plot_idx = 0  # Keep track of which subplot index we are using
 
-    q_jet = []
+    for output in load_outputs:
+        pdata.output = output
+        extras_data = pp.plot_extras(sdata,pdata)
+        xy_labels = extras_data["xy_labels"]
+        var_label = sdata.get_var_info("prs").var_name
+        var_units = sdata.get_var_info("prs").usr_uv
+        coord_units = sdata.get_var_info("z").usr_uv
 
-    if type == "sim": #calculates using simulated values
-        rho = []
-        profile = calc_var_prof(sdata,sel_coord)["slice_1D"]
+        inj_loc = sdata.get_injection_region(output=output)[0].value #location of the injection region for moving injection regions
+        value_dict = {"x1":inj_loc} #dict of coord then location of inj region
+        slices = calc_var_prof(sdata,"x3",value_1D=value_dict)
+        fluid_data_1d = sdata.load_fluid_data(var_choice=["rho","vx3","ccz"],output=output,load_slice=slices['slice_1D'])
 
-        for loc, d_file in zip(locs,sdata.d_files):
+        ram_prs = fluid_data_1d['rho']*np.pow(fluid_data_1d["vx3"],2)
+        inv_z = 1/fluid_data_1d["ccz"]**2
+        scale_factor = ram_prs[np.argmax(ram_prs)] / inv_z[np.argmax(ram_prs)]
 
-            rho_slice = sdata.get_vars(d_file)["rho"][profile]
-            rho.append(rho_slice[loc])
-
-        for i in range(len(sdata.d_files)):
-            value = 0.5*4*np.pi*(radius[i]**2)*rho[i]*(vel[i]**3)
-            
-            q_jet.append(value[0])
-
-    if type == "calc": #calculates using theoretical values of rho
-
-        rho_calc = calc_density(sdata)["rho_calc"]
-
-        for i in range(len(sdata.d_files)):
-            value = 0.5*4*np.pi*(radius[i]**2)*rho_calc[i]*(vel[i]**3)
-
-            q_jet.append(value)
+        ax = axes[plot_idx]
+        ax.set_yscale("log")
+        ax.plot(fluid_data_1d["ccz"],ram_prs)
+        ax.plot(fluid_data_1d["ccz"],inv_z * scale_factor,color = "g",linestyle = ":")
+        ax.plot(fluid_data_1d["ccz"],inv_z * -1*scale_factor,color = "g",linestyle = ":")
         
+        ax.set_xlabel(f"{xy_labels['ccz']}")
+        ax.set_ylabel(f"{var_label} [{var_units}]")
 
-    if plot:
-        t = sdata.get_vars(sdata.d_last)["sim_time"]
+        legend_coord, = value_dict.keys() #get the first key from value_dict, NOTE: works assuming that only 1 slice arg is used 
+        value = f"{(value_dict.get(legend_coord)):.2f}" #scaling factor makes it easier to read
+        legend_str = f"$P_{{\\rm{{ram}}}}$ @ {sdata.get_var_info(legend_coord).coord_name} = {value} {coord_units}"
+        fit_str = '$1/z^{{2}}$'
 
-        eqn = '$Q_{jet} = \\frac{1}{2}4\\pi r_s^2 \\rho(r_s) V^3_s$'
-        display(Latex(eqn))
-
-        plt.figure()
-        plt.title("Plot of Energy vs sim_time")
-        plt.plot(t,q_jet,label = "$Q_{jet}$")
-        plt.ylabel("Jet Energy [J]")
-        plt.xlabel("sim_time [yr]")
-        plt.legend()
-
-        pdata = pp.PlotData()
-        pdata.fig = plt.gcf()  
-        pp.plot_save(sdata,pdata,custom=1)
-
-    else:
-        return q_jet
-
-def calc_radius(sdata,plot =0,**kwargs):
-    """
-    Calculates the radius as a function of time using calc_energy()
-    * has both simulated and calculated values 
-    """
-    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-    arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file',sdata.ini_file)
-
-    sdata = ps.SimulationData(
-        sim_type=sdata.sim_type,
-        run_name=sdata.run_name,
-        profile_choice="all",
-        subdir_name = sdata.subdir_name,
-        load_outputs=loaded_outputs,
-        arr_type = arr_type,
-        ini_file = ini_file)
-
-    rt_sim, rt_calc = [], []
-    rho_0 = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
-
-    t = sdata.get_vars(sdata.d_last)["sim_time"]
-
-    q_jet_sim = calc_energy(sdata=sdata,type="sim")
-    q_jet_calc = calc_energy(sdata=sdata,type="calc")
-
-    for i in range(len(t)):
-        sim = ((q_jet_sim[i]/rho_0)**(1/5))*(t[i]**(3/5)) #simulated values
-        calc = ((q_jet_calc[i]/rho_0)**(1/5))*(t[i]**(3/5)) #calculated values
-        rt_sim.append(sim)
-        rt_calc.append(calc)
-    
-    returns = {
-        "rt_sim": rt_sim,
-        "rt_calc": rt_calc,
-        "t": t
-    }
-
-    if plot:
-        eqn = '$R(t) = K({\\frac{Q_{jet}}{\\rho_0}})^{1/5}\\cdot t^{3/5}$'
-        display(Latex(eqn))
-
-        plt.figure()
-        plt.title("Plot of calculated/simulated R(t) vs sim_time")
-        plt.plot(t,rt_calc,label = "calc r(t)")
-        plt.plot(t,rt_sim,label = "r(t)")
-        plt.ylabel("radius [m]")
-        plt.xlabel("sim_time [yr]")
-        plt.legend()
-
-        pdata = pp.PlotData()
-        pdata.fig = plt.gcf()  
-        pp.plot_save(sdata,pdata,custom=1)
-
-    else:
-        return returns
-
-def calc_radial_vel(sdata,plot = 0):
-    """
-    Calculates the radial velocity using its own calculated value of radius, r_0 and v_wind
-    """
-
-
-    r_0 = 1 * pc.code_to_usr_units("x1",sdata.d_files)["uv_usr"]
-    v_wind = 1 * pc.code_to_usr_units("vx1",sdata.d_files)["uv_usr"]
-    rho_norm = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
-
-    v_r = []
-
-    all_vars = sdata.get_grid_data()
-
-    if sdata.sim_type == "Jet": #Jet radius is just Z coord?
-        r = all_vars["x2"]
-    else:
-        r = np.sqrt((all_vars["x1"]**2) + (all_vars["x2"]**2) + (all_vars["x3"]**2))
-
-
-    for i in range(len(r)):
-            v_r = np.append(v_r,np.tanh((r[i]/r_0/0.1))*v_wind)
-
-    returns = {
-            "r": r,
-            "v_r": v_r 
-    }
-
-    if plot:
-        plt.figure()
-        plt.title("Plot of v(r) vs r")
-        plt.xlabel("r vector (m)")
-        plt.ylabel("v(r)")
-        plt.plot(r,v_r)
-
-        pdata = pp.PlotData()
-        pdata.fig = plt.gcf()  
-        pp.plot_save(sdata,pdata,custom=1)
-
-    else:
-        return returns
-    
-def calc_density(sdata,sel_coord = "x2",plot = 0,**kwargs):
-    """
-    Calculates the density values using the radial velocity from calc_radial_vel() as well as r_0 and v_wind
-    """
-    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-    arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file',sdata.ini_file)
-
-    sdata = ps.SimulationData(
-        sim_type=sdata.sim_type,
-        run_name=sdata.run_name,
-        profile_choice="all",
-        subdir_name = sdata.subdir_name,
-        load_outputs=loaded_outputs,
-        arr_type = arr_type,
-        ini_file = ini_file)
-
-
-    r_0 = 1 * pc.code_to_usr_units("x1",sdata.d_files)["uv_usr"]
-    v_wind = 1 * pc.code_to_usr_units("vx1",sdata.d_files)["uv_usr"]
-    rho_norm = 1 * pc.code_to_usr_units("rho",sdata.d_files)["uv_usr"]
-
-    v_r_data =calc_radial_vel(sdata,plot=0)
-    v_r = v_r_data["v_r"]
-    r = v_r_data["r"]
-    
-    calc = (v_wind*(r_0**2))/(v_r*(r**2))
-    rho_calc = calc*rho_norm
-    rho_sim = sdata.get_vars(sdata.d_last)["rho"]
-    profile = calc_var_prof(sdata,sel_coord)["slice_1D"]
-
-    returns = {
-        "rho_calc": rho_calc,
-        "rho_sim": rho_sim[profile],
-        "r": r
-    }
-    if plot:
-        eqn = '$\\rho = \\frac{V_{wind} r_0^2}{v(r) r^2}$'
-        display(Latex(eqn))
-
-        plt.figure()
-        plt.title("calculated vs simulated densities")
-        plt.plot(r,np.log10(rho_sim[profile]), label = "rho")
-        plt.plot(r,np.log10(rho_calc), label = "rho_calc")
-        plt.ylabel("log_10(density [kgm^-3])")
-        plt.xlabel("radius [m]")
-        plt.legend()
-
-        pdata = pp.PlotData()
-        pdata.fig = plt.gcf()  
-        pp.plot_save(sdata,pdata,custom=1)
-
-    else:    
-        return returns
+        ax.legend([legend_str,fit_str])
+        ax.set_title(f"Plot of $P_{{\\rm{{ram}}}}$ along jet axis ($z$) with $1/z^{{2}}$ fit")
+        pp.plot_axlim(ax,kwargs)
+        plot_idx += 1
+    pp.plot_save(sdata,pdata,**kwargs)
 
 def jet_kinetic_power(radius,rho,vel):
     eqn = 0.5*4*np.pi*(radius**2)*rho*(vel**3)
     return eqn.si
-# rkpc = 4.5 * u.kpc
-# rho = (1e-2*(5/3 * 1e-28)) * (u.gram / u.cm**3)
-# jet_kinetic_power(rkpc.to(u.m),rho.si,2.5e7 * (u.meter / u.second))
 
 def EOS(rho=None,prs=None,T=None,mu = 0.60364):
     """
@@ -826,29 +879,146 @@ def EOS(rho=None,prs=None,T=None,mu = 0.60364):
         rho = (prs*mu*m_H)/(T*kb)*unit
         return rho 
 
-def central_sound_speed(rho_0,T):
+def calc_sound_speed(rho_0,T):
    prs_0 = EOS(rho =rho_0,T = T).value
    nonrel_gamma = 5/3
    unit = u.m / u.s
    return (np.sqrt((nonrel_gamma * prs_0) / (rho_0)))*unit
 
-def get_inlet_speed(rho_0,T,wind_vxx):
-   inlet_vxx = []
-   for vx in wind_vxx:
-      inlet_vxx.append((vx*central_sound_speed(rho_0=rho_0,T=T)).to(u.kpc / u.Myr))
-   return inlet_vxx
+def calc_inlet_speed(rho_0,T,wind_vxx):
+    """
+    Gets speed in kpc/Myr for a jet with moving injection region
+
+    Args:
+        rho_0 (float): environment density in kg/m^3
+        T (float): environment temperature in K
+        wind_vxx (list): wind speed as multiple of environment sound speed e.g. WIND_VX1,WIND_VX2,WIND_VX3 = [2,0,0] -> 2*c_s in x
+
+    Returns:
+        inlet_vxx (list): List of inlet speeds in kpc/Myr per wind_vx component
+    """
+
+    inlet_vxx = []
+    for vx in wind_vxx:
+        inlet_vxx.append((vx*calc_sound_speed(rho_0=rho_0,T=T)).to(u.kpc / u.Myr))
+    return inlet_vxx
 
 def locate_injection_region(rho_0,T,wind_vxx,sim_time):
+    """
+    Gives location of jet injection region (in kpc) for a given timestep
+
+    Args:
+        rho_0 (float): environment density in kg/m^3
+        T (float): environment temperature in K
+        wind_vxx (list): wind speed as multiple of environment sound speed e.g. WIND_VX1,WIND_VX2,WIND_VX3 = [2,0,0] -> 2*c_s in x
+        sim_time (float): simulation time in Myr e.g 35
+
+    Returns:
+        inj_xyz (list): list with 4 elements, x,y,z location of injection region, then timestep
+    """
     sim_time = sim_time * u.Myr
-    inlet_vxx = get_inlet_speed(rho_0=rho_0,T=T,wind_vxx=wind_vxx)
+    inlet_vxx = calc_inlet_speed(rho_0=rho_0,T=T,wind_vxx=wind_vxx)
     inj_xyz = []
     for vx in inlet_vxx:
         inj_xyz.append(-vx*sim_time)
+    inj_xyz.append(sim_time)
     return inj_xyz
 
+def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
+    """
+    Calculates the length scales from Krause (2012). 
+    L1: Length at which the jet density becomes compariable to the external density
+    L1a: Jet recollimation, sideways ram pressure = ambient pressure
+    L1b: cocoon formation
+    L1c: terminal shock
+    L2: buoyancy scale
 
+    Args:
+        Q (float): Jet kinetic power [W]
+        rho (float): Environment density [kgm^-3]
+        v_jet (float): Jet injection velocity [c]
+        theta (float): Half opening angle of jet in degreees
+        T (float): Environment temperature [K]
+        v_wind (float): Velocity of environment cross wind [ms^-1], defaults to 0 (no wind)
 
-#---Jet angle---#
+    Returns:
+        lscale_dict (dict): dictionary with L1x as keys (length scales in kpc)
+    """
+    Q, rho, v_jet, theta, T,v_wind = [v.value if isinstance(v, u.Quantity) else v for v in [Q, rho, v_jet, np.deg2rad(theta), T,v_wind]]
+    
+    to_kpc = astro_const.kpc.value / u.kpc
+    # to_kpc = 1
+
+    gamma = 5/3
+    Omega = 2*np.pi*(1-np.cos(theta))
+    c_s = calc_sound_speed(rho,T).value
+
+    M_jet = v_jet/c_s
+    M_wind = v_wind/c_s
+
+    L1 = (2 * np.sqrt(2) * np.sqrt(Q / (rho * v_jet ** 3)))
+    L1a = (np.sqrt(((gamma)/(4*Omega)) * M_jet**2 * np.sin(theta)**2 * L1**2)) 
+    L1b = (np.sqrt((1/(4*Omega)) * L1**2)) 
+    L1c = (np.sqrt((gamma/(4*Omega)) * M_jet**2 * L1**2))
+    L2 = (np.sqrt(Q /(rho * c_s**3)))
+
+    r_jet = L1a * np.tan(theta)
+    L_bend = 2*r_jet * (M_jet/M_wind)**2 
+
+    eta = (L1b/L1a)**2
+
+    lscale_dict = {
+            "L1": L1 / to_kpc,
+            "L1a": L1a / to_kpc,
+            "L1b": L1b / to_kpc,
+            "L1c": L1c / to_kpc,
+            "L2": L2 / to_kpc,
+            "L_bend": L_bend / to_kpc,
+            "r_jet": r_jet / to_kpc,
+            "eta": eta,
+
+        }
+
+    return lscale_dict
+
+#---chi parameter---#
+def l2s(lorentz):
+    return np.sqrt(astro_const.c**2 * (1 - (1 / lorentz) ** 2))
+
+def s2l(speed):
+    return (1 / np.sqrt(1 - (speed / astro_const.c) ** 2)).value
+
+def calc_jet_area(theta, radius):
+    theta = np.deg2rad(theta)
+    return (2 * np.pi * (1 - np.cos(theta))) * (radius**2)
+
+def calc_jet_density(Q_jet, v_jet, theta, r_jet):
+    adiab_ind = 5.0 / 3.0
+    area = calc_jet_area(theta, r_jet)
+
+    return 2 * Q_jet / (v_jet**3 * area)
+
+def calc_jet_density_rel(
+    power, speed, half_opening_angle, radius, adiab_ind=5.0 / 3.0, prs=None, chi=None
+):
+    area = calc_jet_area(half_opening_angle, radius)
+    lorentz = s2l(speed)
+
+    if chi is None:
+        return (1 / (lorentz * (lorentz - 1) * astro_const.c**2)) * (
+            (power / (speed * area)) - lorentz**2 * (adiab_ind) / (adiab_ind - 1) * prs
+        )
+
+    elif prs is None:
+        return (power) / (
+            (speed * area * astro_const.c**2)
+            * (lorentz * (lorentz - 1) + (lorentz**2) / (chi))
+        )
+
+def calc_chi(density, pressure, adiabatic_ind):
+    return ((adiabatic_ind - 1) / (adiabatic_ind)) * (density * astro_const.c**2) / (pressure)
+
+# ---Jet angle---#
 def binned_mean_tracer_mask(bin_size, x, y, tr_array, tr_cut=None, side=None, **kwargs):
     """
     Calculates a mean value of x/y across some number of bins for a given tracer cutoff.
@@ -967,7 +1137,7 @@ def jet_angle_linegress(sdata,load_outputs,bin_size,tr_cut = None,**kwargs):
     """
     jet_angle = []
     angles_top, angles_bot = [],[]
-    sdata.load_particles(load_outputs)
+    # sdata.load_particles(load_outputs)
     part_output = sdata.particle_data
     part_files = sdata.particle_files
 
@@ -1284,90 +1454,3 @@ def jet_angle_tprog_vector(sdata,outputs,tr_cut,nslices):
 
     plt.plot(times,jet_angles) 
 
-def calc_var_prof_old(sdata,sel_coord,ndim = 3,**kwargs):
-    loaded_outputs = kwargs.get('load_outputs', sdata.load_outputs)
-    arr_type = kwargs.get('arr_type', sdata.arr_type)
-    ini_file = kwargs.get('ini_file', sdata.ini_file)
-    ndim = ndim #TODO replace this with a try except loop
-    value = 0 if not kwargs.get('value') else kwargs.get('value')
-    x,y,z = pu.get_coord_names()
-
-    sel_coord = pu.unmap_coord_name(sel_coord,arr_type=arr_type)
-    # --- Determine whether to use find_nearest or grid midpoints ---
-    
-    use_find_nearest = (
-        (value is not None and value != 0) #use find_nearest if value is not 0 
-        or ('idx' in kwargs and kwargs['idx'] is not None)
-    )
-
-    if value == 0 and not use_find_nearest: #using ini grid values if value is 0, -> midpoint
-        x_mid = sdata.grid_setup["x1-grid"]["origin_idx"]
-        y_mid = sdata.grid_setup["x2-grid"]["origin_idx"] if ndim > 1 else None
-        z_mid = sdata.grid_setup["x3-grid"]["origin_idx"] if ndim > 2 else None
-
-
-    elif value !=0 and use_find_nearest: #using value/idx kwargs only if value is not 0
-        print("calc_var_prof: using find_nearest")
-        target = value  if 'value' in kwargs and value  is not None else 0
-
-        if 'idx' in kwargs:
-            idx = kwargs['idx']
-        else:
-            # 1D slices for coordinate lookup
-            value_slice_map = {
-                x : (slice(None), 0, 0),
-                y : (0, slice(None), 0),
-                z : (0, 0, slice(None)),
-            }
-            coords_1D = {
-                coord: (
-                    sdata.fluid_data(coord,load_slice=None)[coord][value_slice_map[coord]]
-                    if arr_type in ('nc', 'cc')
-                    else sdata.sdata.fluid_data(coord,load_slice=None)[coord]
-                )
-                for coord in list(pu.get_coord_names()) #returns ncx,ncy,ncz etc depending on arr_type
-            }
-
-            idx = find_nearest(coords_1D[sel_coord], target)['idx']
-
-        # nearest indices for each axis
-        x_mid = find_nearest(coords_1D[x], target)['idx']
-        y_mid = find_nearest(coords_1D[y], target)['idx'] if ndim > 1 else None
-        z_mid = find_nearest(coords_1D[z], target)['idx'] if ndim > 2 else None
-
-    # --- Define slicing maps ---
-    if ndim > 2:
-        slice_map_1D = {
-            x : (slice(None), y_mid, z_mid),
-            y: (x_mid, slice(None), z_mid),
-            z: (x_mid, y_mid, slice(None)),
-        }
-
-        slice_map_2D = {
-            x: (x_mid, slice(None), slice(None)),
-            y: (slice(None), y_mid, slice(None)),
-            z: (slice(None), slice(None), z_mid),
-        }
-
-    else:
-        slice_map_1D = {
-            x: (slice(None), y_mid),
-            y: (x_mid, slice(None)),
-        }
-        slice_map_2D = None
-
-    slice_1D = slice_map_1D[sel_coord]
-    slice_2D = slice_map_2D[sel_coord] if ndim > 2 else None
-
-    coord_sliced = None
-    if use_find_nearest:
-        if arr_type in ('nc', 'cc'):
-            coord_sliced = sdata.fluid_data(sel_coord)[sel_coord][slice_1D][idx]
-        else:
-            coord_sliced = sdata.fluid_data(sel_coord)[sel_coord][idx]
-
-    return {
-        "slice_1D": slice_1D,
-        "slice_2D": slice_2D,
-        "coord_sliced": coord_sliced,
-    }
