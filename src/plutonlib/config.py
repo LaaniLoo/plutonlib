@@ -1,21 +1,87 @@
 import plutonlib.utils as pu
-# import plutonlib.plot as pp
 from plutonlib.colours import pcolours
-
-
-import os
+import plutonlib.analysis as pa
 
 from astropy import units as u
 from astropy import constants as const 
 
+from IPython.display import display, Latex
 import numpy as np
 
+import os
 import configparser
 import glob 
+import re
 
 from collections import defaultdict
+from dataclasses import dataclass
 
+@dataclass
+class VarInfo:
+    code_uv:    u.Unit      # code unit value  e.g. 1.0023678e-24 g/cm³
+    usr_uv:     u.Unit      # user unit value  e.g. 1 kg/m³
+    code_unit:  u.Unit      # just the unit         e.g. g/cm³
+    var_name:   str         # latex string          e.g. r"$\rho$"
+    coord_name: str = None  # only for x1, x2, x3
+    shp: tuple = None
+    ndim: tuple = None
 
+@dataclass
+class PlutoUnits:
+    rho:      VarInfo
+    prs:      VarInfo
+    vx1:      VarInfo
+    vx2:      VarInfo
+    vx3:      VarInfo
+    x1:       VarInfo
+    x2:       VarInfo
+    x3:       VarInfo
+    T:        VarInfo
+    Q:        VarInfo
+    sim_time: VarInfo
+
+    @classmethod
+    def from_ini(cls, ini_file=None):
+        if ini_file is None: #gets raise error safer than null assignment
+            ini_path = get_ini_file(ini_file=None)
+            raise ValueError(f"{pcolours.WARNING}ini_file is None, please load defaults from {ini_path}")
+
+        ini_path = get_ini_file(ini_file=ini_file)
+        sel_coords = coord_systems["CARTESIAN"] #gets the coord vars for the specific coord sys #NOTE replace if not cartesian
+
+        config = configparser.ConfigParser()
+        config.optionxform = str
+        config.read(ini_path)
+
+        c_unit = u.def_unit("c",const.c) #adds 1c (speed of light) as constant
+        u.add_enabled_units([c_unit])
+        code_unit_values = {k: u.Unit(v) for k, v in config["code_unit_values"].items()}
+        code_units = {k: u.Unit(v.split("*", 1)[-1]) for k, v in config["code_unit_values"].items()}
+        usr_unit_values = {k: u.Unit(v) for k, v in config["usr_unit_values"].items()}
+
+        var_metadata = { #NOTE can probably depreciate coord_name
+            "rho":      {"var_name": r"$\rho$"},
+            "prs":      {"var_name": r"$P$"},
+            "vx1":      {"var_name": f"$V_{{{sel_coords[0]}}}$"},
+            "vx2":      {"var_name": f"$V_{{{sel_coords[1]}}}$"},
+            "vx3":      {"var_name": f"$V_{{{sel_coords[2]}}}$"},
+            "x1":       {"var_name": f"${sel_coords[0]}$", "coord_name": f"${sel_coords[0]}$"},
+            "x2":       {"var_name": f"${sel_coords[1]}$", "coord_name": f"${sel_coords[1]}$"},
+            "x3":       {"var_name": f"${sel_coords[2]}$", "coord_name": f"${sel_coords[2]}$"},
+            "T":        {"var_name": r"$T$"},
+            "Q":        {"var_name": r"$Q_{\rm{jet}}$"},
+            "sim_time": {"var_name": r"$t$"},
+        }
+
+        var_infos = {
+            v: VarInfo(
+                code_uv=code_unit_values[v],
+                usr_uv=usr_unit_values[v],
+                code_unit=code_units[v],
+                **metadata
+            ) for v, metadata in var_metadata.items()
+        }
+        return cls(**var_infos)
 
 # start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
 
@@ -50,51 +116,6 @@ coord_systems = {
     "CARTESIAN": ['x','y','z'],
     "SPHERICAL": ['r','theta','phi']  
 }
-
-def profiles(sel_prof=None,arr_type=None):
-    # var_map = {
-    #     'X': x, 'Y': y, 'Z': z,
-    #     'x': x, 'y': y, 'z': z,
-    #     'x1': x, 'x2': y, 'x3': z
-    # }
-
-    coord_prefixes = {
-        "e":  ["ex",  "ey",  "ez"],
-        "m":  ["mx",  "my",  "mz"],
-        "d":  ["dx",  "dy",  "dz"],
-        # "x":  ["x1",  "x2",  "x3"],
-        "nc": ["ncx", "ncy", "ncz"],
-        "cc": ["ccx", "ccy", "ccz"],
-        None: ["x1",  "x2",  "x3"],  # default if None
-    }
-
-    # Get the correct coordinate labels, defaults to mx ...
-    coords = coord_prefixes.get(arr_type, ["x1", "x2", "x3"])
-    x, y, z = coords
-
-    profiles = {
-        "all": [x, y, z, "rho", "prs", "vx1", "vx2", "vx3",'tr1', "sim_time"],
-
-        "grid_time": [x,y,z,"sim_time"],
-        "grid_tracer": [x,y,z,"tr1"],
-        "grid": [x,y,z],
-
-        "xy_rho_prs": [x, y, "rho", "prs"],
-        "xz_rho_prs": [x, z, "rho", "prs"],
-        "xz_tracer":  [x, z, "tr1","rho"],
-        "yz_rho_prs": [y, z, "rho", "prs"],
-
-        "xy_vel":     [x, y, "vx1", "vx2"],
-        "xz_vel":     [x, z, "vx1", "vx3"],
-        "yz_vel":     [y, z, "vx2", "vx3"],
-    }
-    returns = {"profiles":profiles,"coord_prefixes":coord_prefixes}
-    # var_choice = profiles[sel_prof]
-    # returns = {"var_choice":var_choice,"coord_prefixes":coord_prefixes}
-
-    return returns
-
-#TODO env_var or config file?
 
 # Read norm values from ini file
 def get_ini_file(ini_file = None):
@@ -132,8 +153,15 @@ def get_grid_dimensions(grid_setup):
 
 def pluto_ini_info(sim_dir):
     job_info_dir = os.path.join(sim_dir,"job_info")
-    job_dir_files = glob.glob(f"{job_info_dir}/*.ini") #gets all ini files in job_info_dir 
-    latest_ini = max(job_dir_files,key=os.path.getctime)
+
+    if os.path.isdir(job_info_dir):
+        job_dir_files = glob.glob(f"{job_info_dir}/*.ini") #gets all ini files in job_info_dir 
+        latest_ini = max(job_dir_files,key=os.path.getctime)
+
+    else: #if not in a simulation directory
+        dir_files = glob.glob(f"{sim_dir}/*.ini") #gets all ini files in simulation dir 
+        latest_ini = max(dir_files,key=os.path.getctime)
+
     ini_name = latest_ini.split("/")[-1]
 
     config = configparser.ConfigParser(allow_no_value=True)
@@ -148,7 +176,7 @@ def pluto_ini_info(sim_dir):
         n_patches = int(grid_contents[1]) #number of grid patches
         grid_patches = grid_contents[2:] #list of all grid patches
 
-        #idxs for grid patch start and end, there are 4 elements -> Patch Start	| Grid Cells | Patch Type | Patch End
+        # idxs for grid patch start and end, there are 4 elements -> Patch Start	| Grid Cells | Patch Type | Patch End
         patch_start_idx = np.arange(0,len(grid_patches)-3,3) 
         patch_end_idx = np.arange(4,len(grid_patches)+1,3)
 
@@ -167,13 +195,13 @@ def pluto_ini_info(sim_dir):
 
         grid_setup[grid_coord]["type"] = types
 
-
     all_cells = []
     for grid_coord in grid_setup.keys():
 
         grid = grid_setup[grid_coord]
         starts = grid["start"]
         ends = grid["end"]
+        grid["grid_extent"] = (grid["start"][0],grid["end"][-1])
         patch_cells = grid["patch_cells"]
         all_cells.append(int(sum(patch_cells)))
         for patch in range(grid["n_patches"]):
@@ -209,127 +237,143 @@ def pluto_ini_info(sim_dir):
         for k,v in [line.split(None,1)]
     }
 
+    static_output_dict = {}
+    for entry in config.options("Static Grid Output"):
+        parts = entry.split()
+        key, values = parts[0], parts[1:]
+
+        if key in ("dbl","flt","dbl.h5","flt.h5"):
+            value = float(values[0])
+            static_output_dict[f"{key + '_freq'}"] = value if value > 0 else 0
+
+        if key == "log":
+            static_output_dict["log_freq"] = float(values[0])
+
+        if key in ("log_dir","output_dir"):
+            static_output_dict[key] = str(values[0])
+
+    particle_output_dict = {}
+    for entry in config.options("Particles"):
+        parts = entry.split()
+        key, values = parts[0], parts[1:]
+
+        if key in ("particles_dbl","particles_flt","particles_vtk","particles_tab"):
+            value = float(values[0])
+            particle_output_dict[f"{key + '_freq'}"] = value if value > 0 else 0
+
+        if key == "Nparticles":
+            particle_output_dict[key] = values[1]
+
+    # ini_goutput = {}
+    # ini_goutput["static_grid"] = static_output_dict
+    # ini_part_output["particles"] = particle_output_dict
     key_params = {key: usr_params[key] for key in ['jet_pwr','jet_spd','jet_chi','env_rho_0','env_temp','wind_vx1','wind_vx2','wind_vx3']}
 
-    returns = {"grid_setup": grid_setup,"grid_output":grid_output,"usr_params":usr_params,"key_params":key_params,"ini_name":ini_name}
+    returns = {
+        "grid_setup": grid_setup,
+        "grid_output": grid_output,
+        "usr_params": usr_params,
+        "grid_output": static_output_dict,
+        "part_output": particle_output_dict,
+        "key_params": key_params,
+        "ini_name": ini_name,
+    }
 
     return returns
 
-def get_pluto_units(sim_coord,ini_file):
-    """
-    gets the code and user unit values e.g. x1 = 1*kpc from the specified ini file, 
-    where multiplying an array by the code unit value normalizes it to that unit.
-    """
-    if ini_file is None: #gets raise error safer than null assignment
-        ini_path = get_ini_file(ini_file=None)
-        raise ValueError(f"{pcolours.WARNING}ini_file is None, please load defaults from {ini_path}")
-    
-    ini_path = get_ini_file(ini_file=ini_file)
-
-    sel_coords = coord_systems[sim_coord] #gets the coord vars for the specific coord sys
-
-    config = configparser.ConfigParser()
-    config.optionxform = str
-    config.read(ini_path)
-
-    c_unit = u.def_unit("c",const.c) #adds 1c (speed of light) as constant
-    u.add_enabled_units([c_unit])
-    code_unit_values = {k: u.Unit(v) for k, v in config["code_unit_values"].items()}
-    usr_unit_values = {k: u.Unit(v) for k, v in config["usr_unit_values"].items()}
-
-    pluto_units = {
-        "x1": {
-            "code_uv": code_unit_values["x1"],
-            "usr_uv": usr_unit_values["x1"],
-            "var_name": f"${sel_coords[0]}$",
-            "coord_name": f"${sel_coords[0]}$"
-        },
-        "x2": {
-            "code_uv": code_unit_values["x2"],
-            "usr_uv": usr_unit_values["x2"],
-            "var_name": f"${sel_coords[1]}$",
-            "coord_name": f"${sel_coords[1]}$"
-        },
-        "x3": {
-            "code_uv": code_unit_values["x3"],
-            "usr_uv": usr_unit_values["x3"],
-            "var_name": f"${sel_coords[2]}$",
-            "coord_name": f"${sel_coords[2]}$"
-        },
-        "rho": {
-            "code_uv": code_unit_values["rho"],
-            "usr_uv": usr_unit_values["rho"],
-            "var_name": r"$\rho$"
-        },
-        "prs": {
-            "code_uv": code_unit_values["prs"],
-            "usr_uv": usr_unit_values["prs"],
-            "var_name": r"$P$"
-        },
-        "vx1": {
-            "code_uv": code_unit_values["vx1"],
-            "usr_uv": usr_unit_values["vx1"],
-            "var_name": f"$V_{{{sel_coords[0]}}}$"
-        },
-        "vx2": {
-            "code_uv": code_unit_values["vx2"],
-            "usr_uv": usr_unit_values["vx2"],
-            "var_name": f"$V_{{{sel_coords[1]}}}$"
-        },
-        "vx3": {
-            "code_uv": code_unit_values["vx3"],
-            "usr_uv": usr_unit_values["vx3"],
-            "var_name": f"$V_{{{sel_coords[2]}}}$"
-        },
-        "tr1": {
-            "code_uv": None,
-            "usr_uv": None,
-            "var_name": "Tracer_1"
-        },
-        "sim_time": {
-            "code_uv": code_unit_values["sim_time"],
-            "usr_uv": usr_unit_values["sim_time"],
-            "var_name": "Time"
-        },
-        "ini_file": ini_file
-    }
-        
-    return pluto_units 
-
 def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
     """
-    gets unit value from get_pluto_units to convert from code units to the user specified units in the ini file.
+    gets unit value from PlutoUnits to convert from code units to the user specified units in the ini file.
     """
-    pluto_units = get_pluto_units("CARTESIAN",ini_file=ini_file) #NOTE I don't think it needs sim_coord so left as CARTESIAN
-
     mapped_var_name = pu.map_coord_name(var_name) #makes sure to convert diff XYZ arrays to x1,x2,x3
+    pluto_units = getattr(PlutoUnits.from_ini(ini_file=ini_file),mapped_var_name)
     
-    code_uv = pluto_units[mapped_var_name]["code_uv"]
-    usr_uv = pluto_units[mapped_var_name]["usr_uv"]
-
+    # code_uv = pluto_units[mapped_var_name]["code_uv"]
+    code_uv = pluto_units.code_uv
+    usr_uv = pluto_units.usr_uv
     np.asarray(raw_data) if np.any(raw_data) and not isinstance(raw_data,np.ndarray) else raw_data #calc only works if raw_data is numpy array 
 
     #convert raw_data
     if code_uv is None or usr_uv is None:  #skips if it doesn't need converting
-        # conv_to_code_units = raw_data #NOTE not sure what this line is for
-        # conv_data_cuv = raw_data  #equiv to arrays in cgs units
         conv_data_uuv = raw_data
         uv_usr = None
     else:
         uv_usr = (1*code_uv).to(usr_uv).value
         raw_data *= uv_usr
-        # conv_data_cuv = (raw_data/uv_usr)*(1*code_uv).value  #equiv to arrays in cgs units
         conv_data_uuv = raw_data
 
     returns = {
         "uv_usr":uv_usr, #like a scale factor??
-        # "conv_data_cuv":conv_data_cuv, 
         "conv_data_uuv":conv_data_uuv 
     }
 
     return returns
 
-#---Sim data tree structure---#
+# ---Make changes to pluto.ini---#
+def update_ini_value(filepath, section, key, new_value):
+    """
+    Update pluto.ini values
+    """
+    with open(filepath, 'r') as f:
+        content = f.read()
+
+    in_section = False
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('['):
+            in_section = stripped.lower() == f'[{section.lower()}]'
+        elif in_section and re.match(rf'^{key}\s+', stripped, re.IGNORECASE):
+            # Preserve original spacing, just replace the value (before any comment)
+            lines[i] = re.sub(
+                r'(?i)(' + key + r'\s+)\S+',
+                lambda m: m.group(1) + new_value,
+                line,
+                count=1
+            )
+            break
+
+    with open(filepath, 'w') as f:
+        f.write('\n'.join(lines))
+
+def calc_chi_from_ini(ini_file):
+    """
+    Calculates the chi parameter required to pressure match jet in both rel and non-rel cases
+    """
+    usr_params = pluto_ini_info(os.path.dirname(ini_file))['usr_params']
+
+    jet_pwr = usr_params['jet_pwr'] * u.erg / u.s 
+    jet_angle = usr_params['jet_oa_primary'] * u.deg
+    inj_rad = usr_params['jet_initial_radius'] * u.kpc
+    jet_spd = usr_params['jet_spd'] * const.c
+
+    env_rho = usr_params['env_rho_0'] * u.g / u.cm**3
+    env_temp = usr_params['env_temp'] * u.K
+    env_prs = (env_rho * env_temp * (const.k_B / (0.60364 * const.u))).si
+
+    if usr_params['jet_spd'] >= 0.1: #relativistic case
+        jet_rho = pa.calc_jet_density_rel(jet_pwr,jet_spd,jet_angle,inj_rad,prs=env_prs)
+    elif usr_params['jet_spd'] < 0.1: #regular case
+        jet_rho = pa.calc_jet_density(jet_pwr,jet_spd,jet_angle,inj_rad)
+
+    chi = pa.calc_chi(jet_rho,env_prs,5/3).si
+    display(chi)
+
+    return chi
+
+def update_chi_pluto_ini(ini_file):
+    """
+    Updates pluto.ini with correct JET_CHI parameter to pressure match jet
+    """
+    chi = calc_chi_from_ini(ini_file)
+    update_ini_value(
+        ini_file,
+        section='Parameters',
+        key='JET_CHI',
+        new_value=f'{chi.value:.1f}'
+    )
+
+# ---Sim data tree structure---#
 def plutonlib_tree_helper():
     tree = """pluto_master/
 └── Simulations/
@@ -352,4 +396,3 @@ def plutonlib_tree_helper():
             └── run_name_plutonlib_output
                 └── Jet_wind_test_temp_xz_vel_plot.png"""
     print(tree)
-
