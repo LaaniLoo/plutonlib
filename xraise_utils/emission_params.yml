@@ -1,0 +1,333 @@
+# Parameters for generating radio or xray emission
+
+# 0=none (doesn't really work), 1=adiabatic, 2=adiabatic+synch, 3=adiabatic+ic, 4=full
+# 5=synch, 6=IC, 7=radiative
+# for the moment, only enter a single loss value
+losses: [4] 
+#[1, 4, 5, 6, 7]
+
+# these are safe defaults for the electron energy distribution (see Yates-Jones+2021)
+gmin: 500
+gmax: 1.0e+5
+s: 2.2
+
+# a safe default value for ratio of thermal energy to magnetic energy
+eta: 0.03
+
+# the default last shock time index is 1
+lst_index: 2
+
+# either angular or physical, whether pixel size and beam FWHM are in angular coordinates or kpc
+observing_property_units: physical
+
+# by default, source is oriented in X-Z plane, integration along Y
+angle: 0.0
+rotation_axes: Z
+
+# particle sampling (in Myr)
+particle_sampling: 0.01
+
+# tracer cutoff - see anyones jet sim paper.. commonly used. 
+tracer_cutoff: 0.0001 
+
+# A default telescope collecting area of x-ray observations
+tscope_collecting_area_m2: 0.15
+
+# cut emissivites based on velocity (set rejects to 0)
+# in units of c (if < 1) or lorentz factor (if > 1)
+# postive means take everything above this velocity, while
+# negative means take everything below this velocity
+# a value of 0 disables the velocity cut
+velocity_cut: 0
+
+configs:
+  praise_comp: 
+    frequencies: [0.15, 1.4] # in GHz
+    redshifts: [0.05, 1, 1.5]
+    pixel_size_kpc: 0.3
+    beam_fwhm_kpc: 1
+    emis_mode: radio
+  paper_4_params: 
+    frequencies: [0.15, 1.4] # in GHz
+    redshifts: [0.05, 0.5, 1]
+    pixel_size: 0.3
+    beam_fwhm: 1
+    emis_mode: radio
+  basic_radio: 
+    frequencies: [0.15] # in GHz
+    redshifts: [0.05]
+    pixel_size: 0.5
+    beam_fwhm: 1.5
+    emis_mode: radio
+  basic_xray: 
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 1
+    beam_fwhm: 1.5
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  xray_brem_shock_noncon:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.1, 0.8]
+    pixel_size: 1
+    beam_fwhm: 7
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  xray_ic_noncon:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.1, 0.8]
+    pixel_size: 1
+    beam_fwhm: 7
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  xray_icbrem_lobe_noncon:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.1, 0.8]
+    pixel_size: 1
+    beam_fwhm: 15
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  xray_all_noncon:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.1, 0.8]
+    pixel_size: 1
+    beam_fwhm: 7
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  basic_xray_all:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.08, 0.3, 0.8]
+    pixel_size: 0.8
+    beam_fwhm: 15
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  basic_xray_all_7arcbeam:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.08, 1.3]
+    pixel_size: 0.5
+    beam_fwhm: 7
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  basic_xray_all_2arcbeam:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.08, 1.3]
+    pixel_size: 0.5
+    beam_fwhm: 2
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  basic_xray_all_1arcbeam:
+    frequencies: [241799050.4024] # in GHz here! -- a Chandra-like frequency 1keV
+    redshifts: [0.05, 0.08, 1.3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: xray
+    tscope_collecting_area_m2: 0.15
+  LOFAR_5arcbeam: 
+    frequencies: [0.15]
+    redshifts: [0.1, 0.5, 1]
+    pixel_size: 0.5
+    beam_fwhm: 5
+    emis_mode: radio
+  beam_matched_radio: 
+    frequencies: [0.15, 1.4, 6.0]
+    redshifts: [0.05]
+    pixel_size: 1
+    beam_fwhm: 5
+    emis_mode: radio
+  005_kpc: 
+    frequencies: [0.15]
+    redshifts: [1, 2, 3]
+    pixel_size: 0.07
+    beam_fwhm: 0.21
+    emis_mode: radio
+  008_kpc: 
+    frequencies: [0.15, 1.4]
+    redshifts: [0.05]
+    pixel_size: 0.08
+    beam_fwhm: 0.25
+    emis_mode: radio
+  01_kpc: 
+    frequencies: [0.15]
+    redshifts: [0.05]
+    pixel_size: 0.1
+    beam_fwhm: 0.3
+    emis_mode: radio
+  02_kpc: 
+    frequencies: [0.15]
+    redshifts: [0.1, 0.5]
+    pixel_size: 0.2
+    beam_fwhm: 0.6
+    emis_mode: radio
+  05_kpc: 
+    frequencies: [0.15, 1.4]
+    redshifts: [0.05]
+    pixel_size: 0.5
+    beam_fwhm: 1.5
+    emis_mode: radio
+  08_kpc: 
+    frequencies: [0.15]
+    redshifts: [0.05]
+    pixel_size: 0.8
+    beam_fwhm: 2.4
+    emis_mode: radio
+  1_kpc: 
+    frequencies: [0.15, 1.4]
+    redshifts: [0.05]
+    pixel_size: 1
+    beam_fwhm: 3
+    emis_mode: radio
+  15_kpc: 
+    frequencies: [0.15]
+    redshifts: [0.05]
+    pixel_size: 1.5
+    beam_fwhm: 4.5
+    emis_mode: radio
+  2_kpc: 
+    frequencies: [0.15]
+    redshifts: [0.05]
+    pixel_size: 2
+    beam_fwhm: 6
+    emis_mode: radio
+  low_radio:
+    frequencies: [0.05, 0.1]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  lofar:
+    frequencies: [0.15]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  askap:
+    frequencies: [0.880]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  vlass:
+    frequencies: [3.0]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  ska_mid:
+    frequencies: [8, 15]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  alma_1:
+    frequencies: [35]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  alma_3:
+    frequencies: [84]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.5
+    beam_fwhm: 1
+    emis_mode: radio
+  lofar_fine:
+    frequencies: [0.15]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  askap_fine:
+    frequencies: [0.880]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  vlass_fine:
+    frequencies: [3.0]
+    redshifts: [0.1, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  ska_mid_fine:
+    frequencies: [8, 15]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  8p3GHz_fine_trc_01:
+    frequencies: [8.3]
+    redshifts: [0.1]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.1
+  8p3GHz_fine_trc_04:
+    frequencies: [8.3]
+    redshifts: [0.1]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.4
+  8p3GHz_fine_trc_03:
+    frequencies: [8.3]
+    redshifts: [0.1]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.3
+  8p3GHz_fine_trc_035:
+    frequencies: [8.3]
+    redshifts: [0.1]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.35
+  8p3GHz_fine_trc_0001:
+    frequencies: [8.3]
+    redshifts: [0.1]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.001
+  alma_1_fine:
+    frequencies: [35]
+    redshifts: [0.1, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  alma_3_fine:
+    frequencies: [84]
+    redshifts: [0.1, 0.5, 1, 3]
+    pixel_size: 0.05
+    beam_fwhm: 1
+    emis_mode: radio
+  8p3GHz_fine_trc_04_z:
+    frequencies: [8.3]
+    redshifts: [0.5]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.4
+  8p3GHz_fine_trc_03_z:
+    frequencies: [8.3]
+    redshifts: [0.5]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.3
+  8p3GHz_fine_trc_035_z:
+    frequencies: [8.3]
+    redshifts: [0.5]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+    tracer_cutoff: 0.35
+  8p3GHz_fine_trc_0001_z:
+    frequencies: [8.3]
+    redshifts: [0.5]
+    pixel_size: 0.08
+    beam_fwhm: 1
+    emis_mode: radio
+
+
+

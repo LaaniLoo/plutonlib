@@ -1,0 +1,38 @@
+# set the properties and directories for each simulation
+## give the simulation name and list the directories to the useful bits and pieces
+
+# ----------------------- #
+# COSMODRAGON SIMULATIONS
+# ----------------------- #
+Q36_v3_a25_G:
+  name: 'Q36_v3_a25_G'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_031/F/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_031/F.particles.hdf5'
+  
+Q38_v98_a25:
+  name: 'Q38_v98_a25'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/E/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_003/E.particles.hdf5'
+
+Q38_v98_a7.5:
+  name: 'Q38_v98_a7.5'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/D/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/data-products/processed/002_003/D.particles.hdf5'
+
+Q38_v98_a25_C180_xray: 
+  name: 'Q38-v98-a25-C180-xray'
+  sim_dir: '/u/gscs/sims/cosmo_remnants/data-products/002_003/E-rem90/'
+  parent_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/E'
+  pp: 3047
+  pg: 24
+  particle_path: '/u/gscs/processed_sim_data/particles/002003E-rem90.particles.hdf5'
+

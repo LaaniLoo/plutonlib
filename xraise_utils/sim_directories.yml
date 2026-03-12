@@ -1,0 +1,64 @@
+# set the properties and directories for each simulation
+## give the simulation name and list the directories to the useful bits and pieces
+
+# ----------------------- #
+# COSMODRAGON SIMULATIONS
+# ----------------------- #
+
+# 002_003 - CLUSTER
+Q36_v3_a25:
+  name: 'Q36_v3_a25'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/G/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_003/G.particles.hdf5'
+
+Q38_v98_a7.5:
+  name: 'Q38_v98_a7.5'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/D/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/data-products/processed/002_003/D.particles.hdf5'
+
+Q38_v98_a25:
+  name: 'Q38_v98_a25'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/E/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_003/E.particles.hdf5'
+
+Q38_v99_a7.5:
+  name: 'Q38_v99_a7.5'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_003/H/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_003/H.particles.hdf5'
+
+# 002_031 - GROUP
+Q36_v3_a25_G:
+  name: 'Q36_v3_a25_G'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_031/F/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_031/F.particles.hdf5'
+
+Q38_v98_a7.5_G:
+  name: 'Q38_v98_a7.5_G'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_031/C/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_031/C.particles.hdf5'
+
+Q38_v98_a25_G:
+  name: 'Q38_v98_a25_G'
+  sim_dir: '/ds/projects/agn/cosmodragon/data-products/002_031/D/'
+  parent_dir: 'None'
+  pp: 0
+  pg: 0
+  particle_path: '/ds/projects/agn/cosmodragon/analysis/data-processed/002_031/D.particles.hdf5'
