@@ -6,7 +6,9 @@ save_dir="."
 run_dir="$save_dir/temp"
 cluster_run=false
 auto_name=false
-script_dir="$PLUTONLIB/pluto_utils"
+script_dir="$PLUTONLIB/scripts"
+utils_dir="$PLUTONLIB/pluto_utils"
+
 
 show_help() {
     echo "-h = show help"
@@ -142,7 +144,7 @@ pluto_cluster() {
 
 #-----#
 if [[ "$cluster_run" == true ]]; then
-    cp "$script_dir/clean.sh" "$job_info_dir/clean.sh"
+    cp "$utils_dir/clean.sh" "$job_info_dir/clean.sh"
     pluto_cluster
 
 elif [[ "$cluster_run" == false ]]; then

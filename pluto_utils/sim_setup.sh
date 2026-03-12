@@ -1,5 +1,5 @@
 #!/bin/bash
-script_dir="$PLUTONLIB/pluto_utils"
+utils_dir="$PLUTONLIB/pluto_utils"
 cluster_run=false
 arg_save_dir=""
 
@@ -50,12 +50,12 @@ if [ ! -d "$save_dir" ]; then #option to create dir if required or exit if mista
 fi
 
 echo "Copying .sh/.ini files..." 
-cp "$script_dir/job_submit.sh" "$save_dir/job_submit.sh"
-cp "$script_dir/job_submit_compression.sh" "$save_dir/job_submit_compression.sh"
-cp "$script_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
-cp "$script_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
-cp "$script_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
-cp "$script_dir/reset_sim.sh" "$save_dir/reset_sim.sh"
+cp "$utils_dir/job_submit.sh" "$save_dir/job_submit.sh"
+cp "$utils_dir/job_submit_compression.sh" "$save_dir/job_submit_compression.sh"
+cp "$utils_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
+cp "$utils_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
+cp "$utils_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
+cp "$utils_dir/reset_sim.sh" "$save_dir/reset_sim.sh"
 
 printf "\n"
 read -p "Run jet-setup? [y/n]: " setup
@@ -94,7 +94,7 @@ build_pluto_cluster(){
 
 if [[ "$cluster_run" == true ]]; then
     build_pluto_cluster
-    cp "$script_dir/clean.sh" "$job_info_dir/clean.sh"
+    cp "$utils_dir/clean.sh" "$job_info_dir/clean.sh"
 
 elif [[ "$cluster_run" == false ]]; then
     build_pluto

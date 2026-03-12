@@ -1,8 +1,9 @@
-
-88""Yb 88     88   88 888888  dP"Yb  88b 88 88     88 88""Yb 
-88__dP 88     88   88   88   dP   Yb 88Yb88 88     88 88__dP 
-88"""  88  .o Y8   8P   88   Yb   dP 88 Y88 88  .o 88 88""Yb 
-88     88ood8 `YbodP'   88    YbodP  88  Y8 88ood8 88 88oodP 
+<pre>
+88""Yb  88      88   88 888888  dP"Yb  88b 88 88      88 88""Yb
+88__dP  88      88   88   88    dP   Yb 88Yb88 88      88 88__dP
+88"""   88  .o  Y8   8P   88    Yb   dP 88 Y88 88  .o 88 88""Yb
+88      88ood8  `YbodP'   88     YbodP  88  Y8 88ood8 88 88oodP
+</pre>
 
 A passion project for plotting and data analysis of PLUTO simulations inspired by [plutokore](https://github.com/pmyates/plutokore).
 
@@ -81,3 +82,55 @@ pip install -e .
   * Incremental loading for memory-efficient compression of large files
   * Detailed logging with progress tracking and compression statistics
   * Optional deletion of original files after successful compression
+
+# Setting and converting PLUTO units (`plutonlib/units`)
+* ini files are used to define a set of `code_unit_values` and `usr_unit_values`.
+  * `code_unit_values` are the unit values that PLUTO outputs for each variable (as seen in the user guide)
+  * `usr_unit_values` are the desired unit values that you wish to convert to later.
+
+#### **Default pluto_units.ini**
+```
+[code_unit_values]
+x1 = 1.496e13*cm
+x2 = 1.496e13*cm
+x3 = 1.496e13*cm
+rho = 1.673e-24*g/cm**3
+prs = 1.673e-14*dyne/cm**2
+vx1 = 1.0e5*cm/s
+vx2 = 1.0e5*cm/s
+vx3 = 1.0e5*cm/s
+sim_time = 4.744*yr
+mass = 1.0*g 
+energy = 1.0*erg  
+T = 1.203e2*K  
+
+[usr_unit_values]
+x1 = 1*m
+x2 = 1*m
+x3 = 1*m
+rho = 1*kg/m**3
+prs = 1*Pa
+vx1 = 1*m/s
+vx2 = 1*m/s
+vx3 = 1*m/s
+sim_time = 1*yr
+mass = 1*kg
+energy = 1*J
+T = 1*K
+```
+
+# Bash scripts/PLUTO tools (`plutonlib/pluto_utils`)
+* **`compression_script.py`**
+  * A python script that automatically compresses and chunks PLUTO HDF5 data files using the functions from `compression.py`
+  * Can optionally delete uncompressed files
+  * logs the compression process with timestamps
+* **`sim_setup.sh`**
+  * Automatically creates a PLUTO simulation directory copying a handful of useful scripts and ini file templates.
+  * Runs a setup script that automatically copies the PLUTO source into the simulation directory creating a portable instance
+    * PLUTO's `setup.py` can then be edited from here to change desired parameters.
+  * Automatically builds/compiles PLUTO on local or PBS cluster setups.
+* **`pluto_run.sh`**
+  * Script that creates and executes a simulation run within a simulation directory for a given ini file on local and PBS clusters
+    * For a PBS cluster, the simulation will be submit though `job_submit.sh` passing in all relevant variables.
+  * Creates a `run_dir` containing the pluto logs as well as a copy of the ini file and PBS job id stored in `run_dir/job_info`
+  * Displays the first 200 lines and tail of the PLUTO logfile.
