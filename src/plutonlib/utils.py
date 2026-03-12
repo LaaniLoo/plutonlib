@@ -70,10 +70,10 @@ def is_dbl_and_flt(wdir):
     Checks pluto.ini to see if sim outputs both dbl and flt h5 files
     """
     grid_output = pc.pluto_ini_info(wdir)["grid_output"]
-    dbl = grid_output["dbl.h5"][0]
-    flt = grid_output["flt.h5"][0]
-    is_dbl = True if dbl != -1 else False
-    is_flt = True if flt != -1 else False
+    dbl = grid_output["dbl.h5_freq"]
+    flt = grid_output["flt.h5_freq"]
+    is_dbl = True if dbl != 0 else False
+    is_flt = True if flt != 0 else False
 
     if is_dbl and is_flt:
         return True
@@ -133,12 +133,16 @@ def get_coord_names(arr_type = "nc",coord = None):
 
 
 def map_coord_name(var):
+    """
+    Allows any coordinate convention to be mapped to PLUTOs coordinates (x1,x2,x3)
+    """
     coord_map = {
     'ncx': 'x1', 'ncy': 'x2', 'ncz': 'x3',
     'ccx': 'x1', 'ccy': 'x2', 'ccz': 'x3',
     'ex': 'x1', 'ey': 'x2', 'ez': 'x3',
     'mx': 'x1', 'my': 'x2', 'mz': 'x3',
-    'dx': 'x1', 'dy': 'x2', 'dz': 'x3'
+    'dx': 'x1', 'dy': 'x2', 'dz': 'x3',
+    'x': "x1","y": "x2","z": "x3",
     }
     
     return coord_map.get(var, var)
