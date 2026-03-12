@@ -13,7 +13,7 @@ Added functions to plot simulation particles `plot_sim_particles()` and a zoom i
 
 - *(analysis.py)* plot PRAiSE SB, plot ram pressure, calculate chi and length scales
 
-Can now plow PRAiSE surface brightness distributions `plot_surface_brightness() with thier associated helpers, plot ram pressure along jet with `plot_ram_pressure()`,  calculate chi parameter to pressure match `calc_chi()` and jet length scales from Krause et al (2012) with `calc_length_scales()`
+Can now plow PRAiSE surface brightness distributions `plot_surface_brightness()` with their associated helpers, plot ram pressure along jet with `plot_ram_pressure()`,  calculate chi parameter to pressure match `calc_chi()` and jet length scales from Krause et al (2012) with `calc_length_scales()`
 
 - *(simulations.py)* auto compile particle files to hdf5, dataclasses for simulation info
 
@@ -26,7 +26,7 @@ File contains three dataclasses, `SimInfoSetup` which handles unit assignment an
 
 - *(config.py)* depricated `get_pluto_units()` for dataclass, update pluto.ini chi parameter
 
-Replaced `get_pluto_units()` with two dataclasses, `VarInfo` containg the code/user unit values, var name etc for a given var, and `PlutoUnits` dataclass containing all the `VarInfo` for each PLUTO variable. Added a function to automatically update pluto.ini with a calculated chi parameter to pressure match using existing user parameters from the ini: `update_chi_pluto_ini()` see also `calc_chi_from_ini()`
+Replaced `get_pluto_units()` with two dataclasses, `VarInfo` containing the code/user unit values, var name etc for a given var, and `PlutoUnits` dataclass containing all the `VarInfo` for each PLUTO variable. Added a function to automatically update pluto.ini with a calculated chi parameter to pressure match using existing user parameters from the ini: `update_chi_pluto_ini()` see also `calc_chi_from_ini()`
 
 - *(general)* moved python scripts here
 
