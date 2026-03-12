@@ -7,19 +7,22 @@ from plutonlib.colours import pcolours
 
 import numpy as np
 import scipy as sp
+from astropy import units as u
+from astropy.convolution import convolve, Gaussian2DKernel  # Astropy convolutions
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import ImageGrid, make_axes_locatable
+import matplotlib.animation as animation
 
 import inspect
 import time
 import logging
 
-from collections import defaultdict 
+import os
 
-from matplotlib.colors import LogNorm
-from mpl_toolkits.axes_grid1 import ImageGrid, make_axes_locatable
-import matplotlib.animation as animation
+from collections import defaultdict 
 
 class PlotData:
     """
@@ -34,11 +37,10 @@ class PlotData:
         self.output = output 
 
         self.sel_coord = None
-        self.sel_var = None
-        self._var_name = None #keep track of var_name in loops across var_choice 
+        self.sel_var = None #NOTE not sure what this is for might be a duplicate of below
+        self.var_name = None #keep track of var_name in loops across var_choice 
 
         self.load_outputs = None #used for sel load_outputs in plots
-        self.vars = None
 
         self.fig = None
         self.axes = None
@@ -87,7 +89,7 @@ class PlotData:
             raise KeyError(f"{self.plane} not recognised plane, see {plane_map}")
 
         return plane_map[self.plane]
-    
+
 
 # ---Plot Helper Functions---#
 def subplot_base(sdata, pdata = None,load_outputs = None,**kwargs): #sets base subplots determined by number of data_files
@@ -104,27 +106,25 @@ def subplot_base(sdata, pdata = None,load_outputs = None,**kwargs): #sets base s
     if pdata is None:
         pdata = PlotData(**kwargs)
 
-    if "particles" not in called_func: #use load_outputs if not particles plotter else use part_files
-        sel_d_files = load_outputs if load_outputs is not None else getattr(sdata, 'load_outputs', [])
-
-        # Validate we have files to plot
-        if not sdata.load_outputs:
-            raise ValueError("No data files provided (load_outputs is empty)")
+    # if "particles" not in called_func: #use load_outputs if not particles plotter else use part_files
+    # sel_d_files = load_outputs if load_outputs is not None else getattr(sdata, 'load_outputs', [])
+    pdata.load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+    # Validate we have files to plot
+    if not sdata.load_outputs:
+        raise ValueError("No data files provided (load_outputs is empty)")
         
     elif "particles" in called_func: # access particle data files for n plots
         sel_part_files = getattr(sdata,'particle_files',[])
 
     #NOTE plot sim has two types of plot sizes, two var per subp or one var per subp
-    print("called function:", called_func)
+    # print("called function:", called_func)
     if "fluid" in called_func:
         ndim = sdata.grid_ndim #gets gird ndim for plots
-        n_plots = len(sel_d_files) if ndim == 2 else len(sel_d_files)*len(pdata.var_choice) #NOTE because Jet has two vars per plot
-    
-    elif "particles" in called_func:
-        n_plots = len(sel_part_files)
-
+        n_plots = len(pdata.load_outputs) if ndim == 2 else len(pdata.load_outputs)*len(pdata.var_choice) #NOTE because Jet has two vars per plot
+        
     else: #all other functions only need output sized plot
-         n_plots = len(sel_d_files)
+        #  n_plots = len(sel_d_files)
+        n_plots = len(pdata.load_outputs)*len(pdata.var_choice)
     
     cols = 3 
     rows = max(1, (n_plots + cols - 1) // cols)  # Ensure at least 1 row
@@ -135,7 +135,7 @@ def subplot_base(sdata, pdata = None,load_outputs = None,**kwargs): #sets base s
     else:
         base_size = 7
 
-    max_width = 9 if "particles" in called_func else 15 # Cap maximum width @ 9 for particles and 21 for other
+    max_width = 15 # Cap maximum width @ 9 for particles and 21 for other
     figsize_width = min(base_size * cols, max_width)  
     figsize_height = base_size * rows
 
@@ -182,18 +182,26 @@ def plot_extras(sdata,pdata = None, **kwargs):
     #assigning x,y,z etc labels
     for coord_name in pdata.coord_choice:
         if pu.is_coord(coord_name): 
-            coord_label = sdata.get_var_info(coord_name)["coord_name"]
-            coord_units = (sdata.get_var_info(coord_name)["usr_uv"]).to_string('latex')
+            # coord_label = sdata.get_var_info(coord_name)["coord_name"]
+            coord_label = getattr(sdata.get_var_info(coord_name),"coord_name")
+            coord_units = (getattr(sdata.get_var_info(coord_name),"usr_uv")).to_string('latex')
+
             coord_labels.append(coord_label)
             xy_labels[coord_name] = (f"{coord_label} [{coord_units}]")  
     
     for var_name in pdata.var_choice:  #assigning cbar and title labs from rho prs etc
-        var_label = sdata.get_var_info(var_name)["var_name"]
+        
         try:
-            var_units = (sdata.get_var_info(var_name)["usr_uv"]).to_string('latex')
+            var_label = getattr(sdata.get_var_info(var_name),"var_name")
+            var_units = getattr(sdata.get_var_info(var_name),"usr_uv").to_string('latex')
         except AttributeError:
             print(f"skipping {var_name} units due to no available unit values...")
             var_units = "None"
+            var_label = "None"
+        except TypeError:
+            print("pdata.var_choice elements are not of type(str), skipping units/labels")
+            var_units = "None"
+            var_label = "None"
 
         cbar_labels.append(var_label + " " + f"[{var_units}]")
 
@@ -209,7 +217,7 @@ def plot_extras(sdata,pdata = None, **kwargs):
     
     return pdata.extras
 
-def pcmesh_3d(sdata,pdata = None, **kwargs):    
+def pcmesh_3d_fluid(sdata,pdata = None, **kwargs):    
     """
     Assigns the pcolormesh data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
     Also assigns colour bar and label
@@ -221,94 +229,74 @@ def pcmesh_3d(sdata,pdata = None, **kwargs):
     extras = plot_extras(sdata,pdata)
     pdata.value = kwargs.get('value') if 'value' in kwargs else 0
 
-    var_idx = pdata.var_choice.index(pdata._var_name) if pdata._var_name in pdata.var_choice else 0
+    var_idx = pdata.var_choice.index(pdata.var_name) if pdata.var_name in pdata.var_choice else 0
     slice_var = pdata.spare_coord #e.g. if plot xz -> profile in y
     slice_to_load = pa.calc_var_prof(sdata,slice_var,value_2D=pdata.value)["slice_2D"]
     # sdata.arr_type = "nc" #set to nc if not already to make sure for 3D 
-    fluid_data = sdata.fluid_data(
+    fluid_data = sdata.load_fluid_data(
         output=pdata.output,
-        var_choice=pdata.coord_choice + [pdata._var_name],
+        var_choice=pdata.coord_choice + [pdata.var_name],
         load_slice=slice_to_load,
     )
-    is_log = pdata._var_name in ('rho', 'prs')
+    is_log = pdata.var_name in ('rho', 'prs')
     vars_data = (
-        np.log10(fluid_data[pdata._var_name])
+        np.log10(fluid_data[pdata.var_name])
         if is_log
-        else fluid_data[pdata._var_name]
+        else fluid_data[pdata.var_name]
     )
 
     X = fluid_data[pdata.coord_choice[0]]
     Y = fluid_data[pdata.coord_choice[1]]
-    c_map = pdata.get_colourmap(var_name = pdata._var_name)
     cbar_label = extras["cbar_labels"][var_idx]
 
     im = ax.pcolormesh(
         X,
         Y, 
         vars_data, 
-        cmap=c_map
+        cmap=pdata.get_colourmap(var_name = pdata.var_name)
         )
     cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-    cbar.set_label(f"$Log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
-    # sdata.clear_fluid_data_cache() #clear the cache after plotting -> can change value etc
+    cbar.set_label(f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
 
-def pcmesh_2d(sdata,pdata = None, **kwargs):   
+def scatter_3d_particles(sdata,pdata = None, **kwargs):    
     """
-    Assigns the pcolormesh data for 2D data array e.g. for a 2D jet simulation. 
+    Assigns the scatterplot data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
     Also assigns colour bar and label
-    """ 
-    # var_name = kwargs.get('var_name')
-    extras = kwargs.get('extras')
-    ax = kwargs.get('ax')
+    """
+    if pdata is None:
+        pdata = PlotData(**kwargs) 
 
-    if extras is None or ax is None:
-        raise ValueError("Missing one of required kwargs: 'var_name', 'extras', 'ax'")
-    
-    plot_vars = pdata.var_choice
-    for i, var_name in enumerate(plot_vars):
-        if var_name not in sdata.get_vars(sdata.load_outputs[-1]): #TODO Change to an error
-            print(f"Warning: Variable {var_name} not found in data, skipping")
-            continue
+    plane_map = {"xy": ["x1","x2"], "xz": ["x1","x3"], "yz": ["x2","x3"]}
+    var_map = {"tr1":"tracer","rho":"density","prs":"pressure"}
 
-        # Apply log scale if density or pressure
-        is_log = var_name in ('rho', 'prs')
-        is_vel = var_name in ('vx1','vx2')
-        
-        vars_data = np.log10(sdata.get_vars(pdata.output)[var_name].T) if is_log else sdata.get_vars(pdata.output)[var_name].T
-        v_min_max =  [-2500,2500] if is_vel else [None,None] #TODO programmatically assign values, sets cbar min max    
-        # norm=mpl.colors.SymLogNorm(linthresh=0.03, linscale=0.01,
-        #                                   vmin=-5000, vmax=5000.0, base=10)
+    ax = pdata.axes[pdata.plot_idx]
+    extras = plot_extras(sdata,pdata)
 
+    var_idx = pdata.var_choice.index(pdata.var_name) if pdata.var_name in pdata.var_choice else 0
+    particle_var = var_map.get(pdata.var_name,pdata.var_name)
+    particle_data = sdata.particle_data(output=(pdata.output,))
+    is_log = pdata.var_name in ('rho', 'prs')
+    vars_data = (
+        np.log10(particle_data[particle_var])
+        if is_log
+        else particle_data[particle_var]
+    )
 
-        # Determine plot side and colormap
-        if i % 2 == 0:  # Even index vars on right
-            #,vmin = -5000, vmax = 5000
-            im = ax.pcolormesh(
-                sdata.get_vars(pdata.output)[pdata.var_choice[0]], 
-                sdata.get_vars(pdata.output)[pdata.var_choice[1]], 
-                vars_data, 
-                cmap=extras["c_maps"][i],
-                # norm = norm
-                vmin = v_min_max[0],
-                vmax =  v_min_max[1]
-                )
-        else:           # Odd index vars on left (flipped)
-            im = ax.pcolormesh(
-                -1 * sdata.get_vars(pdata.output)[pdata.var_choice[0]], 
-                sdata.get_vars(pdata.output)[pdata.var_choice[1]], 
-                vars_data, 
-                cmap=extras["c_maps"][i],
-                # norm = norm
-                vmin =  v_min_max[0],
-                vmax =  v_min_max[1]
-                )
-            
-        # Add colorbar with appropriate label
-        cbar = pdata.fig.colorbar(im, ax=ax, fraction=0.1) #, pad=0.25
-        cbar.set_label(
-            f"Log10({extras['cbar_labels'][i]})" if is_log else extras["cbar_labels"][i],
-            fontsize=14
+    coord_choice = plane_map[pdata.plane]
+    X = particle_data[coord_choice[0]]
+    Y = particle_data[coord_choice[1]]
+    cbar_label = extras["cbar_labels"][var_idx]
+
+    im = ax.scatter(
+        X,
+        Y, 
+        c=vars_data, 
+        s=2.5,
+        cmap = pdata.get_colourmap(var_name = pdata.var_name)
+
         )
+    cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
+    cbar.set_label(f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
 
 def plot_label(sdata,pdata=None,**kwargs):
     """
@@ -320,14 +308,20 @@ def plot_label(sdata,pdata=None,**kwargs):
         pdata = PlotData(**kwargs)
 
     extras_data = plot_extras(sdata,pdata)
-    time_str = sdata.metadata[pdata.output].time_str
+
+    called_func = inspect.stack()[1].function
+    # if "particles" in called_func:
+    if any(keword in called_func for keword in ("particles","brightness")):
+        time_str = f"{sdata.part_to_simtime(pdata.output):.1f} Myr"
+    else:
+        time_str = sdata.metadata[pdata.output].time_str
     # If being called by self:
     if pdata.axes is None:
         logging.warning("pdata.axes is None, calling subplot_base to assign")
         pdata.axes, pdata.fig = subplot_base(sdata,**kwargs)
 
     xy_labels = extras_data["xy_labels"]
-    title = extras_data["titles"][pdata._var_name]
+    title = extras_data["titles"][pdata.var_name]
 
     try:
         ax = pdata.axes[pdata.plot_idx] #get ax from PlotData class
@@ -355,7 +349,7 @@ def plot_label(sdata,pdata=None,**kwargs):
     value = True
     if value:
         value_info = sdata.get_var_info(pdata.spare_coord)
-        value_str = f"{value_info['coord_name']}$ = {pdata.value} \\; [{value_info['usr_uv']}]$"
+        value_str = f"{getattr(value_info,'coord_name')}$ = {pdata.value} \\; [{getattr(value_info,'usr_uv')}]$"
         ax.annotate(
             value_str,
             xy=(0.05, 0.90),
@@ -379,8 +373,8 @@ def plot_label(sdata,pdata=None,**kwargs):
         elif sdata.grid_setup["dimensions"] == 2:
             ax.set_title(f"{title}")
 
-def plot_axlim(pdata,kwargs):
-    ax = pdata.axes[pdata.plot_idx]
+def plot_axlim(ax,kwargs):
+    # ax = pdata.axes[pdata.plot_idx]
     if 'xlim' in kwargs: # xlim kwarg to change x limits
         ax.set_xlim(kwargs['xlim']) 
 
@@ -402,27 +396,39 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
     print("Note: saving as pdf takes a while...") if file_type == "pdf" else None
 
     if 'save' in kwargs:
-        save = kwargs['save'] #overwrite value to skip loop or to instantly save 
+        save = str(kwargs['save']) #overwrite value to skip loop or to instantly save 
     
     else:
-        save = input(f"Save plot for {sdata.run_name}? [1 = Yes, 0 = No, 2 = Custom label]:")
+        save = input(f"Save plot for {sdata.run_name}? [0 = No, 1 = Yes, 2 = Custom label]:")
 
-    if save == "1":
-        if custom:
+    if save == "1": #generic save into plutonlib_output dir (sim.save_dir)
+        if custom: #NOTE not sure if needed
             caller_frame = inspect.currentframe().f_back
             current_func_name = caller_frame.f_code.co_name
             filename =f"{sdata.save_dir}/{sdata.sim_type}_{current_func_name}_plot.{file_type}"
 
         else:
-            filename = f"{sdata.save_dir}/{sdata.sim_type}_{sdata.run_name}_{sdata.profile_choice}_plot.{file_type}"
+            filename = f"{sdata.save_dir}/{sdata.sim_type}_{sdata.run_name}_{pdata.var_name}_plot.{file_type}"
 
         pdata.fig.savefig(filename, bbox_inches='tight')
         print(f"Saved to {filename}")
 
-    elif save == "2":
+    elif save == "2": #save with custom file marker
         custom_marker = input(f"input custom marker for end of file name")
         filename = f"{sdata.save_dir}/{sdata.sim_type}_{sdata.run_name}_{custom_marker}_plot.{file_type}"
 
+        pdata.fig.savefig(filename, bbox_inches='tight')
+        print(f"Saved to {filename}")
+
+    elif save == "3": #used to save in different dir
+        if 'save_dir' in kwargs:
+            save_dir = str(kwargs['save_dir'])
+        else:
+            raise KeyError(f"save_dir not found in kwargs, please use save_dir for save = 3")
+
+        caller_frame = inspect.currentframe().f_back
+        current_func_name = caller_frame.f_code.co_name
+        filename = f"{save_dir}/{current_func_name}_{sdata.run_name}_{pdata.var_name}.{file_type}"
         pdata.fig.savefig(filename, bbox_inches='tight')
         print(f"Saved to {filename}")
     
@@ -430,12 +436,15 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
         print("Exiting plot_save")
 
 # ---Plotting Functions---#
-def plot_sim_fluid(sdata, pdata = None,**kwargs):
+def plot_sim_fluid(sdata, pdata = None,load_outputs = None,save=0,**kwargs):
     """
-    Plots the current simulation as either a L-R symmetrical colour map for rho/prs or vx1/vx2 (e.g. for jet) 
-    or as separate colour map plots for each var 
-    * Both plot across all load_outputs by default, can be changed with sel_d_files
-    * multiple plots can be generated by specifying sel_runs, also will override sdata.run_name
+    pcolormesh plot of PLUTO simulation grid outputs across multiple variables and outputs
+
+    :param sdata: SimulationData object
+    :param load_outputs: load a specific particle output
+    :param pdata: PlotData object 
+        contains plot settigns such as plot `plane`, `var_choice`, etc
+        not required as these settings can be passed as kwargs
     """
     if pdata is None:
         pdata = PlotData(**kwargs)
@@ -444,16 +453,16 @@ def plot_sim_fluid(sdata, pdata = None,**kwargs):
         raise ValueError("var_choice is None, assign pdata.var_choice or use var_choice kwarg")
     
 
-    sdata.load_outputs = kwargs.get('load_outputs', sdata.load_outputs)
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
     sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
 
     if pdata is not None:
         pdata.plot_idx = 0
-    pdata.axes, pdata.fig = subplot_base(sdata,pdata,load_outputs=sdata.load_outputs,**kwargs)
+    pdata.axes, pdata.fig = subplot_base(sdata,pdata,load_outputs=load_outputs,**kwargs)
 
     # Jet only needs to iterate over output
     if sdata.grid_setup["dimensions"] == 2:
-        for idx, output in enumerate(sdata.load_outputs):  # Loop over each data file
+        for idx, output in enumerate(load_outputs):  # Loop over each data file
             pdata.output = output
 
             plot_label(sdata,pdata,idx)
@@ -463,56 +472,106 @@ def plot_sim_fluid(sdata, pdata = None,**kwargs):
 
     # Stellar_Wind needs to iterate  over output and var name 
     if sdata.grid_setup["dimensions"] == 3:
-        for output in sdata.load_outputs:
+        for output in load_outputs:
             pdata.output = output
             for var_name in pdata.var_choice:
                 if pdata.plot_idx >= len(pdata.axes):
                     break
                     
                 # Plot each variable in its own subplot
-                pdata._var_name = var_name
+                pdata.var_name = var_name
                 pdata.value = kwargs.get('value') if 'value' in kwargs else 0 #value for custom slice
-                pcmesh_3d(sdata,pdata,value = pdata.value)
+                pcmesh_3d_fluid(sdata,pdata,value = pdata.value)
                 plot_label(sdata,pdata,**kwargs)
-                plot_axlim(pdata,kwargs)
+                plot_axlim(pdata.axes[pdata.plot_idx],kwargs)
 
                 pdata.plot_idx += 1
     
+    plot_save(sdata,pdata,save=save,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+    return pdata
+
+def plot_sim_particles(sdata,load_outputs=None, pdata = None,**kwargs):
+    """
+    Scatter plot of particles from a PLUTO simulation, across multiple variables and outputs
+
+    :param sdata: SimulationData object
+    :param load_outputs: load a specific particle output
+    :param pdata: PlotData object 
+        contains plot settigns such as plot `plane`, `var_choice`, etc
+        not required as these settings can be passed as kwargs
+    """
+    if pdata is None:
+        pdata = PlotData(**kwargs)
+
+    if not kwargs.get("var_choice") and not pdata.var_choice:
+        raise ValueError("var_choice is None, assign pdata.var_choice or use var_choice kwarg")
+
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+
+    sdata.ini_file = kwargs.get('ini_file', sdata.ini_file)
+
+    if pdata is not None:
+        pdata.plot_idx = 0
+    pdata.axes, pdata.fig = subplot_base(sdata,pdata,load_outputs=load_outputs,**kwargs)
+
+    if sdata.grid_setup["dimensions"] == 3:
+        for output in load_outputs:
+            pdata.output = output
+            for var_name in pdata.var_choice:
+                if pdata.plot_idx >= len(pdata.axes):
+                    break
+                    
+                # Plot each variable in its own subplot
+                pdata.var_name = var_name
+                pdata.value = kwargs.get('value') if 'value' in kwargs else 0 #value for custom slice
+                scatter_3d_particles(sdata,pdata,value = pdata.value)
+                plot_label(sdata,pdata,**kwargs)
+                plot_axlim(pdata,kwargs)
+                pdata.plot_idx += 1
+    
+    plt.show()
     plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
 
-def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,pdata=None,sel_d_files = None,**kwargs):
+def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=None,**kwargs):
     """
     Plots 1D slices of selected variables from Pluto simulations.
-    """
-    # if sdata.load_slice is None or sdata.slice_shape == "slice_2D":
-        # raise ValueError(f"SimulationData load_slice is None or 2D ({sdata.load_slice}), use a 1D slice to plot")
     
-    # value = kwargs.pop("value", 0)
-    # target = kwargs['value'] if 'value' in kwargs and kwargs['value'] is not None else 0
+    :param sel_coord:  selected coordinate to plot e.g. "x1"
+    :param sel_var: selected variable to plot e.g "vx1"
+    :param sdata: SimulationData object
+    :param value_dict: used to plot a 1D slice at a specific point  
+        e.g. slice at x1 = 20kpc and x2 = 0kpc -> value_1D = {"x1":20,"x2":0} 
+    :param load_outputs: load a specific simulation output
+    :param pdata: PlotData object (not required)
+    """
+    if not isinstance(value_dict,dict):
+        raise TypeError(f"value_dict = {value_dict}, must be type dict e.g. x = 10kpc -> {{'x1':10}}")
 
     if pdata is None:
         pdata = PlotData(var_choice=[sel_var],**kwargs)
 
     pdata.arr_type = "cc"
-    # pdata.value = kwargs.get('value') if 'value' in kwargs else pdata.value #value for custom slice
-    sel_d_files = [sel_d_files] if sel_d_files and not isinstance(sel_d_files, list) else sel_d_files
-    sel_d_files = sdata.load_outputs if sel_d_files is None else sel_d_files #load all or specific output
+    pdata.var_name = sel_var
 
-    axes, fig = subplot_base(sdata,pdata,load_outputs=sel_d_files,**kwargs)
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+    axes, fig = subplot_base(sdata,pdata,load_outputs=load_outputs,**kwargs)
     plot_idx = 0  # Keep track of which subplot index we are using
-
     sel_coord = pu.get_coord_names(arr_type="cc",coord=sel_coord) #converts x1 to ncx etc req for loading, labels
     slice_to_load = pa.calc_var_prof(sdata,sel_coord,value_1D=value_dict)["slice_1D"]
-    for output in sel_d_files: # plot across all files
+    
+    for output in load_outputs: # plot across all files
         pdata.output = output
         extras_data = plot_extras(sdata,pdata)
         xy_labels = extras_data["xy_labels"]
-        var_label = sdata.get_var_info(sel_var)["var_name"]
-        var_units = sdata.get_var_info(sel_var)["usr_uv"]
-        coord_label = sdata.get_var_info(sel_coord)["coord_name"]
-        coord_units = sdata.get_var_info(sel_coord)["usr_uv"]
+        var_info   = sdata.get_var_info(sel_var)
+        coord_info = sdata.get_var_info(sel_coord)
 
-        fluid_data = sdata.fluid_data(
+        var_label   = var_info.var_name
+        var_units   = var_info.usr_uv
+        coord_label = coord_info.coord_name
+        coord_units = coord_info.usr_uv
+
+        fluid_data = sdata.load_fluid_data(
             output=pdata.output,
             var_choice=[sel_coord,sel_var],
             load_slice=slice_to_load,
@@ -543,12 +602,106 @@ def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,pdata=None,sel_d_files = No
         #Assigning legend
         legend_coord, = value_dict.keys() #get the first key from value_dict, NOTE: works assuming that only 1 slice arg is used 
         value = f"{(value_dict.get(legend_coord)):.2f}" #scaling factor makes it easier to read
-        legend_str = f"{title_str} @ {sdata.get_var_info(legend_coord)['coord_name']} = {value} {coord_units}"
+        legend_str = f"{title_str} @ {getattr(sdata.get_var_info(legend_coord),'coord_name')} = {value} {coord_units}"
 
         ax.legend([legend_str])
+        plot_axlim(ax,kwargs)
 
         plot_idx += 1
     plot_save(sdata,pdata,**kwargs)
+
+def plot_surface_brightness(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angle=0,plane="xz",**kwargs):
+    # if pdata is None:
+    # loop over all outputs and all frequencies
+    particle_outputs = [pl.get_particle_outputs(sdata.wdir)] if particle_outputs == "last" else particle_outputs
+    pdata = PlotData(var_choice=freqs,plane=plane,load_outputs = particle_outputs,**kwargs)
+    pdata.plot_idx = 0
+    pdata.axes, pdata.fig = subplot_base(sdata=sdata,pdata=pdata,load_outputs=particle_outputs)
+    extras = plot_extras(sdata,pdata)
+
+    obs_properties = pa.setup_obs_properties_praise(sdata=sdata,redshift=redshift,angle=angle,plane=plane)
+    sb_arr = pa.calc_surface_brightness_praise(
+        sdata=sdata,
+        freqs=freqs,
+        redshift=redshift,
+        particle_outputs=particle_outputs,
+        angle=angle,
+        plane=plane,
+    )
+    for i in range(0, len(particle_outputs), 1):
+        for freq_ind, freq in enumerate(freqs):
+            pdata.output = particle_outputs[i]
+
+            # sb_arr[i][:,:,freq_ind] = np.nan_to_num(sb_arr[i][:,:,freq_ind], copy=True, nan=0.0, posinf=0.0, neginf=0.0) # get rid of NaNs (replace with zero)
+            freq_sb = convolve(sb_arr[i][:, :, freq_ind].to(u.mJy / u.beam), obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam) #convolve the surface brightness
+            freq_sb[freq_sb == 0] = np.nan # replace 0 SB areas with nan
+            max_sb_lim = np.log10(np.nanpercentile(freq_sb, 99).value) # calculate sensible limits
+            min_sb_lim = max_sb_lim - 1
+            sb_contours = np.linspace(min_sb_lim, max_sb_lim, 3) # calculate contours
+
+            # a = np.log10(freq_sb.value.T) # replace 0 SB areas with suitably low value
+            # a[np.isnan(a)] = -100
+            ax = pdata.axes[pdata.plot_idx]
+    
+            im = ax.pcolormesh(obs_properties["grid_x"], obs_properties["grid_y"], np.log10(freq_sb.value.T), vmin= min_sb_lim, vmax=max_sb_lim)
+            cbar = pdata.fig.colorbar(im,ax=ax,fraction = 0.05)
+            cbar.set_label(f"$\log_{{10}}$(SB [$\mathrm{{mJy \; beam^{{-1}}}}$])")
+
+            ax.contour(obs_properties["grid_mx"], obs_properties["grid_my"], np.log10(freq_sb.value.T), levels=sb_contours, colors='white')
+
+            ax.set_aspect("equal")
+            ax.set_title(f"Surface Brightness [{freq}$GHz$] ({sdata.run_name})")
+            ax.set_xlabel(extras["xy_labels"][pdata.coord_choice[0]])
+            ax.set_ylabel(extras["xy_labels"][pdata.coord_choice[1]])
+            pdata.plot_idx += 1
+
+
+
+            time_str = f"{sdata.part_to_simtime(pdata.output):.1f} Myr"
+            ax.annotate(
+                f'{time_str}',
+                xy=(0.05, 0.95),
+                xycoords='axes fraction',
+                fontsize=10,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    edgecolor="gray",
+                    alpha=0.8
+                )
+            )
+
+            ax.annotate(
+                f'angle = ${angle}^\circ$',
+                xy=(0.05, 0.90),
+                xycoords='axes fraction',
+                fontsize=10,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    edgecolor="gray",
+                    alpha=0.8
+                )
+            )
+
+def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
+    """
+    Plots a close up of the jet injection region, used to diagnose simulation resolution
+    """
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+
+    for output in load_outputs:
+        inj_loc = sdata.get_injection_region(output=output)[0].value #location of the injection region for moving injection regions
+        inj_size = sdata.usr_params['jet_injection_height'] + 1.5 #arbitrary limits
+        ylim = (-inj_size,inj_size)
+        xlim = (-0.5*inj_size + inj_loc, 0.5*inj_size + inj_loc) #offset for moving injection region
+
+        pdata = plot_sim_fluid(sdata,load_outputs=(output,),var_choice=["vx3"],ylim = ylim,xlim = xlim,no_title = True)
+        
+        pdata.axes[0].set_title(f"Plot of injection region for {sdata.run_name}")
+    pdata.fig.show()
+
+    plot_save(sdata,pdata,save=save,**kwargs)
 
 def frame_density(sdata, var_name, sel_d_files=None, pdata=None, cb_lims=[-5, 5], cmap='inferno', textcolour='black', fps=2):
     start = time.time()
