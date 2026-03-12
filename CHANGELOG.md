@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-03-12
+
+### 🚀 Features
+
+
+- *(plot.py)* plot particlesand injection region
+
+Added functions to plot simulation particles `plot_sim_particles()` and a zoom in of the jet injection region for resolution diagnostics `plot_inj_region()`
+
+- *(analysis.py)* plot PRAiSE SB, plot ram pressure, calculate chi and length scales
+
+Can now plow PRAiSE surface brightness distributions `plot_surface_brightness() with thier associated helpers, plot ram pressure along jet with `plot_ram_pressure()`,  calculate chi parameter to pressure match `calc_chi()` and jet length scales from Krause et al (2012) with `calc_length_scales()`
+
+- *(simulations.py)* auto compile particle files to hdf5, dataclasses for simulation info
+
+Added a method to auto compile all simulation particle outputs into single hdf5 using plutokore, `save_particles_hdf5()` accessed with `load_particle_data()`. `SimulationData` now has two properties
+  `jet` and `env` both of which are dataclasses containing all relevant parameters for jet/env for simulation.
+
+- *(simulation_info.py)* added simulation_info.py containing dataclasses for PLUTO simulation parameters
+
+File contains three dataclasses, `SimInfoSetup` which handles unit assignment and filling of dataclasses with pluto.ini user params. `EnvInfo` containing all environment parameters such as environment density `rho`. `JetInfo` which is the same as `EnvInfo` but for jet parameters e.g. jet power `Q`
+
+- *(config.py)* depricated `get_pluto_units()` for dataclass, update pluto.ini chi parameter
+
+Replaced `get_pluto_units()` with two dataclasses, `VarInfo` containg the code/user unit values, var name etc for a given var, and `PlutoUnits` dataclass containing all the `VarInfo` for each PLUTO variable. Added a function to automatically update pluto.ini with a calculated chi parameter to pressure match using existing user parameters from the ini: `update_chi_pluto_ini()` see also `calc_chi_from_ini()`
+
+- *(general)* moved python scripts here
+
+
+
+### Other
+
+
+- *(general)* xray module for xray cavities
+
+
+- *(general)* utils/scripts for XRAiSE/GRAiLE code
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Refactoring
+
+
+- *(load.py)* simplified loading functions
+
+loading pluto outputs now only falls under `pluto_loader_hdf5()` for hdf5, `pluto_particles()` for single particle files and `pluto_particles_hdf5()` for grouped hdf5 particle outputs
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.11.0] - 2025-12-23
 
 ### 🚀 Features
