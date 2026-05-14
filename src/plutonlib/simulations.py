@@ -21,6 +21,63 @@ import warnings
 coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
+import h5py 
+import hdf5plugin
+import numpy as np
+
+def save_particle_data_hdf5(
+    sim, particle_data_dict, particle_times, particle_data_path=None
+):
+
+
+    zfp_kwargs = {"reversible": True}
+    if particle_data_path is None:
+        particle_data_path = f"{sim.processed_data_path}.particles.hdf5"
+    with h5py.File(particle_data_path, "a") as particle_data_file:
+        data_group = particle_data_file.require_group("particle_data")
+        for k, v in particle_data_dict.items():
+
+            #chunk sizes
+            if v.ndim == 2:
+                chunks = (min(v.shape[0], 100_000), 1)
+            elif v.ndim == 3:
+                chunks = (min(v.shape[0], 100_000), 1, v.shape[2])
+            else:
+                chunks = None
+
+            ds_maxshape = [None] * len(v.shape)
+            # We create a dataset if it doesn't already exist
+            if k in data_group:
+                ds = data_group[k]
+                # resize dataset if necessary
+                ds.resize(v.shape)
+            else:
+                ds = data_group.create_dataset(
+                    k,
+                    shape=v.shape,
+                    dtype=np.float32,
+                    maxshape=ds_maxshape,
+                    chunks = chunks,
+                    **hdf5plugin.Zfp(**zfp_kwargs),
+                )
+            ds[...] = v.astype(np.float32)
+        # get time dataset
+        if "time" in particle_data_file:
+            ds = particle_data_file["time"]
+            # resize if necessary
+            ds.resize(particle_times.shape)
+        else:
+            # create it if it doesn't already exist
+            ds = particle_data_file.create_dataset(
+                "time",
+                shape=particle_times.shape,
+                dtype=np.float32,
+                maxshape=[None] * len(particle_times.shape),
+                chunks = None,
+                **hdf5plugin.Zfp(**zfp_kwargs),
+            )
+        ds[...] = particle_times.astype(np.float32)
+
 class SimulationSetup:
     """
     Class used to initialise PLUTO simulation information, e.g. run_name names, save directories, simulation types, ini information etc.
@@ -49,7 +106,7 @@ class SimulationSetup:
 
         self.avail_sims = os.listdir(pc.sim_dir)
         self.avail_runs =  os.listdir(_sim_dir) if self.sim_type else None 
-        
+
     #---Properties---#
     @property
     def save_dir(self,start_dir = None):
@@ -74,12 +131,12 @@ class SimulationSetup:
  
     @property
     def usr_params(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
+        ini_info = pc.pluto_ini_info(sim_dir=self.wdir)
         return ini_info["usr_params"]
 
     @property
     def grid_setup(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
+        ini_info = pc.pluto_ini_info(sim_dir=self.wdir)
         return ini_info["grid_setup"]
     
     @property
@@ -89,12 +146,12 @@ class SimulationSetup:
     
     @property
     def grid_output(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
+        ini_info = pc.pluto_ini_info(sim_dir=self.wdir)
         return ini_info["grid_output"]
     
     @property
     def part_output(self):
-        ini_info = pc.pluto_ini_info(self.wdir)
+        ini_info = pc.pluto_ini_info(sim_dir=self.wdir)
         return ini_info["part_output"]
 
 class SimulationData(SimulationSetup):
@@ -113,7 +170,7 @@ class SimulationData(SimulationSetup):
         self.conv = conv
         self._fluid_data_cache = {}
         self._metadata = {}
-
+        
         # Extra
         self._units = None
         self._geometry = None
@@ -170,7 +227,17 @@ class SimulationData(SimulationSetup):
     def get_metadata(self,output=None):
         if not output:
             output = pl.get_file_outputs(self.wdir)
-        return pl.load_hdf5_metadata(wdir=self.wdir,load_output=output)
+        
+        self._metadata[output] = pl.load_hdf5_metadata(wdir=self.wdir,load_output=output)
+        if self._metadata[output].time_str == '0 Myr':
+            time_unit = str(self.units.sim_time.usr_uv)
+            time_val = pc.code_to_usr_units("sim_time",self.metadata[output].sim_time,ini_file="jet_units")["conv_data_uuv"]
+            time_str = f"${time_val:.2f} \\; [{time_unit}]$"
+
+            self._metadata[output].time_str = time_str
+            self._metadata[output].sim_time = time_val
+
+        return self._metadata[output]
 
     def load_fluid_data(self,var_choice,output=None,load_slice = None,conv=None):
 
@@ -196,15 +263,55 @@ class SimulationData(SimulationSetup):
         self._fluid_data_cache[cache_key] = data[output]
 
         return data[output]
+    
+    def load_jet_spline_data(self,var_choice,output,conv=None):
+        """Loads simulation fluid quantities along the arc length of the jet
 
+        Args:
+            var_choice (list): list of variables to load e.g. ['ncx','rho']
+            output (int): PLUTO output file number
+            conv (bool, optional): to convert the data to user specified units or not. Defaults to None.
+
+        Returns:
+            fluid_data (dict): dict of fluid data per output for jet arc length, see load_fluid_data
+        """
+        
+        var_choice = [var_choice] if isinstance(var_choice,str) else var_choice
+        output = pl.get_file_outputs(self.wdir) if not output else output
+        conv = self.conv if conv is None else conv
+        fluid_data = {}
+
+        spline_data = pa.get_jet_splines(self,output,None)
+        spline_slice_map = spline_data["spline_slice_map"]
+
+        temp_data = self.load_fluid_data(var_choice,output=output,load_slice=self.quick_slice_2D('xz'))
+        for var in var_choice:
+            fluid_data[var] = temp_data[var][spline_slice_map]
+
+        return fluid_data
+    
     def save_particles_hdf5(self):
         sim = self.to_plutokore()
         file_path = os.path.join(self.wdir,"particles.hdf5")
-        if os.path.isfile(file_path):
-            raise FileExistsError(f"{file_path} allready exists")
 
+        if os.path.isfile(file_path):
+            with h5py.File(file_path,"r") as f:
+                n_outpus = f["time"][:].shape
+                part_outputs = pl.get_particle_outputs(wdir=self.wdir)
+
+                if part_outputs >= n_outpus[-1]:
+                    print("New particle files found, resaving particles.hdf5...")
+                else:
+                    raise FileExistsError(f"{file_path} allready exists")
+    
         particle_data_dict, particle_times = pk_part.load_all_particles(sim)
-        pk_part.save_particle_data_hdf5(
+        # pk_part.save_particle_data_hdf5(
+        #     sim=sim,
+        #     particle_data_dict=particle_data_dict,
+        #     particle_times=particle_times,
+        #     particle_data_path=file_path,
+        # )
+        save_particle_data_hdf5(
             sim=sim,
             particle_data_dict=particle_data_dict,
             particle_times=particle_times,
@@ -212,14 +319,15 @@ class SimulationData(SimulationSetup):
         )
         print(f"File saved to {file_path}")
 
-    def particle_data(self,output=None):
+    def load_particle_data(self,output=None,tr_cut = None):
         file_path = os.path.join(self.wdir,"particles.hdf5")
         if not os.path.isfile(file_path):
             print("particles.hdf5 not found, creating HDF5 dataset...")
             self.save_particles_hdf5()
 
+        # output = pl.get_particle_outputs(self.wdir) if not output else output
         output = pl.get_particle_outputs(self.wdir) if output == "last" else output
-        data = pl.pluto_particles_hdf5(self.wdir,output=output)
+        data = pl.pluto_particles_hdf5(self.wdir,output=output,tr_cut=tr_cut)
         return data
 
     def part_to_simtime(self,output):
@@ -232,6 +340,17 @@ class SimulationData(SimulationSetup):
         output_ratio = part_out_freq/grid_out_freq
         self.part_output["particle_spacing"] = output_ratio
         return output * output_ratio
+
+    def simtime_to_part(self, simtime):
+        """
+        Converts grid simtime to particle output number
+        """
+        dtype = self.get_metadata().dtype
+        grid_out_freq = self.grid_output[dtype + "_freq"]
+        part_out_freq = self.part_output["particles_dbl_freq"]
+        output_ratio = part_out_freq / grid_out_freq
+        self.part_output["particle_spacing"] = output_ratio
+        return simtime / output_ratio
 
     def clear_fluid_data_cache(self):
         self._fluid_data_cache.clear()
@@ -265,7 +384,9 @@ class SimulationData(SimulationSetup):
         """Uses pa.locate_injection_region to find x,y,z location for a moving injection region"""
 
         output = pl.get_file_outputs(self.wdir) if not output else output
-        sim_time = self.load_fluid_data(var_choice="sim_time",output=output,conv=True)["sim_time"] #in Myr
+        # sim_time = self.load_fluid_data(var_choice="sim_time",output=output,conv=True)["sim_time"] #in Myr 
+        # NOTE having simtime as the real simulation time caused a bug in ofset btwn output and simtime value -> keep as file output
+        sim_time = output
         rho_0 = pu.gcm3_to_kgm3(self.usr_params['env_rho_0']) #central density from ini 
         T = self.usr_params['env_temp']
         wind_vxx = [self.usr_params["wind_vx1"],self.usr_params["wind_vx2"],self.usr_params["wind_vx3"]]
@@ -352,3 +473,14 @@ class SimulationData(SimulationSetup):
         """Dataclass contining all simulation env parameters"""
         env_info = psim_info.EnvInfo.from_usr_params(self.usr_params)
         return env_info
+    
+    @property
+    def sim_times(self):
+        sim_times,_ = pl.get_sim_times(self.wdir)
+        return sim_times
+    
+    @property
+    def sim_times_matched(self):
+        _,sim_times_matched = pl.get_sim_times(self.wdir)
+        return sim_times_matched
+    
