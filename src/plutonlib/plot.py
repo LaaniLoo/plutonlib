@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import ImageGrid, make_axes_locatable
 import matplotlib.animation as animation
+from matplotlib.patches import Circle
 
 import inspect
 import time
@@ -33,7 +34,7 @@ class PlotData:
     * data files from SimulationData: load_outputs
     * function args for vars and coords: sel_var, sel_coord
     """
-    def __init__(self,arr_type = "nc",plane = "xz",var_choice = None,output = None, **kwargs):
+    def __init__(self,arr_type = "nc",plane = "xz",var_choice = None,output = None,show_cbar=True, **kwargs):
         self.output = output 
 
         self.sel_coord = None
@@ -52,10 +53,10 @@ class PlotData:
         self.var_choice = var_choice
         self.arr_type = arr_type
         self.plane = plane
-
+        self.show_cbar = show_cbar
+        self.cbar_label = None
         
-    def get_colourmap(self,var_name):  
-        cmap_dict = {
+        self.cmap_dict = {
             "vx1" : "hot",
             "vx2" : "hot",
             "vx3" : "hot",
@@ -63,10 +64,12 @@ class PlotData:
             "prs": "viridis"
         }
 
-        if var_name not in cmap_dict.keys():
-            return mpl.colormaps["cividis"]
+    def get_colourmap(self,var_name):  
 
-        return mpl.colormaps[cmap_dict[var_name]]
+        if var_name not in self.cmap_dict.keys():
+            return mpl.colormaps["PuRd"]
+
+        return mpl.colormaps[self.cmap_dict[var_name]]
         
     @property
     def spare_coord(self):
@@ -90,7 +93,6 @@ class PlotData:
 
         return plane_map[self.plane]
 
-
 # ---Plot Helper Functions---#
 def subplot_base(sdata, pdata = None,load_outputs = None,**kwargs): #sets base subplots determined by number of data_files
     """
@@ -113,15 +115,11 @@ def subplot_base(sdata, pdata = None,load_outputs = None,**kwargs): #sets base s
     if not sdata.load_outputs:
         raise ValueError("No data files provided (load_outputs is empty)")
         
-    elif "particles" in called_func: # access particle data files for n plots
-        sel_part_files = getattr(sdata,'particle_files',[])
-
     #NOTE plot sim has two types of plot sizes, two var per subp or one var per subp
     # print("called function:", called_func)
     if "fluid" in called_func:
         ndim = sdata.grid_ndim #gets gird ndim for plots
         n_plots = len(pdata.load_outputs) if ndim == 2 else len(pdata.load_outputs)*len(pdata.var_choice) #NOTE because Jet has two vars per plot
-        
     else: #all other functions only need output sized plot
         #  n_plots = len(sel_d_files)
         n_plots = len(pdata.load_outputs)*len(pdata.var_choice)
@@ -195,7 +193,7 @@ def plot_extras(sdata,pdata = None, **kwargs):
             var_label = getattr(sdata.get_var_info(var_name),"var_name")
             var_units = getattr(sdata.get_var_info(var_name),"usr_uv").to_string('latex')
         except AttributeError:
-            print(f"skipping {var_name} units due to no available unit values...")
+            # print(f"skipping {var_name} units due to no available unit values...")
             var_units = "None"
             var_label = "None"
         except TypeError:
@@ -203,7 +201,11 @@ def plot_extras(sdata,pdata = None, **kwargs):
             var_units = "None"
             var_label = "None"
 
-        cbar_labels.append(var_label + " " + f"[{var_units}]")
+        if var_units == '$\\mathrm{}$': #if no units
+            cbar_labels.append(var_label)
+        else:
+            cbar_labels.append(var_label + " " + f"[{var_units}]")
+
 
         title_str = f"{var_label} Across {coord_labels[0]}/{coord_labels[1]} ({sdata.run_name})"
         titles[var_name] = title_str
@@ -255,10 +257,13 @@ def pcmesh_3d_fluid(sdata,pdata = None, **kwargs):
         vars_data, 
         cmap=pdata.get_colourmap(var_name = pdata.var_name)
         )
-    cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-    cbar.set_label(f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
+    
+    pdata.cbar_label = f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label
+    if pdata.show_cbar:
+        cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
+        cbar.set_label(pdata.cbar_label, fontsize=14)
 
-def scatter_3d_particles(sdata,pdata = None, **kwargs):    
+def scatter_3d_particles(sdata,tr_cut=None,pdata = None, **kwargs):    
     """
     Assigns the scatterplot data for 3D data array e.g. for a 3D jet simulation or stellar wind. 
     Also assigns colour bar and label
@@ -274,7 +279,8 @@ def scatter_3d_particles(sdata,pdata = None, **kwargs):
 
     var_idx = pdata.var_choice.index(pdata.var_name) if pdata.var_name in pdata.var_choice else 0
     particle_var = var_map.get(pdata.var_name,pdata.var_name)
-    particle_data = sdata.particle_data(output=(pdata.output,))
+
+    particle_data = sdata.load_particle_data(output=(pdata.output,),tr_cut=tr_cut)
     is_log = pdata.var_name in ('rho', 'prs')
     vars_data = (
         np.log10(particle_data[particle_var])
@@ -295,8 +301,9 @@ def scatter_3d_particles(sdata,pdata = None, **kwargs):
         cmap = pdata.get_colourmap(var_name = pdata.var_name)
 
         )
-    cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
-    cbar.set_label(f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
+    if pdata.show_cbar:
+        cbar = pdata.fig.colorbar(im, ax=ax,fraction = 0.05) #, fraction=0.050, pad=0.25
+        cbar.set_label(f"$\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
 
 def plot_label(sdata,pdata=None,**kwargs):
     """
@@ -431,12 +438,12 @@ def plot_save(sdata,pdata=None,custom=0,**kwargs):
         filename = f"{save_dir}/{current_func_name}_{sdata.run_name}_{pdata.var_name}.{file_type}"
         pdata.fig.savefig(filename, bbox_inches='tight')
         print(f"Saved to {filename}")
-    
+
     else:
         print("Exiting plot_save")
-
+    
 # ---Plotting Functions---#
-def plot_sim_fluid(sdata, pdata = None,load_outputs = None,save=0,**kwargs):
+def plot_sim_fluid(sdata, pdata = None,load_outputs = None,save=0,show=True,**kwargs):
     """
     pcolormesh plot of PLUTO simulation grid outputs across multiple variables and outputs
 
@@ -487,10 +494,14 @@ def plot_sim_fluid(sdata, pdata = None,load_outputs = None,save=0,**kwargs):
 
                 pdata.plot_idx += 1
     
-    plot_save(sdata,pdata,save=save,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+    plot_save(sdata=sdata,pdata=pdata,save=save,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+
+    if show:
+        plt.show()
+
     return pdata
 
-def plot_sim_particles(sdata,load_outputs=None, pdata = None,**kwargs):
+def plot_sim_particles(sdata,tr_cut=None,load_outputs=None, pdata = None,save=0,show=True,**kwargs):
     """
     Scatter plot of particles from a PLUTO simulation, across multiple variables and outputs
 
@@ -524,15 +535,19 @@ def plot_sim_particles(sdata,load_outputs=None, pdata = None,**kwargs):
                 # Plot each variable in its own subplot
                 pdata.var_name = var_name
                 pdata.value = kwargs.get('value') if 'value' in kwargs else 0 #value for custom slice
-                scatter_3d_particles(sdata,pdata,value = pdata.value)
+                scatter_3d_particles(sdata=sdata,tr_cut=tr_cut,pdata=pdata,value = pdata.value)
                 plot_label(sdata,pdata,**kwargs)
                 plot_axlim(pdata,kwargs)
                 pdata.plot_idx += 1
-    
-    plt.show()
-    plot_save(sdata,pdata,**kwargs) # make sure is indent under run_names so that it saves multiple runs
 
-def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=None,**kwargs):
+    if show:
+        plt.show()
+
+    plot_save(sdata=sdata,pdata=pdata,save=save,**kwargs) # make sure is indent under run_names so that it saves multiple runs
+
+    return pdata
+
+def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=None,save=0,show=True,**kwargs):
     """
     Plots 1D slices of selected variables from Pluto simulations.
     
@@ -579,8 +594,6 @@ def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=N
         
         title_str = f"{sdata.sim_type} {var_label}"
         ax = axes[plot_idx]
-
-        # plot_axlim(ax,kwargs)
             
         ax.set_title(
             f"{sdata.sim_type} {var_label} vs {coord_label} ({sdata.run_name}, {output})"
@@ -608,81 +621,13 @@ def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=N
         plot_axlim(ax,kwargs)
 
         plot_idx += 1
-    plot_save(sdata,pdata,**kwargs)
 
-def plot_surface_brightness(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angle=0,plane="xz",**kwargs):
-    # if pdata is None:
-    # loop over all outputs and all frequencies
-    particle_outputs = [pl.get_particle_outputs(sdata.wdir)] if particle_outputs == "last" else particle_outputs
-    pdata = PlotData(var_choice=freqs,plane=plane,load_outputs = particle_outputs,**kwargs)
-    pdata.plot_idx = 0
-    pdata.axes, pdata.fig = subplot_base(sdata=sdata,pdata=pdata,load_outputs=particle_outputs)
-    extras = plot_extras(sdata,pdata)
+        if show:
+            plt.show()
 
-    obs_properties = pa.setup_obs_properties_praise(sdata=sdata,redshift=redshift,angle=angle,plane=plane)
-    sb_arr = pa.calc_surface_brightness_praise(
-        sdata=sdata,
-        freqs=freqs,
-        redshift=redshift,
-        particle_outputs=particle_outputs,
-        angle=angle,
-        plane=plane,
-    )
-    for i in range(0, len(particle_outputs), 1):
-        for freq_ind, freq in enumerate(freqs):
-            pdata.output = particle_outputs[i]
+    plot_save(sdata=sdata,pdata=pdata,save=save,**kwargs) # make sure is indent under run_names so that it saves multiple runs
 
-            # sb_arr[i][:,:,freq_ind] = np.nan_to_num(sb_arr[i][:,:,freq_ind], copy=True, nan=0.0, posinf=0.0, neginf=0.0) # get rid of NaNs (replace with zero)
-            freq_sb = convolve(sb_arr[i][:, :, freq_ind].to(u.mJy / u.beam), obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam) #convolve the surface brightness
-            freq_sb[freq_sb == 0] = np.nan # replace 0 SB areas with nan
-            max_sb_lim = np.log10(np.nanpercentile(freq_sb, 99).value) # calculate sensible limits
-            min_sb_lim = max_sb_lim - 1
-            sb_contours = np.linspace(min_sb_lim, max_sb_lim, 3) # calculate contours
-
-            # a = np.log10(freq_sb.value.T) # replace 0 SB areas with suitably low value
-            # a[np.isnan(a)] = -100
-            ax = pdata.axes[pdata.plot_idx]
-    
-            im = ax.pcolormesh(obs_properties["grid_x"], obs_properties["grid_y"], np.log10(freq_sb.value.T), vmin= min_sb_lim, vmax=max_sb_lim)
-            cbar = pdata.fig.colorbar(im,ax=ax,fraction = 0.05)
-            cbar.set_label(f"$\log_{{10}}$(SB [$\mathrm{{mJy \; beam^{{-1}}}}$])")
-
-            ax.contour(obs_properties["grid_mx"], obs_properties["grid_my"], np.log10(freq_sb.value.T), levels=sb_contours, colors='white')
-
-            ax.set_aspect("equal")
-            ax.set_title(f"Surface Brightness [{freq}$GHz$] ({sdata.run_name})")
-            ax.set_xlabel(extras["xy_labels"][pdata.coord_choice[0]])
-            ax.set_ylabel(extras["xy_labels"][pdata.coord_choice[1]])
-            pdata.plot_idx += 1
-
-
-
-            time_str = f"{sdata.part_to_simtime(pdata.output):.1f} Myr"
-            ax.annotate(
-                f'{time_str}',
-                xy=(0.05, 0.95),
-                xycoords='axes fraction',
-                fontsize=10,
-                bbox=dict(
-                    boxstyle="round,pad=0.3",
-                    facecolor="white",
-                    edgecolor="gray",
-                    alpha=0.8
-                )
-            )
-
-            ax.annotate(
-                f'angle = ${angle}^\circ$',
-                xy=(0.05, 0.90),
-                xycoords='axes fraction',
-                fontsize=10,
-                bbox=dict(
-                    boxstyle="round,pad=0.3",
-                    facecolor="white",
-                    edgecolor="gray",
-                    alpha=0.8
-                )
-            )
+    return pdata
 
 def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
     """
@@ -703,29 +648,179 @@ def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
 
     plot_save(sdata,pdata,save=save,**kwargs)
 
-def frame_density(sdata, var_name, sel_d_files=None, pdata=None, cb_lims=[-5, 5], cmap='inferno', textcolour='black', fps=2):
+def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwargs):
+    """Plots the jet splines fitted to a particle distribution of the simulation
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        var (str): str of variable to plot on e.g. tracer 'tr1'
+        output (int): PLUTO simulation output
+        tr_cut (float): tracer cuttoff value for entire particle dataset
+        query_points (dict, optional): Used to plot POI's on the scatterplot e.g. {"$L_{{1a}}$": sim3.jet.L1a.value}
+        roc (flaot, optional): radius of curvature to plot a circle over. Defaults to None.
+    """
+    colours = ['darkblue','blueviolet','mediumvioletred','thistle']
+    col_idx = 0
+
+    sim_time = output
+    part_time = round(sdata.simtime_to_part(sim_time))
+    pdata = plot_sim_particles(sdata, var_choice=[var], load_outputs=(part_time,), tr_cut=tr_cut, show=False)
+    
+    inj_pos = sdata.get_injection_region(sim_time)
+    inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
+    
+    ax = pdata.fig.axes[0]
+    ax.set_aspect('equal')   
+
+    spline_data = pa.get_jet_splines(sdata = sdata,output = sim_time,tr_cut = tr_cut)
+    spline_points = spline_data["spline_points"]
+    ridgepoints = spline_data["ridgepoints"]
+
+    ax.plot(spline_points[:, 0], spline_points[:, 1], color='k',linestyle = '--')
+    ax.scatter(ridgepoints[:, 0], ridgepoints[:, 1], color='r', s=5)
+    
+    if query_points is not None:
+        dx = np.diff(spline_points[:, 0])
+        dz = np.diff(spline_points[:, 1])
+        arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))])
+
+        dist = np.sqrt((spline_points[:, 0] - inj_x)**2 + (spline_points[:, 1] - inj_z)**2)
+        inj_idx = np.argmin(dist)
+        from_inj = arc_length - arc_length[inj_idx]
+
+        ax.scatter(spline_points[inj_idx, 0], spline_points[inj_idx, 1],
+                   color='k', marker='x', s=20, zorder=5, label="Injection region")
+
+        for label, offset in query_points.items():
+            idx_plus  = np.argmin(np.abs(from_inj - offset))
+            idx_minus = np.argmin(np.abs(from_inj + offset))
+            idxs = [idx_minus, idx_plus]
+            ax.scatter(spline_points[idxs, 0], spline_points[idxs, 1],
+                       s=12, zorder=5, label=f"{label} = {offset:.2f} kpc", color=colours[col_idx])
+            col_idx += 1
+    
+    if roc is not None:
+        # Fit circle — adjust center to match your jet head position
+        circle = Circle(xy=(inj_x+roc, 0), radius=roc, 
+                        fill=False, edgecolor='g', linewidth=1.5, linestyle='-')
+        ax.add_patch(circle)
+
+    plot_axlim(ax,kwargs)
+    ax.legend(fontsize=8)
+
+    plt.savefig(f"./jet_splines_plot.png",bbox_inches='tight',dpi = 1200)
+    plt.show()
+
+def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',fname = None,**kwargs):
+    """Plots a 1D slice along the jet arc length for a given variable.
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        var (str): str of variable to plot on e.g. tracer 'tr1'
+        output (int): PLUTO simulation output
+        query_points (dict, optional): Used to plot POI's on the plot e.g. {"$L_{{1a}}$": sim3.jet.L1a.value}
+        roc (flaot, optional): radius of curvature to plot a circle over. Defaults to None.
+        tick_axis (str, optional): which axis will show ticks for e.g if 'x' ticks for x axis values will show on top. Defaults to 'x'.
+        fname (str, optional): file name to save to. Defaults to None.
+    """
+    colours = ['darkblue','blueviolet','mediumvioletred','thistle']
+    col_idx = 0
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    pdata = PlotData(var_choice=[var], plane="xz", show_cbar=False)
+    pdata.fig = fig
+    pdata.axes = ax
+    # pdata.plot_idx = plot_idx
+    pdata.extras = plot_extras(sdata,pdata)
+    pdata.output = output
+    pdata.var_name = var
+
+    spline_data = sdata.load_jet_spline_data(["ccx", "ccz", var], output=output)
+    dx,dz = np.diff(spline_data["ccx"]), np.diff(spline_data["ccz"]) 
+    arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))]) #create arc length from jet spline data 
+
+    inj_pos = sdata.get_injection_region(output)
+    inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
+
+    dist = np.sqrt((spline_data['ccx'] - inj_x)**2 + (spline_data['ccz'] - inj_z)**2)
+    inj_idx = np.argmin(dist)
+    from_inj = arc_length - arc_length[inj_idx] #make inj region the 0 point
+
+    is_log = var in ('rho', 'prs')
+    var_data = (
+        np.log10(spline_data[var])
+        if is_log
+        else spline_data[var]
+    )
+
+    #---Plot the data---#
+    ax.plot(from_inj, var_data,color = 'darkcyan') #darkcyan
+    ax.set_xlabel("Arc length along jet [kpc]")
+    ax.set_ylabel(pdata.extras['cbar_labels'][0])
+
+    # --- Top axis: (x, z) coords at evenly spaced arc-length ticks ---#
+    ax2 = ax.twiny()
+    n_ticks = 8
+    tick_idx = np.linspace(0, len(from_inj) - 1, n_ticks, dtype=int)
+    tick_pos = from_inj[tick_idx]
+    tick_labels = [
+        f"{spline_data[f"cc{tick_axis}"][i]:.1f}"
+        for i in tick_idx
+    ]
+
+    ax2.set_xlim(ax.get_xlim())
+    ax2.set_xticks(tick_pos)
+    ax2.set_xticklabels(tick_labels, fontsize=7)
+    ax2.set_xlabel(pdata.extras['xy_labels'][f"nc{tick_axis}"], labelpad=10)
+
+    #---Injection region point---#
+    ax.scatter(from_inj[inj_idx], var_data[inj_idx], label=f"Injection region", zorder=5,s=15,marker='x',color = 'k')
+
+    if query_points is not None:
+        for label, offset in query_points.items():
+            idx_plus  = np.argmin(np.abs(from_inj - offset))
+            idx_minus = np.argmin(np.abs(from_inj + offset))
+            idxs = [idx_minus, idx_plus]
+            ax.scatter(from_inj[idxs], var_data[idxs], label=f"{label} = {offset:.2f} kpc", zorder=5,s=12,color = colours[col_idx])
+            col_idx += 1
+
+    plot_axlim(ax,kwargs)
+    ax.legend(fontsize = 8)
+
+    plt.tight_layout()
+    if fname is not None:
+        for artist in ax.lines + ax.collections:
+            artist.set_rasterized(True)
+        plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
+    plt.show()
+
+def animation_fluid(sdata, var_name, load_outputs=None, pdata=None, cb_lims=[-5, 5], cmap='inferno', textcolour='black', fps=20, **kwargs):
+    def _output_exists(sdata, output):
+        try:
+            sdata.get_metadata(output)
+            return True
+        except:
+            return False
+    
     start = time.time()
     print(f"({var_name}): {(time.time() - start):.2f}s - init")
 
     if pdata is None:
-        pdata = PlotData()
+        pdata = PlotData(var_choice=[var_name], **kwargs)
         print(f"({var_name}): {(time.time() - start):.2f}s - PlotData initialized")
 
-    sel_d_files = sdata.load_outputs if sel_d_files is None else sel_d_files
-    total_outputs = len(sel_d_files)
-    print(f"({var_name}): {(time.time() - start):.2f}s - data files loaded")
+    load_outputs = sdata.load_outputs if load_outputs is None else load_outputs
+    load_outputs = [o for o in load_outputs if _output_exists(sdata, o)]
+    total_outputs = len(load_outputs)
+    print(f"({var_name}): {(time.time() - start):.2f}s - {total_outputs} valid outputs found")
 
-    latex_text_width = 418.25368
-    paper_plot_kwargs = {"dpi": 600, "bbox_inches": "tight"}
     plt.rcParams.update({'font.size': 15})
-    print(f"({var_name}): {(time.time() - start):.2f}s - rcParams updated")
 
     with plt.style.context("classic"):
         pdata.fig = plt.figure(figsize=(10, 10))
         pdata.fig.tight_layout()
         pdata.axes = ImageGrid(
-            pdata.fig,
-            111,
+            pdata.fig, 111,
             nrows_ncols=(1, 1),
             label_mode="1",
             axes_pad=(0, 0.2),
@@ -736,78 +831,72 @@ def frame_density(sdata, var_name, sel_d_files=None, pdata=None, cb_lims=[-5, 5]
             share_all=True,
         )
         ax = pdata.axes[0]
-        print(f"({var_name}): {(time.time() - start):.2f}s - figure and ImageGrid created")
+        im = None
 
         def update_img(n, cb_lims, cmap, textcolour):
-            ax.clear()
-            current_d_file = sel_d_files[n]
-            pdata.output = current_d_file
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} start")
+            nonlocal im
+            pdata.output = load_outputs[n]
 
-            extras_data = plot_extras(sdata, pdata)
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} extras computed")
+            try:
+                ax.clear()
 
-            ax.text(0.05, 0.95, f'{pdata.output.split("_")[-1]}',
-                    horizontalalignment="left",
-                    verticalalignment="center",
-                    transform=ax.transAxes,
-                    fontsize=20,
-                    color=textcolour)
+                extras_data = plot_extras(sdata, pdata)
+                slice_var = pdata.spare_coord
+                profile = pa.calc_var_prof(sdata, slice_var)["slice_2D"]
 
-            slice_var = pdata.spare_coord
-            profile = pa.calc_var_prof(sdata, slice_var)["slice_2D"]
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} profile calculated")
+                fluid_data = sdata.load_fluid_data(
+                    output=pdata.output,
+                    var_choice=pdata.coord_choice + [var_name],
+                    load_slice=profile,
+                )
 
-            is_log = var_name in ('rho', 'prs')
-            vars_data = np.log10(sdata.get_vars(pdata.output)[var_name][profile]) if is_log else sdata.get_vars(pdata.output)[var_name][profile]
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} vars_data fetched")
+                is_log = var_name in ('rho', 'prs')
+                vars_data = np.log10(fluid_data[var_name]) if is_log else fluid_data[var_name]
 
-            var_idx = pdata.var_choice.index(var_name)
-            c_map = extras_data["c_maps"][var_idx]
-            cbar_label = extras_data["cbar_labels"][var_idx]
+                X = fluid_data[pdata.coord_choice[0]]
+                Y = fluid_data[pdata.coord_choice[1]]
 
-            im = ax.pcolormesh(
-                sdata.get_vars(pdata.output)[pdata.var_choice[0]][profile],
-                sdata.get_vars(pdata.output)[pdata.var_choice[1]][profile],
-                vars_data,
-                cmap=cmap,
-                shading='auto',
-            )
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} pcolormesh done")
+                var_idx = pdata.var_choice.index(var_name)
+                c_map = pdata.get_colourmap(var_name)
+                cbar_label = extras_data["cbar_labels"][var_idx]
 
-            cax = ax.cax
-            cax.cla()
-            cb = pdata.fig.colorbar(im, cax=cax)
-            cb.set_label(cbar_label, fontsize=14)
-            cb.ax.tick_params(labelsize='large')
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} colorbar updated")
+                im = ax.pcolormesh(X, Y, vars_data, cmap=c_map, shading='auto')
 
-            ax.set_xlabel(extras_data["xy_labels"][pdata.var_choice[0]])
-            ax.set_ylabel(extras_data["xy_labels"][pdata.var_choice[1]])
-            ax.tick_params(axis='both')
+                cax = ax.cax
+                cax.cla()
+                cb = pdata.fig.colorbar(im, cax=cax)
+                cb.set_label(f"$\\log_{{10}}$({cbar_label})" if is_log else cbar_label, fontsize=14)
+                cb.ax.tick_params(labelsize='large')
 
-            xlim = (np.min(sdata.get_vars()[pdata.var_choice[0]]), np.max(sdata.get_vars()[pdata.var_choice[0]]))
-            ylim = (np.min(sdata.get_vars()[pdata.var_choice[1]]), np.max(sdata.get_vars()[pdata.var_choice[1]]))
-            ax.set_xlim(xlim)
-            ax.set_ylim(ylim)
-            print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} axis limits set")
+                time_str = sdata.metadata[pdata.output].time_str
+                ax.text(0.05, 0.95, time_str,
+                        horizontalalignment="left", verticalalignment="center",
+                        transform=ax.transAxes, fontsize=20, color=textcolour)
+
+                ax.set_xlabel(extras_data["xy_labels"][pdata.coord_choice[0]])
+                ax.set_ylabel(extras_data["xy_labels"][pdata.coord_choice[1]])
+                ax.tick_params(axis='both')
+                ax.set_xlim(np.min(X), np.max(X))
+                ax.set_ylim(np.min(Y), np.max(Y))
+                plot_axlim(ax, kwargs)
+
+                print(f"({var_name}): {(time.time() - start):.2f}s - frame {n} done")
+
+            except (OSError, KeyError, FileNotFoundError) as e:
+                print(f"({var_name}): skipping output {pdata.output} — {type(e).__name__}: {e}")
 
             return im
 
         ani = animation.FuncAnimation(
-            pdata.fig,
-            update_img,
+            pdata.fig, update_img,
             frames=total_outputs,
             interval=30,
             save_count=total_outputs,
             fargs=(cb_lims, cmap, textcolour),
         )
-        print(f"({var_name}): {(time.time() - start):.2f}s - FuncAnimation created")
 
         writergif = animation.PillowWriter(fps=fps)
-        dpi = 200
-
-        ani.save(f"{sdata.save_dir}/{sdata.sim_type}.gif", writer=writergif, dpi=dpi)
+        ani.save(f"{sdata.save_dir}/{sdata.run_name}.gif", writer=writergif, dpi=200)
         print(f"({var_name}): {(time.time() - start):.2f}s - animation saved")
 
     return ani
