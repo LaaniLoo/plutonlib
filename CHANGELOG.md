@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-05-14
+
+### 🚀 Features
+
+
+- *(plot.py)* plot jet splines, plot 1D slice along jet
+
+Added `plot_jet_splines()` to see how the splines are fitted to a scatterplot of the particles. `plot_1D_slice_splines()` shows a 1D slice for a variable e.g. `rho` along the jet arc length
+
+- *(analysis.py)* jet spline fitting, removed deprecated functions
+
+Function to find ridgepoints along the jet arc length and resample using splines from `scipy.interpolate.splprep` and `scipy.interpolate.splev`. x,z array of splines returned as `spline_points`, interpolates to grid cells using the return `spline_slice_map`
+
+- *(load.py)* function to get all simulation times
+
+gets all PLUTO simulation times and returns it as a dict with key = output and value as sim_time, also returns a matched dict for every output that matches its simulation time
+
+- *(simulations.py)* Chunked particle files,spline data and simulation times attrs
+
+`save_particle_data_hdf5()` added as a test function to test chunking of particles.hdf5 files will migrate to `load.py`. Added `load_jet_spline_data()` to load the simulation fluid qunatities along the arc length of the jet, same use case as `load_fluid_data()`. Added `self.sim_times` and `self.sim_times_matched`
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.12.0] - 2026-03-12
 
 ### 🚀 Features
