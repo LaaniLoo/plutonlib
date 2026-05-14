@@ -1,3 +1,5 @@
+from ast import Raise
+
 import plutonlib.config as pc
 import plutonlib.simulations as ps
 import plutonlib.utils as pu
@@ -129,7 +131,7 @@ def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
         - dtype: Data type string ("hdf5_float" or "hdf5_double")
         - is_compressed: Boolean indicating if file is compressed
     """
-    
+    _h5_kwargs = dict(rdcc_nbytes=512 * 1024 * 1024,rdcc_nslots=2_000_003,rdcc_w0=0.75,)
     is_dbl_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.dbl.h5.compressed"))
     is_flt_h5 = os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5")) or os.path.isfile(os.path.join(wdir,f"data.{load_output:04d}.flt.h5.compressed"))
     dext = "flt.h5" if is_flt_h5 else "dbl.h5" #assigns correct dtype for loading, preferentially load float
@@ -138,21 +140,25 @@ def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
     if not is_dbl_h5 and not is_flt_h5:
         raise FileNotFoundError(f"output {load_output} not found in {wdir}") #quick error as metadata only works for hdf5
 
-    file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}")
-    compressed_file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}.compressed")
+    base_file_path = os.path.join(wdir,f"data.{load_output:04d}.{dext}")
+    compressed_file_path = base_file_path + ".compressed"
     is_compressed = os.path.isfile(compressed_file_path)
-
-    if is_compressed: #use available chunked data
-        file_path = compressed_file_path
-        # print("Using compressed data")
-
-    data_file = h5py.File(file_path, "r", 
-        rdcc_nbytes=512 * 1024 * 1024, #was 512
-        rdcc_nslots=2_000_003,
-        rdcc_w0=0.75)
+    file_path = compressed_file_path if is_compressed else base_file_path
 
     try:
-        geometry = "CARTESIAN" #NOTE this should be able to be read from grid.out
+        data_file = h5py.File(file_path, "r", **_h5_kwargs)
+        
+    except BlockingIOError: #error handling for files being written out
+        is_written_out = pu.pluto_is_written_out(file_path,3) #check if file is written out by pluto, cluster averages ~0.85Gb/s -> 3 sec check is ample
+        if not is_compressed and not is_written_out:
+            raise BlockingIOError(f"Cannot open {file_path}, file is still being written out by PLUTO")
+
+        print(f"File ({file_path}) is still being compressed (see compression.log), using default output")
+        file_path = base_file_path
+        data_file = h5py.File(file_path, "r", **_h5_kwargs)
+
+    try:
+        geometry = pc.get_geometry_gridout(wdir)
         sim_time = data_file[f"Timestep_{load_output}"].attrs["Time"]
         file_vars = [v for v in list(data_file[f"Timestep_{load_output}/vars"].keys())]
 
@@ -480,19 +486,71 @@ def pluto_particles(wdir,load_outputs=None):
 
     return particle_data
 
-def pluto_particles_hdf5(wdir,output = None):
+def pluto_particles_hdf5(wdir,output = None,tr_cut = None):
     particle_data_path = os.path.join(wdir,"particles.hdf5")
 
     particle_dict = {}
     particle_times = None
 
-    particle_data_file = h5py.File(particle_data_path, "r")
-    # var_map = {"tracer":"tr1","density":"rho","pressure":"prs"}
-    
-    for k, v in particle_data_file["particle_data"].items():
-        # k = var_map.get(k,k)
-        particle_dict[k] = v[:,output] if output is not None else v
-    particle_times = particle_data_file["time"]
-    particle_dict["particle_times"] = particle_times
+    # particle_data_file = h5py.File(particle_data_path, "r")
+    with h5py.File(particle_data_path,"r") as f:
+        n_outpus = f["time"][:].shape[0]
+        part_outputs = get_particle_outputs(wdir=wdir) #int
+        loaded_outputs = part_outputs if not output else output
+
+        if part_outputs >= n_outpus:
+            print(f"particles.hdf5 only has {n_outpus} outputs saved, there are {part_outputs} outputs, consider resaving file.")
+
+        if isinstance(loaded_outputs,tuple) and max(loaded_outputs) > n_outpus:
+            raise IndexError(f"Trying to load output {max(loaded_outputs)}, when there are only {n_outpus} outputs saved")
+        
+        if isinstance(loaded_outputs,int) and loaded_outputs > n_outpus:
+            raise IndexError(f"Trying to load output {loaded_outputs}, when there are only {n_outpus} outputs saved")
+        
+        for k, v in f["particle_data"].items():
+            # particle_dict[k] = v[:,output] if output is not None else v[:]
+            if output is None:
+                particle_dict[k] = v[:]
+            elif isinstance(output, int):
+                particle_dict[k] = v[:, :output + 1]   # (n_particles, 0:5) → 2D
+            else:  # tuple
+                particle_dict[k] = v[:, list(output)]   # specific columns
+
+        particle_times = f["time"][:]
+        particle_dict["particle_times"] = particle_times
+
+    if tr_cut is not None: #using tracer cuttoff 
+        tr_mask = particle_dict["tracer"] >= tr_cut
+        for var in particle_dict:
+            if var != "particle_times":  # skip the time array
+                particle_dict[var] = particle_dict[var][tr_mask]
 
     return particle_dict
+
+def get_sim_times(wdir):
+    """gets all simulation times corresponding to a output file, also matches outputs that share the same simtime
+    e.g output 10 = 10Myr
+
+    Args:
+        wdir (str): path to output files
+    
+    Returns:
+        sim_times (dict): dict of output and corresponding simulation time
+        sim_times_matched (dict): dict of matching output and simulation times 
+    """
+    sim_times = {}
+    sim_times_matched = {}
+    n_outputs = get_file_outputs(wdir)
+    for output in range(1,n_outputs + 1):
+        try:
+            metadata = load_hdf5_metadata(wdir,output)
+        except (FileNotFoundError,OSError) as e:
+            print(e)
+
+        sim_time = pc.code_to_usr_units("sim_time",metadata.sim_time,ini_file = "jet_units")["conv_data_uuv"]
+        
+        if round(sim_time) == output:
+            sim_times_matched[output] = sim_time
+        sim_times[output] = sim_time
+
+    return sim_times, sim_times_matched
