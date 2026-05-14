@@ -1,3 +1,5 @@
+from logging import warn
+
 import plutonlib.config as pc
 import plutonlib.analysis as pa
 
@@ -70,7 +72,43 @@ class SimInfoSetup:
                 unit = getattr(units, unit_key).code_unit
                 mapped_params[param] = param_value * unit
         
+        # if "env" not in kwargs:
+            # kwargs["env"] = EnvInfo.from_usr_params(usr_params)
+
         return cls(**mapped_params,**kwargs)
+    
+    @classmethod
+    def from_ini_file(cls,ini_file: dict,**kwargs):
+        """Maps user params from pluto.ini to JetInfo and EnvInfo classes 
+
+        Args:
+            usr_params (dict): dict of usr_params from pluto.ini
+
+        Returns:
+            SimInfoSetup: _description_
+        """
+        usr_params = pc.pluto_ini_info(ini_file=ini_file)["usr_params"]
+        units = pc.PlutoUnits.from_ini(ini_file=cls.ini_file)
+
+        mapped_params = {}
+        for usr_param, param in cls._param_map.items():
+            unit_key = cls._unit_map.get(param)
+            param_value = usr_params[usr_param]
+
+            if param is None:
+                continue
+
+            if unit_key is None:                       # dimensionless, no unit
+                mapped_params[param] = param_value
+            else:
+                unit = getattr(units, unit_key).code_unit
+                mapped_params[param] = param_value * unit
+
+        # if "env" not in kwargs:
+            # kwargs["env"] = EnvInfo.from_usr_params(usr_params)
+
+        return cls(**mapped_params,**kwargs)
+
 
 @dataclass
 class EnvInfo(SimInfoSetup):
@@ -141,20 +179,21 @@ class JetInfo(SimInfoSetup):
     Raises:
         ValueError: raises value error if multiple wind components due to L_bend, #NOTE change to 3D vector
     """
-    Q:      u.Quantity = 0
-    v:      u.Quantity = 0
-    v_c:    u.Quantity = 0
-    rho:    u.Quantity = 0
-    M:      float = 0       # dimensionless mach number
-    radius: u.Quantity = 0
-    theta:  u.Quantity = 0
-    L1:     u.Quantity = 0
-    L1a:    u.Quantity = 0
-    L1b:    u.Quantity = 0
-    L1c:    u.Quantity = 0
-    L2:     u.Quantity = 0
-    L_bend: u.Quantity = 0
-    env: EnvInfo = None   # optional, only needed for lscales
+    Q:          u.Quantity = 0
+    v:          u.Quantity = 0
+    v_c:        u.Quantity = 0
+    rho:        u.Quantity = 0
+    M:          float = 0       # dimensionless mach number
+    radius:     u.Quantity = 0
+    theta:      u.Quantity = 0
+    theta_bend: float = 0
+    L1:         u.Quantity = 0
+    L1a:        u.Quantity = 0
+    L1b:        u.Quantity = 0
+    L1c:        u.Quantity = 0
+    L2:         u.Quantity = 0
+    L_bend:     u.Quantity = 0
+    env:        EnvInfo = None   # optional, only needed for lscales
 
     _unit_map = { #map info variables to pluto units
         "Q":     "Q",
@@ -191,7 +230,8 @@ class JetInfo(SimInfoSetup):
                     v_wind = getattr(self.env, w)
                     wvx_counter += 1
                 if wvx_counter > 1:
-                    raise ValueError(f"Wind velocities have multiple components, cannot find L_bend")
+                    print(f"Wind velocities have multiple components, cannot find L_bend")
+                    v_wind = 0 #NOTE needs fixing
     
             lscales = pa.calc_length_scales(
                 Q       = self.Q,
@@ -210,4 +250,5 @@ class JetInfo(SimInfoSetup):
             self.radius = lscales["r_jet"]
             self.M = self.v / self.env.c_s
 
+            self.theta_bend = pa.calc_jet_bending_angle(self.L1c.value,self.L_bend.value)
             self.rho = (pa.calc_jet_density(self.Q,self.v,self.theta,self.radius.to(u.m))).to(u.kg / u.m**3)

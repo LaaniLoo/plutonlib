@@ -5,7 +5,6 @@ import os
 import time
 from datetime import datetime
 import logging
-from plutonlib.colours import pcolours
 import psutil
 
 def count_total_hdf5_items(file):
@@ -79,12 +78,6 @@ def compress_simulation_chunked_single(file,keep_original = True,compression_typ
                 if isinstance(obj, h5py.Dataset):
                     stats["datasets"] += 1
                     
-                    # chunks_dict = {
-                    #     'xy': (obj.shape[0], obj.shape[1], 1), # for slicing: [:, :, z_mid]
-                    #     'xz': (obj.shape[0], 1, obj.shape[2]), # For slicing: [:, y_mid, :]
-                    #     'yz': (1, obj.shape[1], obj.shape[2]), # For slicing: [x_mid, :, :]
-                    # }
-
                     chunks_dict = { #PLUTO indexes as z,y,x so orders are reversed
                         'xy': (1, obj.shape[1], obj.shape[2]),   # for slicing: [z_mid, :, :]
                         'xz': (obj.shape[0], 1, obj.shape[2]),   # for slicing: [:, y_mid, :]
@@ -113,19 +106,20 @@ def compress_simulation_chunked_single(file,keep_original = True,compression_typ
                         shuffle=True
                     )
 
-                    # Copy attributes for fu ll PLUTO compatibility
+                    # Copy attributes from PLUTO hdf5
                     for attr_name, attr_value in obj.attrs.items():
                         new_ds.attrs[attr_name] = attr_value
                     
                     #load a slice for incremental loading, if dset can fit in ram, load the whole thing
-                    avail_ram = psutil.virtual_memory().available
-                    if avail_ram // obj.nbytes >=1:
+                    avail_mem = psutil.virtual_memory().available
+                    if avail_mem // obj.nbytes >=1:
                         slice_size = total_slices   
                         # logging.info(f"{name} has size {obj.nbytes/1e9:.2f}GB, loading entire dataset into memory")
                     else:
                         slice_size = max(1,total_slices // 5)
                         logging.info(f"{name} has size {obj.nbytes/1e9:.2f}GB, loading a slice of size {slice_size}")
 
+                    # I beleive this is purely used for logging
                     for i in range(0, total_slices, slice_size):
                         i_end = min(i + slice_size, total_slices)
                         if obj.ndim == 3:
@@ -144,7 +138,7 @@ def compress_simulation_chunked_single(file,keep_original = True,compression_typ
 
                         if percent_loaded - last_log['value'] >= 1:
                             percent_display = f"{percent_loaded}%"
-                            name_width = 25  # adjust as needed
+                            name_width = 25  
                             count_width = 10
                             percent_width = 8
                             message = f"{name.ljust(name_width)} | {datasets_count.center(count_width)} | {percent_display.rjust(percent_width)}"

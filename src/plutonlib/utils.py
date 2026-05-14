@@ -69,7 +69,7 @@ def is_dbl_and_flt(wdir):
     """
     Checks pluto.ini to see if sim outputs both dbl and flt h5 files
     """
-    grid_output = pc.pluto_ini_info(wdir)["grid_output"]
+    grid_output = pc.pluto_ini_info(sim_dir = wdir)["grid_output"]
     dbl = grid_output["dbl.h5_freq"]
     flt = grid_output["flt.h5_freq"]
     is_dbl = True if dbl != 0 else False
@@ -129,8 +129,6 @@ def get_coord_names(arr_type = "nc",coord = None):
         return x,y,z  
     else:
         return coords[coord_idx[coord]]
-
-
 
 def map_coord_name(var):
     """
