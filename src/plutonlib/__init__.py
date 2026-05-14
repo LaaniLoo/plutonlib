@@ -19,4 +19,4 @@ from .analysis import *
 from .colours import *
 from .compression import *
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
