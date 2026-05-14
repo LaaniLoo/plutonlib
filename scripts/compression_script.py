@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 
 check_freq_io = 120 #check every 2 minutes 
-check_freq_idle = 900 #slow down to 15 mins at idle
+check_freq_idle = 600 #slow down to 10 mins at idle
 # check_freq_io = 2 #check every 2 minutes 
 # check_freq_idle = 60 #slow down to 15 mins at idle
 t_last_out = None
@@ -57,11 +57,11 @@ while True:
             t_last_out = current_time
             out_dt.append(t_last_out - t_prev_out)
             t_next_out = t_last_out + np.mean(out_dt) #predict the next output time
-            logging.info(f"Next expected output at: {time.strftime('%H:%M:%S', time.localtime(t_next_out))}")
+            logging.info(f"Detected {os.path.basename(new_files[-1])}, Next expected output at: {time.strftime('%H:%M:%S', time.localtime(t_next_out))}")
         t_prev_out = current_time
 
         for file_to_compress in new_files: #loop across detected files
-            fsize_chk_time = 3*check_freq_io
+            fsize_chk_time = check_freq_io #3*check_freq_io
             if pu.pluto_is_written_out(file_to_compress,fsize_chk_time): #if the file size hasn't changed in e.g. 2 mins
                 pcomp.compress_simulation_chunked_single(file_to_compress,keep_original = False) #compression stage
             else:
