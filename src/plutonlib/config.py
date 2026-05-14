@@ -28,17 +28,18 @@ class VarInfo:
 
 @dataclass
 class PlutoUnits:
-    rho:      VarInfo
-    prs:      VarInfo
-    vx1:      VarInfo
-    vx2:      VarInfo
-    vx3:      VarInfo
-    x1:       VarInfo
-    x2:       VarInfo
-    x3:       VarInfo
-    T:        VarInfo
-    Q:        VarInfo
-    sim_time: VarInfo
+    rho:       VarInfo
+    prs:       VarInfo
+    vx1:       VarInfo
+    vx2:       VarInfo
+    vx3:       VarInfo
+    x1:        VarInfo
+    x2:        VarInfo
+    x3:        VarInfo
+    T:         VarInfo
+    Q:         VarInfo
+    sim_time:  VarInfo
+    tr1:       VarInfo
 
     @classmethod
     def from_ini(cls, ini_file=None):
@@ -68,6 +69,7 @@ class PlutoUnits:
             "x1":       {"var_name": f"${sel_coords[0]}$", "coord_name": f"${sel_coords[0]}$"},
             "x2":       {"var_name": f"${sel_coords[1]}$", "coord_name": f"${sel_coords[1]}$"},
             "x3":       {"var_name": f"${sel_coords[2]}$", "coord_name": f"${sel_coords[2]}$"},
+            "tr1":      {"var_name": f"Tracer"},
             "T":        {"var_name": r"$T$"},
             "Q":        {"var_name": r"$Q_{\rm{jet}}$"},
             "sim_time": {"var_name": r"$t$"},
@@ -151,16 +153,20 @@ def get_grid_dimensions(grid_setup):
      
     return active_dims
 
-def pluto_ini_info(sim_dir):
-    job_info_dir = os.path.join(sim_dir,"job_info")
+def pluto_ini_info(sim_dir=None,ini_file = None):
 
-    if os.path.isdir(job_info_dir):
-        job_dir_files = glob.glob(f"{job_info_dir}/*.ini") #gets all ini files in job_info_dir 
-        latest_ini = max(job_dir_files,key=os.path.getctime)
+    if ini_file is not None: #direct ini file input
+            latest_ini = ini_file
+    else:
+        job_info_dir = os.path.join(sim_dir,"job_info")
 
-    else: #if not in a simulation directory
-        dir_files = glob.glob(f"{sim_dir}/*.ini") #gets all ini files in simulation dir 
-        latest_ini = max(dir_files,key=os.path.getctime)
+        if os.path.isdir(job_info_dir):
+            job_dir_files = glob.glob(f"{job_info_dir}/*.ini")
+            latest_ini = max(job_dir_files,key=os.path.getctime)
+
+        else:
+            dir_files = glob.glob(f"{sim_dir}/*.ini")
+            latest_ini = max(dir_files,key=os.path.getctime)
 
     ini_name = latest_ini.split("/")[-1]
 
@@ -286,11 +292,17 @@ def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
     gets unit value from PlutoUnits to convert from code units to the user specified units in the ini file.
     """
     mapped_var_name = pu.map_coord_name(var_name) #makes sure to convert diff XYZ arrays to x1,x2,x3
-    pluto_units = getattr(PlutoUnits.from_ini(ini_file=ini_file),mapped_var_name)
+    can_convert = True
+    
+    try:
+        pluto_units = getattr(PlutoUnits.from_ini(ini_file=ini_file),mapped_var_name)
+    except AttributeError:
+        print(f"PlutoUnits doesn't have attribute '{mapped_var_name}', may be unitless")
+        can_convert = False
     
     # code_uv = pluto_units[mapped_var_name]["code_uv"]
-    code_uv = pluto_units.code_uv
-    usr_uv = pluto_units.usr_uv
+    code_uv = pluto_units.code_uv if can_convert else None
+    usr_uv = pluto_units.usr_uv if can_convert else None
     np.asarray(raw_data) if np.any(raw_data) and not isinstance(raw_data,np.ndarray) else raw_data #calc only works if raw_data is numpy array 
 
     #convert raw_data
@@ -340,7 +352,7 @@ def calc_chi_from_ini(ini_file):
     """
     Calculates the chi parameter required to pressure match jet in both rel and non-rel cases
     """
-    usr_params = pluto_ini_info(os.path.dirname(ini_file))['usr_params']
+    usr_params = pluto_ini_info(sim_dir=os.path.dirname(ini_file))['usr_params']
 
     jet_pwr = usr_params['jet_pwr'] * u.erg / u.s 
     jet_angle = usr_params['jet_oa_primary'] * u.deg
@@ -373,6 +385,26 @@ def update_chi_pluto_ini(ini_file):
         new_value=f'{chi.value:.1f}'
     )
 
+#---Getting PLUTO Params from other files---#
+def get_geometry_gridout(wdir):
+    """Gets the simulation geometry from PLUTO's grid.out file
+
+    Args:
+        wdir (str): working directory of the simulation
+
+    Raises:
+        ValueError: if GEOMETRY string is not present
+
+    Returns:
+        geometry (str): e.g. "CARTESIAN"
+    """
+    gridout_path = os.path.join(wdir,"grid.out")
+    with open(gridout_path, "r") as f:
+        for line in f:
+            if "GEOMETRY:" in line:
+                return line.split(":")[-1].strip()
+            
+    raise ValueError(f"GEOMETRY not found in {gridout_path}")
 # ---Sim data tree structure---#
 def plutonlib_tree_helper():
     tree = """pluto_master/
