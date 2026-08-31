@@ -37,11 +37,18 @@ def save_particle_data_hdf5(
         data_group = particle_data_file.require_group("particle_data")
         for k, v in particle_data_dict.items():
 
-            #chunk sizes
+            #chunk to get all particles at 1 timestep, fast single output loading
+            # if v.ndim == 2:
+            #     chunks = (min(v.shape[0], 100_000), 1)
+            # elif v.ndim == 3:
+            #     chunks = (min(v.shape[0], 100_000), 1, v.shape[2])
+
+            #chunk to get all timesteps associated with n*1000 particles, fast multi-output loading
             if v.ndim == 2:
-                chunks = (min(v.shape[0], 100_000), 1)
+                chunks = (min(v.shape[0], 1_000), v.shape[1])
             elif v.ndim == 3:
-                chunks = (min(v.shape[0], 100_000), 1, v.shape[2])
+                chunks = (min(v.shape[0], 1_000), v.shape[1], v.shape[2])
+
             else:
                 chunks = None
 
@@ -158,6 +165,17 @@ class SimulationData(SimulationSetup):
     """
     Class used to load/convert PLUTO simulations as well as containing from SimulationSetup 
     """
+
+    def __eq__(self, other): #objects are equal when they share the same run name and sim type
+        return (
+            isinstance(other, SimulationData)
+            and self.run_name == other.run_name
+            and self.sim_type == other.sim_type
+        )
+
+    def __hash__(self): #generate the hash based on both run_name and sim_type
+        return hash((self.run_name, self.sim_type))
+
     def __init__(self, sim_type=None, run_name=None,
                  load_outputs=None, ini_file=None,conv=True):
 
@@ -264,7 +282,7 @@ class SimulationData(SimulationSetup):
 
         return data[output]
     
-    def load_jet_spline_data(self,var_choice,output,conv=None):
+    def load_jet_spline_data(self,var_choice,output,tr_stop = 0.2,conv=None):
         """Loads simulation fluid quantities along the arc length of the jet
 
         Args:
@@ -279,16 +297,17 @@ class SimulationData(SimulationSetup):
         var_choice = [var_choice] if isinstance(var_choice,str) else var_choice
         output = pl.get_file_outputs(self.wdir) if not output else output
         conv = self.conv if conv is None else conv
-        fluid_data = {}
+        fluid_data_splines = {}
 
-        spline_data = pa.get_jet_splines(self,output,None)
+        spline_data = pa.get_jet_splines(sdata=self,output=output,tr_stop = tr_stop)
         spline_slice_map = spline_data["spline_slice_map"]
 
         temp_data = self.load_fluid_data(var_choice,output=output,load_slice=self.quick_slice_2D('xz'))
         for var in var_choice:
-            fluid_data[var] = temp_data[var][spline_slice_map]
-
-        return fluid_data
+            fluid_data_splines[var] = temp_data[var][spline_slice_map]
+        fluid_data_splines['inj_idx'] = spline_data['inj_idx']
+        fluid_data_splines['L_jet'] = spline_data['jet_length'] #TODO add to jet class pls
+        return fluid_data_splines
     
     def save_particles_hdf5(self):
         sim = self.to_plutokore()
@@ -384,9 +403,9 @@ class SimulationData(SimulationSetup):
         """Uses pa.locate_injection_region to find x,y,z location for a moving injection region"""
 
         output = pl.get_file_outputs(self.wdir) if not output else output
-        # sim_time = self.load_fluid_data(var_choice="sim_time",output=output,conv=True)["sim_time"] #in Myr 
+        sim_time = self.load_fluid_data(var_choice="sim_time",output=output,conv=True)["sim_time"] #in Myr 
         # NOTE having simtime as the real simulation time caused a bug in ofset btwn output and simtime value -> keep as file output
-        sim_time = output
+        # sim_time = output
         rho_0 = pu.gcm3_to_kgm3(self.usr_params['env_rho_0']) #central density from ini 
         T = self.usr_params['env_temp']
         wind_vxx = [self.usr_params["wind_vx1"],self.usr_params["wind_vx2"],self.usr_params["wind_vx3"]]
