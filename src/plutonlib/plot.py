@@ -44,7 +44,17 @@ class PlotData:
         self.load_outputs = None #used for sel load_outputs in plots
 
         self.fig = None
+        self.fig_size = 7
         self.axes = None
+        self.axes_flat = None
+        self.gs = None
+        self.cbar_ax = None 
+
+        self.xlim = None
+        self.ylim = None
+        self.vmin = None
+        self.vmax = None
+
         self.plot_idx = 0
         self.extras = None #storing plot_extras() data
         self.value = 0
@@ -629,7 +639,7 @@ def plot_1D_slice(sel_coord,sel_var,sdata,value_dict,load_outputs = None,pdata=N
 
     return pdata
 
-def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
+def plot_inj_region(sdata,load_outputs=None,save=0,xlim=None,ylim =None,**kwargs):
     """
     Plots a close up of the jet injection region, used to diagnose simulation resolution
     """
@@ -638,8 +648,12 @@ def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
     for output in load_outputs:
         inj_loc = sdata.get_injection_region(output=output)[0].value #location of the injection region for moving injection regions
         inj_size = sdata.usr_params['jet_injection_height'] + 1.5 #arbitrary limits
-        ylim = (-inj_size,inj_size)
-        xlim = (-0.5*inj_size + inj_loc, 0.5*inj_size + inj_loc) #offset for moving injection region
+
+        if ylim is None:
+            ylim = (-inj_size,inj_size)
+        
+        if xlim is None:
+            xlim = (-0.5*inj_size + inj_loc, 0.5*inj_size + inj_loc) #offset for moving injection region
 
         pdata = plot_sim_fluid(sdata,load_outputs=(output,),var_choice=["vx3"],ylim = ylim,xlim = xlim,no_title = True)
         
@@ -647,8 +661,9 @@ def plot_inj_region(sdata,load_outputs=None,save=0,**kwargs):
     pdata.fig.show()
 
     plot_save(sdata,pdata,save=save,**kwargs)
+    # plot_axlim()
 
-def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwargs):
+def plot_jet_splines(sdata,var,output,tr_stop = 0.2,query_points=None,roc = None,**kwargs):
     """Plots the jet splines fitted to a particle distribution of the simulation
 
     Args:
@@ -664,7 +679,7 @@ def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwar
 
     sim_time = output
     part_time = round(sdata.simtime_to_part(sim_time))
-    pdata = plot_sim_particles(sdata, var_choice=[var], load_outputs=(part_time,), tr_cut=tr_cut, show=False)
+    pdata = plot_sim_particles(sdata, var_choice=[var], load_outputs=(part_time,), tr_cut=None, show=False)
     
     inj_pos = sdata.get_injection_region(sim_time)
     inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
@@ -672,7 +687,7 @@ def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwar
     ax = pdata.fig.axes[0]
     ax.set_aspect('equal')   
 
-    spline_data = pa.get_jet_splines(sdata = sdata,output = sim_time,tr_cut = tr_cut)
+    spline_data = pa.get_jet_splines(sdata = sdata,output = sim_time,tr_stop = tr_stop)
     spline_points = spline_data["spline_points"]
     ridgepoints = spline_data["ridgepoints"]
 
@@ -684,8 +699,9 @@ def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwar
         dz = np.diff(spline_points[:, 1])
         arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))])
 
-        dist = np.sqrt((spline_points[:, 0] - inj_x)**2 + (spline_points[:, 1] - inj_z)**2)
-        inj_idx = np.argmin(dist)
+        # dist = np.sqrt((spline_points[:, 0] - inj_x)**2 + (spline_points[:, 1] - inj_z)**2)
+        # inj_idx = np.argmin(dist)
+        inj_idx = spline_data["inj_idx"]  # exact, no argmin needed
         from_inj = arc_length - arc_length[inj_idx]
 
         ax.scatter(spline_points[inj_idx, 0], spline_points[inj_idx, 1],
@@ -711,7 +727,7 @@ def plot_jet_splines(sdata,var,output,tr_cut,query_points=None,roc = None,**kwar
     plt.savefig(f"./jet_splines_plot.png",bbox_inches='tight',dpi = 1200)
     plt.show()
 
-def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',fname = None,**kwargs):
+def plot_1D_slice_splines(sdata,var,output,tr_stop = 0.2,query_points = None,tick_axis = 'x',fname = None,colours = None,**kwargs):
     """Plots a 1D slice along the jet arc length for a given variable.
 
     Args:
@@ -722,8 +738,9 @@ def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',f
         roc (flaot, optional): radius of curvature to plot a circle over. Defaults to None.
         tick_axis (str, optional): which axis will show ticks for e.g if 'x' ticks for x axis values will show on top. Defaults to 'x'.
         fname (str, optional): file name to save to. Defaults to None.
+
     """
-    colours = ['darkblue','blueviolet','mediumvioletred','thistle']
+    colours = ['#67001f', '#980043', '#e7298a', '#df65b0', '#c994c7']#taken from PuRd colmap
     col_idx = 0
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -735,15 +752,16 @@ def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',f
     pdata.output = output
     pdata.var_name = var
 
-    spline_data = sdata.load_jet_spline_data(["ccx", "ccz", var], output=output)
+    spline_data = sdata.load_jet_spline_data(["ccx", "ccz", var], output=output,tr_stop=tr_stop)
     dx,dz = np.diff(spline_data["ccx"]), np.diff(spline_data["ccz"]) 
     arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))]) #create arc length from jet spline data 
 
-    inj_pos = sdata.get_injection_region(output)
-    inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
+    # inj_pos = sdata.get_injection_region(output)
+    # inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
 
-    dist = np.sqrt((spline_data['ccx'] - inj_x)**2 + (spline_data['ccz'] - inj_z)**2)
-    inj_idx = np.argmin(dist)
+    # dist = np.sqrt((spline_data['ccx'] - inj_x)**2 + (spline_data['ccz'] - inj_z)**2)
+    # inj_idx = np.argmin(dist)
+    inj_idx = spline_data["inj_idx"]  # exact, no argmin needed
     from_inj = arc_length - arc_length[inj_idx] #make inj region the 0 point
 
     is_log = var in ('rho', 'prs')
@@ -754,24 +772,25 @@ def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',f
     )
 
     #---Plot the data---#
-    ax.plot(from_inj, var_data,color = 'darkcyan') #darkcyan
+    ax.plot(from_inj, var_data,color = '#d4b9da') #darkcyan
     ax.set_xlabel("Arc length along jet [kpc]")
     ax.set_ylabel(pdata.extras['cbar_labels'][0])
 
     # --- Top axis: (x, z) coords at evenly spaced arc-length ticks ---#
-    ax2 = ax.twiny()
-    n_ticks = 8
-    tick_idx = np.linspace(0, len(from_inj) - 1, n_ticks, dtype=int)
-    tick_pos = from_inj[tick_idx]
-    tick_labels = [
-        f"{spline_data[f"cc{tick_axis}"][i]:.1f}"
-        for i in tick_idx
-    ]
+    if tick_axis:
+        ax2 = ax.twiny()
+        n_ticks = 8
+        tick_idx = np.linspace(0, len(from_inj) - 1, n_ticks, dtype=int)
+        tick_pos = from_inj[tick_idx]
+        tick_labels = [
+            f"{spline_data[f'cc{tick_axis}'][i]:.1f}"
+            for i in tick_idx
+        ]
 
-    ax2.set_xlim(ax.get_xlim())
-    ax2.set_xticks(tick_pos)
-    ax2.set_xticklabels(tick_labels, fontsize=7)
-    ax2.set_xlabel(pdata.extras['xy_labels'][f"nc{tick_axis}"], labelpad=10)
+        ax2.set_xlim(ax.get_xlim())
+        ax2.set_xticks(tick_pos)
+        ax2.set_xticklabels(tick_labels, fontsize=7)
+        ax2.set_xlabel(pdata.extras['xy_labels'][f"nc{tick_axis}"], labelpad=10)
 
     #---Injection region point---#
     ax.scatter(from_inj[inj_idx], var_data[inj_idx], label=f"Injection region", zorder=5,s=15,marker='x',color = 'k')
@@ -785,7 +804,189 @@ def plot_1D_slice_splines(sdata,var,output,query_points = None,tick_axis = 'x',f
             col_idx += 1
 
     plot_axlim(ax,kwargs)
-    ax.legend(fontsize = 8)
+    ax.legend(fontsize = 8,loc='lower left')
+
+    metadata = sdata.get_metadata(output)
+    ax.text(0.99, 0.10, metadata.time_str,
+                horizontalalignment="right", verticalalignment="center",
+                transform=ax.transAxes, fontsize=10)       
+             
+    ax.text(0.99, 0.05, sdata.run_name,
+            horizontalalignment="right", verticalalignment="center",
+            transform=ax.transAxes, fontsize=10)
+
+    plt.tight_layout()
+    if fname is not None:
+        for artist in ax.lines + ax.collections:
+            artist.set_rasterized(True)
+        plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
+    plt.show()
+
+def plot_1D_sb_splines(sdata, output, sb_cache, angle=[0,0,0], query_points=None, tick_axis='x', fname=None,tr_stop=0.2, **kwargs):
+    """Plots a 1D slice of the surface brightness along the jet arc length for a given variable.
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        var (str): str of variable to plot on e.g. tracer 'tr1'
+        output (int): PLUTO simulation output
+        sb_cache (dict): Existing pa.sb_setup dict to use data from needs to be calculated prior
+        query_points (dict, optional): Used to plot POI's on the plot e.g. {"$L_{{1a}}$": sim3.jet.L1a.value}
+        roc (flaot, optional): radius of curvature to plot a circle over. Defaults to None.
+        tick_axis (str, optional): which axis will show ticks for e.g if 'x' ticks for x axis values will show on top. Defaults to 'x'.
+        fname (str, optional): file name to save to. Defaults to None.
+
+    """
+    
+    colours = ['#67001f', '#980043', '#e7298a', '#df65b0', '#c994c7']
+    col_idx = 0
+
+    # --- Load data ---
+    part_output = round(sdata.simtime_to_part(output))
+    angle_key = tuple(angle)
+    sb_entry  = sb_cache[sdata][part_output][angle_key]
+    obs_props    = sb_entry['obs_properties']
+    log_sb       = np.log10(sb_entry['sb'].value)  # already log10, shape (nx, nz)
+
+    spline_data   = pa.get_jet_splines(sdata, output, tr_stop=tr_stop)
+    spline_points = spline_data["spline_points"]
+    inj_idx       = spline_data["inj_idx"]
+
+
+    # rotate spline points to match the projected frame
+    rot_mat = obs_props["rot_mat"]   # 3x3 rotation matrix
+
+    # spline_points is (n, 2) in xz — need to embed in 3D first
+    spline_3d = np.column_stack([
+        spline_points[:, 0],   # x
+        np.zeros(len(spline_points)),  # y = 0 (projected plane)
+        spline_points[:, 1],   # z
+    ])
+
+    # apply rotation
+    spline_rotated = (rot_mat @ spline_3d.T).T  # shape (n, 3)
+    spline_points[:,0] = spline_rotated[:,0]
+    spline_points[:,1] = spline_rotated[:,2]
+
+    # --- Index SB along spline ---
+    x_idx = np.clip(np.searchsorted(obs_props["grid_mx"], spline_points[:, 0]), 0, log_sb.shape[0] - 1)
+    z_idx = np.clip(np.searchsorted(obs_props["grid_my"], spline_points[:, 1]), 0, log_sb.shape[1] - 1)
+    sb_along_spine = log_sb[x_idx, z_idx]
+
+    # --- Arc length ---
+    dx = np.diff(spline_points[:, 0])
+    dz = np.diff(spline_points[:, 1])
+    arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))])
+    from_inj   = arc_length - arc_length[inj_idx]
+
+    # --- Plot ---
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(from_inj, sb_along_spine, color='#d4b9da')
+    ax.set_xlabel("Arc length along jet [kpc]")
+    ax.set_ylabel(r"$\log_{10}$(SB [mJy beam$^{-1}$])")
+
+    # --- Twin axis ---
+    if tick_axis:
+        ax2 = ax.twiny()
+        n_ticks  = 8
+        tick_idx = np.linspace(0, len(from_inj) - 1, n_ticks, dtype=int)
+        tick_pos = from_inj[tick_idx]
+        coord_col = 0 if tick_axis == 'x' else 1
+        tick_labels = [f"{spline_points[i, coord_col]:.1f}" for i in tick_idx]
+        ax2.set_xlim(ax.get_xlim())
+        ax2.set_xticks(tick_pos)
+        ax2.set_xticklabels(tick_labels, fontsize=7)
+        ax2.set_xlabel(f"{tick_axis} [kpc]", labelpad=10)
+
+    # --- Injection region marker ---
+    ax.scatter(from_inj[inj_idx], sb_along_spine[inj_idx],
+               label="Injection region", zorder=5, s=15, marker='x', color='k')
+
+    # --- Query points ---
+    if query_points is not None:
+        for label, offset in query_points.items():
+            idx_plus  = np.argmin(np.abs(from_inj - offset))
+            idx_minus = np.argmin(np.abs(from_inj + offset))
+            ax.scatter(from_inj[[idx_minus, idx_plus]], sb_along_spine[[idx_minus, idx_plus]],
+                       label=f"{label} = {offset:.2f} kpc", zorder=5, s=12, color=colours[col_idx])
+            col_idx += 1
+
+    plot_axlim(ax, kwargs)
+    ax.legend(fontsize=8, loc='lower left')
+
+    metadata = sdata.get_metadata(output)
+    ax.text(0.99, 0.10, metadata.time_str, ha="right", va="center", transform=ax.transAxes, fontsize=10)
+    ax.text(0.99, 0.05, sdata.run_name,    ha="right", va="center", transform=ax.transAxes, fontsize=10)
+
+    plt.tight_layout()
+    if fname is not None:
+        for artist in ax.lines + ax.collections:
+            artist.set_rasterized(True)
+        plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
+    plt.show()
+
+def plot_1D_sb_splines_multi(sdata, output, sb_cache, angles,tick_axis='x', fname=None, tr_stop=0.2, **kwargs):
+    colours_angles = ['#d4b9da','#df65b0', '#dd1c77', '#980043',]
+    part_output = round(sdata.simtime_to_part(output))
+    spline_data   = pa.get_jet_splines(sdata, output, tr_stop=tr_stop)
+    spline_points = spline_data["spline_points"].copy()
+    inj_idx       = spline_data["inj_idx"]
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    for ang_idx, angle in enumerate(angles):
+        angle_key = tuple(angle)
+        sb_entry  = sb_cache[sdata][part_output][angle_key]
+        obs_props = sb_entry['obs_properties']
+        log_sb    = np.log10(sb_entry['sb'].value)
+
+        rot_mat   = obs_props["rot_mat"]
+        spline_3d = np.column_stack([
+            spline_points[:, 0],
+            np.zeros(len(spline_points)),
+            spline_points[:, 1],
+        ])
+        spline_rotated = (rot_mat @ spline_3d.T).T
+        sp_x = spline_rotated[:, 0]
+        sp_z = spline_rotated[:, 2]
+
+        x_idx = np.clip(np.searchsorted(obs_props["grid_mx"], sp_x), 0, log_sb.shape[0] - 1)
+        z_idx = np.clip(np.searchsorted(obs_props["grid_my"], sp_z), 0, log_sb.shape[1] - 1)
+        sb_along_spine = log_sb[x_idx, z_idx]
+
+        dx = np.diff(sp_x)
+        dz = np.diff(sp_z)
+        arc_length = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dz**2))])
+        from_inj   = arc_length - arc_length[inj_idx]
+
+        label = f"x={angle[0]}° y={angle[1]}° z={angle[2]}°"
+        ax.plot(from_inj, sb_along_spine, color=colours_angles[ang_idx], label=label, lw=1.2)
+
+        if ang_idx == 0:
+            from_inj_ref = from_inj
+            sp_x_ref     = sp_x
+            inj_arc      = from_inj[inj_idx]  # save injection position once
+
+            if tick_axis:
+                ax2      = ax.twiny()
+                n_ticks  = 8
+                tick_idx = np.linspace(0, len(from_inj) - 1, n_ticks, dtype=int)
+                ax2.set_xlim(ax.get_xlim())
+                ax2.set_xticks(from_inj[tick_idx])
+                ax2.set_xticklabels([f"{sp_x_ref[i]:.1f}" for i in tick_idx], fontsize=7)
+                ax2.set_xlabel(f"{tick_axis} [kpc]", labelpad=10)
+
+    # injection line plotted once after loop
+    ax.axvline(inj_arc, linestyle='-.', color='grey', label='Injection region')
+
+    ax.set_xlabel("Arc length along jet [kpc]")
+    ax.set_ylabel(r"$\log_{10}$(SB [mJy beam$^{-1}$])")
+
+    plot_axlim(ax, kwargs)
+    ax.legend(fontsize=8, loc='lower left')
+
+    metadata = sdata.get_metadata(output)
+    ax.text(0.99, 0.10, metadata.time_str, ha="right", va="center", transform=ax.transAxes, fontsize=10)
+    ax.text(0.99, 0.05, sdata.run_name,    ha="right", va="center", transform=ax.transAxes, fontsize=10)
 
     plt.tight_layout()
     if fname is not None:
