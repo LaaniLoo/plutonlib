@@ -193,6 +193,41 @@ def inspect_pluto_h5(file):
 
         f.visititems(dset_info)
 
+def h5_attrs(val, pre, out, has_children):
+    """Print attributes attached to a group or dataset."""
+    attrs = list(val.attrs.items())
+    for i, (akey, aval) in enumerate(attrs):
+        is_last_attr = (i == len(attrs) - 1) and not has_children
+        connector = '└── ' if is_last_attr else '├── '
+        out += pre + connector + f'@{akey} = {aval}\n'
+    return out
+
+def h5_tree(val, pre='', out=""):
+    length = len(val)
+    for key, val in val.items():
+        length -= 1
+        is_last = (length == 0)
+        connector = '└── ' if is_last else '├── '
+        cont_pre = pre + ('    ' if is_last else '│   ')
+
+        if type(val) == h5py._hl.group.Group:
+            out += pre + connector + key + "\n"
+            out = h5_attrs(val, cont_pre, out, has_children=len(val) > 0)
+            out = h5_tree(val, cont_pre, out)
+        else:
+            out += pre + connector + key + f' {val.shape} {val.dtype}\n'
+            out = h5_attrs(val, cont_pre, out, has_children=False)
+    return out
+
+def display_h5_tree(filename):
+    """Wraps h5_tree to also show the root/file-level attributes."""
+    with h5py.File(filename, "r") as file:
+        out = ""
+        out += file.filename + "\n"
+        out = h5_attrs(file, '', out, has_children=len(file) > 0)
+        out = h5_tree(file, '', out)
+    print(out)
+
 def ergs_to_watt(val):
     conv_unit = u.W
     original_unit = (u.erg / u.s)
