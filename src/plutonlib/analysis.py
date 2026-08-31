@@ -26,6 +26,9 @@ from collections import defaultdict
 from IPython.display import display, Latex
 import inspect
 
+import os
+import h5py
+
 def find_nearest(array, value):
     """Find closes value in array"""
     array = np.asarray(array)
@@ -393,7 +396,16 @@ def calc_jet_bending_angle(L1c,L_bend):
     return angle_btwn
 
 #---Praise Setup---#
-def setup_obs_properties_praise(sdata,redshift,angle,plane="xz"):
+def rotation_matrix(axis_str="xyz",angles=[0,0,0]):
+    if len(axis_str) != len(angles):
+        raise ValueError(f"Axis and angle dimensions are unequal (axes: {len(axis_str)}, angles: {len(angles)})")
+    rot_mat = Rotation.from_euler(axis_str, angles, degrees=True).as_matrix()
+    return rot_mat
+
+#TODO make angles = 0 = [0,0,0]
+#TODO save setup_sb to nested hdf5: surface_brightness.hdf5/*sim*/*output*/*angle_key*/sb ...
+# TODO: rekey cache by sim.run_name to avoid stale key issues on sim object reload
+def setup_obs_properties_praise(sdata,redshift,angles = [0,0,0],plane="xz"):
     #--------------------------------------------------------#
     #            Set up the observing properties             #  
     #--------------------------------------------------------#
@@ -436,10 +448,9 @@ def setup_obs_properties_praise(sdata,redshift,angle,plane="xz"):
     grid_mx = np.diff(grid_x) * 0.5 + grid_x[:-1]
     grid_my = np.diff(grid_y) * 0.5 + grid_y[:-1]
 
-    # grid_mx = test.fluid_data("ccx",load_slice=(0,0,slice(None)))["ccx"]
-    # grid_my = test.fluid_data("ccz",load_slice=(0,0,slice(None)))["ccz"]
+    # rot_mat = Rotation.from_euler("X", angle, degrees=True).as_matrix()
+    rot_mat = Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
 
-    rot_mat = Rotation.from_euler("X", angle, degrees=True).as_matrix()
     gaussian_sigma = (beam_kpc.value * fwhm_to_sigma) / grid_spacing
     gaussian_kernel = Gaussian2DKernel(gaussian_sigma)  # create our gaussian convlution kernel
 
@@ -458,7 +469,7 @@ def setup_obs_properties_praise(sdata,redshift,angle,plane="xz"):
 
     return returns
 
-def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angle=0,plane="xz"):
+def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angles=[0,0,0],plane="xz"):
     """
     Calculates the particle emssion using PRAiSE (plutokore: pk_radio) under adiabatic, sychrotron and inverse compton losses.
     Surface brightness is then calculated by integrating emissivity with raytracing.    
@@ -518,7 +529,7 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
         ]
         all_vel_vec.append(vel_vec)
 
-        obs_properties = setup_obs_properties_praise(sdata=sdata,redshift=redshift,angle=angle,plane=plane)
+        obs_properties = setup_obs_properties_praise(sdata=sdata,redshift=redshift,angles=angles,plane=plane)
         integrated_emissivity = pk_radio.raytracing.raytrace_particles_multiple_freq(
             grid=(obs_properties["grid_mx"], obs_properties["grid_my"]),
             ray_depth_lim=(obs_properties["ray_depth_min"], obs_properties["ray_depth_max"]),
@@ -529,7 +540,6 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
             dist_upper_bound = 2,      # <-- NOTE the praise default is 20... this will mess up your results. 2 is better
             vel_vec=all_vel_vec[i],
             obs_normal=[0, 1, 0],
-            # particle_emissivities=part_emis['full'][i]['emis'][all_nan_masks[i],:,:]  #only the non-nan particles, all frequencies, and the ith snapshot
             particle_emissivities=particle_emis['full'][i]['emis'][all_nan_masks[i],:,0] #only the non-nan particles, all frequencies, and the ith snapshot 
         )
         integ_emis.append(integrated_emissivity)
@@ -543,8 +553,409 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
 
     return sb_arr
 
+def setup_sb(sim_dict, angle_dict, freqs, redshift=0.05, plane='xz', cache=None): #NOTE TO BE DEPRECATED 
+    """Creates a nested dict of SB arrays 
+
+    Args:
+            sim_dict (dict): Dictionary mapping SimulationData objects to lists of particle
+                output indices e.g. {sim3: [900], sim4: [500]}
+            angles_nested (list): List of [x,y,z] Euler angle triplets (degrees) defining
+                viewing orientations, one per column e.g. [[0,0,0], [30,0,0], [60,0,0]].
+                x-rotation tilts jet toward/away from observer, y-rotation introduces
+                left-right asymmetry between lobes.
+            freqs (list): List of frequencies in GHz to compute surface brightness for
+                e.g. [1.4] for single frequency or [0.15, 1.4] for spectral index.
+                First frequency is used for log_sb and contour_levels. If len(freqs) > 1,
+                spectral index alpha is also computed and cached.
+            redshift (float, optional): Source redshift used for cosmological scaling of
+                pixel size and beam. Defaults to 0.05.
+            plane (str, optional): Projection plane, one of 'xz', 'xy', 'yz'.
+                Defaults to 'xz'.
+            cache (dict, optional): Existing cache dict to resume from. Any
+                sim/output/angle_key combinations already present will be skipped.
+                Pass the return value of a previous setup_sb call to avoid recomputing.
+                Defaults to None (start fresh).
+
+        Returns:
+            dict: Nested cache dict structured as
+                {sim: {output: {angle_key: {
+                    "sb":             convolved surface brightness (mJy/beam) at freqs[0],
+                    "obs_properties": dict of grid arrays and beam/rotation properties,
+                    "log_sb":         log10(sb.value.T) array ready to plot,
+                    "contour_levels": 3-element array of log10 SB contour levels,
+                    "alpha":          spectral index array or None if len(freqs) == 1,
+                }}}}
+                where angle_key is a tuple e.g. (0, 0, 0).
+                Also contains a "metadata" key with {"angles_nested": angles_nested, "freq": freqs}.
+    """
+    sb_cache = cache if cache is not None else {}
+
+    for sim, outputs in sim_dict.items():
+        sb_cache.setdefault(sim, {}) # only creates if missing
+        angles_nested = angle_dict[sim] # nested angle list per sim e.g. sim1 = [0,0,60]
+        for output in outputs:
+            sb_cache[sim].setdefault(output, {}) # only creates if missing
+            for angles in angles_nested:
+                angle_key = tuple(angles) # make hashable
+                if angle_key in sb_cache[sim][output]:     # skip if cached
+                    print(f"skipping {sim.run_name} output={output} angle={angles}°")
+                    continue
+
+                print(f"computing {sim.run_name} output={output} angle={angles}°...")
+                obs_properties = setup_obs_properties_praise(
+                    sdata=sim, redshift=redshift, angles=angles, plane=plane   # angles= not angle=
+                )
+                sb_arr = calc_surface_brightness_praise(
+                    sdata=sim,
+                    freqs=freqs,
+                    redshift=redshift,
+                    particle_outputs=[output],
+                    angles=angles,
+                    plane=plane,
+                )
+                
+                if len(freqs) > 1:
+                    freq_sb_0 = convolve(sb_arr[0][:, :, 0].to(u.mJy / u.beam),
+                                        obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    freq_sb_1 = convolve(sb_arr[0][:, :, 1].to(u.mJy / u.beam),
+                                        obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    freq_sb_0[freq_sb_0 == 0] = np.nan
+                    freq_sb_1[freq_sb_1 == 0] = np.nan
+                    alpha = (np.log10(freq_sb_0.value.T) - np.log10(freq_sb_1.value.T)) / \
+                            (np.log10(freqs[0]) - np.log10(freqs[1]))
+                    freq_sb = freq_sb_0   # ← reuse, no duplicate convolution
+                else:
+                    freq_sb = convolve(sb_arr[0][:, :, 0].to(u.mJy / u.beam),
+                                    obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    freq_sb[freq_sb == 0] = np.nan
+                    alpha = None
+
+                log_sb = np.log10(freq_sb.value.T)
+                max_sb = np.log10(np.nanpercentile(freq_sb, 99).value)
+                min_sb = max_sb - 1
+
+                sb_cache[sim][output][angle_key] = {
+                    "sb":             freq_sb,
+                    "obs_properties": obs_properties,
+                    "log_sb":         log_sb,
+                    "contour_levels": np.linspace(min_sb, max_sb, 3),
+                    "alpha": alpha,
+                }
+
+    #calculate global contours
+    all_sb = [
+        cache_entry["sb"]                              # ← just use cache_entry directly
+        for key, sim_cache in sb_cache.items()
+        if key != "metadata"
+        for output_cache in sim_cache.values()
+        for angle_key, cache_entry in output_cache.items()
+    ]
+    global_max = np.log10(np.nanpercentile(
+        np.concatenate([s.value.flatten() for s in all_sb]), 99
+    ))
+    global_min = global_max - 1
+    global_contours = np.linspace(global_min, global_max, 3)
+
+    # overwrite per-panel contour levels
+    for key, sim_cache in sb_cache.items():
+        if key == "metadata":
+            continue
+        for output_cache in sim_cache.values():
+            for cache_entry in output_cache.values():
+                cache_entry["contour_levels"] = global_contours
+
+    sb_cache["metadata"] = {"angle_dict": angle_dict, "freq": freqs}
+
+    #DEBUG contours
+    for key, sim_cache in sb_cache.items():
+        if key == "metadata":
+            continue
+        for output, output_cache in sim_cache.items():
+            for angle_key, entry in output_cache.items():
+                print(f"{key.run_name} | output={output} | angle={angle_key} | contours={np.round(entry['contour_levels'],3)}")
+    return sb_cache
+
+def save_sb_hdf5(sim_dict, angle_dict, freqs, redshift=0.05, plane='xz'):
+    #NOTE units are stripped
+    #NOTE Fix docs with multiple freqs
+    """Computes SB arrays and writes them directly to an HDF5 file
+    Args:
+            sim_dict (dict): Dictionary mapping SimulationData objects to lists of particle
+                output indices e.g. {sim3: [900], sim4: [500]}
+            angle_dict (dict): Dictionary mapping SimulationData objects to lists of [x,y,z]
+                Euler angle triplets (degrees) defining viewing orientations, one per sim
+                e.g. {sim3: [[0,0,0], [30,0,0], [60,0,0]]}
+            freqs (list): List of frequencies in GHz to compute surface brightness for.
+            redshift (float, optional): Source redshift used for cosmological scaling of
+                pixel size and beam. Also used to build the output filename. Defaults to 0.05.
+            plane (str, optional): Projection plane, one of 'xz', 'xy', 'yz'.
+                Defaults to 'xz'.
+
+        HDF5 data structure:
+            Writes to "sbdata_{redshift}.h5" instead of returning a cache
+            dict. File is opened in append mode if it already exists, so any
+            run_name/output/angle group combinations already present are skipped
+            rather than recomputed. Resulting file is structured as
+            
+            "freqs":  attr, full list of frequencies
+            "redshift":          attr, redshift value for file
+
+            run_name: {
+                "grid": {plane: grid_x, grid_y, grid_mx, grid_my},
+                output: {angle_key: {
+                    "sb":             convolved surface brightness (mJy/beam) at freqs[0],
+                    "log_sb":         log10(sb.value.T) array ready to plot,
+                    "rot_mat":        3x3 rotation matrix for this angle,
+                    "contour_levels": 3-element array of log10 SB contour levels,
+                    "alpha":          spectral index array, only present if len(freqs) > 1,
+                }}},
+                
+            "metadata": {
+                "gaussian_kernel":   dataset, constant across all runs/outputs/angles,
+                "delta_r", "ray_depth_min", "ray_depth_max", "omega_beam": attrs,
+                   
+    """
+    wdir = "./"
+    fname = f"sbdata_{redshift}.h5" #NOTE currently writes to wdir
+    fmode = "a" if os.path.exists(os.path.join(wdir,fname)) else "w"
+    # h5f = h5py.File(fname, "a" if os.path.exists(fname) else "w")#name incl redshift and base freq
+    with h5py.File(fname, fmode) as h5f:
+        h5f.attrs['redshift'] = redshift #store redshift and freq as base attrs
+        h5f.attrs['freqs'] = freqs     
+        metadata = h5f.require_group("metadata") #all share a metadata group?
+
+        for sim, outputs in sim_dict.items():
+            run_name = sim.run_name
+            angles_nested = angle_dict[sim] #nested angle list per sim e.g. sim1 = [0,0,60]
+            run_data = h5f.require_group(f"{run_name}") #create group for each run
+            grid = run_data.require_group("grid").require_group(plane) #store the grid data per run and per plane
+            grid_written = "grid_x" in grid 
+            for output in outputs:
+                for angles in angles_nested: #calculate sb per output per angle set 
+                    if f'{run_name}/{output}/{angles}' in h5f: #if exact set of angle data exists -> skip
+                        print(f"Found angles '{angles}' in '{fname}/{run_name}/{output}', skipping calculation...")
+                        continue
+
+                    print(f"Computing SB data for {sim.run_name} output={output} angle={angles}°...")
+                    obs_properties = setup_obs_properties_praise(
+                        sdata=sim, redshift=redshift, angles=angles, plane=plane   # angles= not angle=
+                    )
+
+                    sb_arr = calc_surface_brightness_praise(
+                        sdata=sim,
+                        freqs=freqs,
+                        redshift=redshift,
+                        particle_outputs=[output],
+                        angles=angles,
+                        plane=plane,
+                    )
+
+                    #single freq calculation
+                    # if len(freqs) > 1:
+                    #     freq_sb_0 = convolve(sb_arr[0][:, :, 0].to(u.mJy / u.beam),
+                    #                         obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    #     freq_sb_1 = convolve(sb_arr[0][:, :, 1].to(u.mJy / u.beam),
+                    #                         obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    #     freq_sb_0[freq_sb_0 == 0] = np.nan
+                    #     freq_sb_1[freq_sb_1 == 0] = np.nan
+                    #     alpha = (np.log10(freq_sb_0.value.T) - np.log10(freq_sb_1.value.T)) / \
+                    #             (np.log10(freqs[0]) - np.log10(freqs[1]))
+                    #     freq_sb = freq_sb_0   # ← reuse, no duplicate convolution
+                    # else:
+                    #     freq_sb = convolve(sb_arr[0][:, :, 0].to(u.mJy / u.beam),
+                    #                     obs_properties["gaussian_kernel"], boundary='extend') * (u.mJy / u.beam)
+                    #     freq_sb[freq_sb == 0] = np.nan
+                    #     alpha = None
+
+                    # log_sb = np.log10(freq_sb.value.T)
+                    # max_sb = np.log10(np.nanpercentile(freq_sb, 99).value)
+                    # min_sb = max_sb - 1
+
+                    #mutli-freq calculation
+                    freq_sb = np.stack([
+                        convolve(sb_arr[0][:, :, k].to(u.mJy / u.beam),
+                        obs_properties["gaussian_kernel"], boundary='extend')
+                        for k in range(len(freqs))
+                    ], axis=-1) * (u.mJy / u.beam)          # shape (nx, ny, n_freqs)
+
+                    freq_sb[freq_sb == 0] = np.nan
+
+                    log_sb = np.log10(freq_sb.value.T)      # shape (n_freqs, ny, nx)
+
+                    contour_levels = np.stack([
+                        np.linspace(
+                            np.log10(np.nanpercentile(freq_sb[:, :, k], 99).value) - 1,
+                            np.log10(np.nanpercentile(freq_sb[:, :, k], 99).value),
+                            3
+                        ) for k in range(len(freqs))
+                    ])   # shape (n_freqs, 3)
+
+                    #---Per run data---#
+
+                    timestep = run_data.require_group(f"{output}") #NOTE this is a string of the particle output number -> maybe tstr?
+                    angle = timestep.require_group(f"{angles}") # /timestep/angle e.g. 500/[0,0,0] as str
+
+                    angle.create_dataset('sb',data=freq_sb) #sb data for run at timestep at angle
+                    angle.create_dataset('log_sb', data=log_sb) 
+                    angle.create_dataset('rot_mat', data=obs_properties['rot_mat'])
+                    angle.create_dataset('contour_levels', data=contour_levels)
+                    # print(f"contours={np.round(np.linspace(min_sb, max_sb, 3),3)}")
+
+                    # alpha between adjacent frequency pairs: (freqs[0],freqs[1]), (freqs[2],freqs[3]), ...
+                    n_pairs = len(freqs) // 2
+                    if len(freqs) % 2 != 0:
+                        print(f"Note: {len(freqs)} freqs given, freqs[{len(freqs)-1}]={freqs[-1]} GHz has no pair, skipping alpha for it")
+
+                    alpha = np.stack([
+                        (np.log10(freq_sb[:, :, 2*p].value.T) - np.log10(freq_sb[:, :, 2*p + 1].value.T)) /
+                        (np.log10(freqs[2*p]) - np.log10(freqs[2*p + 1]))
+                        for p in range(n_pairs)
+                    ])   # shape (n_pairs, ny, nx)
+
+                    if n_pairs > 0:
+                        angle.create_dataset('alpha', data=alpha)
+
+                    if not grid_written:
+                        grid.create_dataset('grid_x', data=obs_properties['grid_x'])
+                        grid.create_dataset('grid_y', data=obs_properties['grid_y'])
+                        grid.create_dataset('grid_mx', data=obs_properties['grid_mx'])
+                        grid.create_dataset('grid_my', data=obs_properties['grid_my'])
+                        grid_written = True
+
+        #these values should all be constant across calculations -> only set once
+        if "gaussian_kernel" not in metadata:
+            metadata.create_dataset("gaussian_kernel",data=obs_properties["gaussian_kernel"].array)
+            metadata.attrs['delta_r'] = obs_properties['delta_r']
+            metadata.attrs['ray_depth_min'] = obs_properties['ray_depth_min']
+            metadata.attrs['ray_depth_max'] = obs_properties['ray_depth_max']
+            metadata.attrs['omega_beam'] = obs_properties['omega_beam']
+
+def load_sb_hdf5(sim_dict,angle_dict,freqs, redshift=0.05, plane='xz',alt_fp = None):
+    """Loads surface brightness hdf5 file from home dir or alt_fp
+
+    Args:
+            sim_dict (dict): Dictionary mapping SimulationData objects to lists of particle
+                output indices e.g. {sim3: [900], sim4: [500]}
+            angle_dict (dict): Dictionary mapping SimulationData objects to lists of [x,y,z]
+                Euler angle triplets (degrees) defining viewing orientations, one per sim
+                e.g. {sim3: [[0,0,0], [30,0,0], [60,0,0]]}
+            freqs (list): List of frequencies in GHz to compute surface brightness for.
+            redshift (float, optional): Source redshift used for cosmological scaling of
+                pixel size and beam. Also used to build the output filename. Defaults to 0.05.
+            plane (str, optional): Projection plane, one of 'xz', 'xy', 'yz'.
+                Defaults to 'xz'.
+
+    Returns:
+        dict: 
+            {sim: {
+                output: {angle_key: {
+                    "sb":   
+                        full surface brightness array (mJy/beam), all stored frequencies, 
+                        shape (nx, ny, n_freqs_in_file),
+                    "obs_properties": {
+                        "grid_x", "grid_y", "grid_mx", "grid_my": per-sim grid arrays,
+                        "delta_r", "omega_beam", "ray_depth_min", "ray_depth_max": global constants,
+                        "rot_mat":         3x3 rotation matrix for this angle,
+                        "gaussian_kernel": beam kernel array, constant across the whole file,
+                    },
+                    "log_sb":
+                        full log10(sb) array, all stored frequencies,
+                        shape (n_freqs_in_file, ny, nx),
+                    "contour_levels": 
+                        full log10 SB contour levels, all stored frequencies,
+                        shape (n_freqs_in_file, 3),
+                    "alpha":
+                        spectral index between adjacent frequency pairs,
+                        shape (n_freqs_in_file // 2, ny, nx),
+                        None if the file only has one stored frequency,
+                }}},
+            "metadata": {
+                "angle_dict": angle_dict,   # as passed in, unchanged
+                "freq":       freqs,        # as passed in, unchanged
+            }}
+    """
+    wdir = "./"
+    file_path = os.path.join(wdir, f"sbdata_{redshift}.h5") if alt_fp is None else alt_fp
+
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"SB data for freqs = {freqs}, redshift = {redshift} (file_name = {file_path}) does not exist in {wdir}")  # TODO add a listdir to show avail files
+
+    print(f"Found {file_path}")
+
+    with h5py.File(file_path, "r") as data_file:
+        if data_file.attrs["redshift"] != redshift: 
+            raise AttributeError(f"File {file_path} does not have matching redshift attr, \n{dict(data_file.attrs)}")
+
+        file_freqs = list(data_file.attrs["freqs"])
+        missing_freqs = [f for f in freqs if f not in file_freqs]
+        if missing_freqs:
+            raise ValueError(f"Requested freqs {missing_freqs} not found in {file_path}. Available: {file_freqs}")
+        
+        global_meta = data_file["metadata"]
+        delta_r        = global_meta.attrs["delta_r"]
+        ray_depth_min  = global_meta.attrs["ray_depth_min"]
+        ray_depth_max  = global_meta.attrs["ray_depth_max"]
+        omega_beam     = global_meta.attrs["omega_beam"]
+        gaussian_kernel = global_meta["gaussian_kernel"][()] #NOTE needs testing
+
+        sb_data = {}
+        obs_properties = {}
+        for sim, outputs in sim_dict.items():
+            sb_data.setdefault(sim, {})
+            angles_nested = angle_dict[sim]
+
+            grid = data_file[sim.run_name]["grid"][plane]
+            grid_x  = grid["grid_x"][()]
+            grid_y  = grid["grid_y"][()]
+            grid_mx = grid["grid_mx"][()]
+            grid_my = grid["grid_my"][()]
+
+            for output in outputs:
+                if str(output) not in data_file[sim.run_name]:
+                    raise ValueError(f"Output {output} not found in {file_path}/{sim.run_name}\navail entries: {data_file[sim.run_name].keys()}")
+
+                sb_data[sim].setdefault(output, {})
+                for angles in angles_nested:
+                    if str(angles) not in data_file[sim.run_name][str(output)]:
+                        raise ValueError(f"Angles {angles} not found in {file_path}/{sim.run_name}/{output}\navail entries: {data_file[sim.run_name][str(output)].keys()}")
+
+                    sb_entry = data_file[sim.run_name][str(output)][str(angles)]
+                    rot_mat = sb_entry["rot_mat"][()]
+
+                    obs_properties = {
+                        "grid_x": grid_x,
+                        "grid_y": grid_y,
+                        "grid_mx": grid_mx,
+                        "grid_my": grid_my,
+                        "delta_r": delta_r,
+                        "omega_beam": omega_beam,
+                        "ray_depth_min": ray_depth_min,
+                        "ray_depth_max": ray_depth_max,
+                        "rot_mat": rot_mat,
+                        "gaussian_kernel": gaussian_kernel,
+                    }
+
+                    freq_indices = [file_freqs.index(f) for f in freqs]
+                    log_sb_vals   = {f: sb_entry["log_sb"][idx]         for f, idx in zip(freqs, freq_indices)}
+                    contour_vals  = {f: sb_entry["contour_levels"][idx] for f, idx in zip(freqs, freq_indices)}
+
+                    if len(freqs) == 1:
+                        log_sb_vals  = log_sb_vals[freqs[0]]
+                        contour_vals = contour_vals[freqs[0]]
+
+                    sb_data[sim][output][tuple(angles)] = {
+                        "sb":             sb_entry["sb"][()],
+                        "obs_properties": obs_properties,
+                        "log_sb":         log_sb_vals,
+                        "contour_levels": contour_vals,
+                        "alpha":          sb_entry["alpha"][()] if "alpha" in sb_entry else None,
+                    }
+
+    sb_data["metadata"] = {"angle_dict": angle_dict, "freqs": freqs}
+    return sb_data
+
 #---Jet splines---#
-def get_jet_splines(sdata,output,tr_cut):
+def get_jet_splines(sdata,output,tr_stop=0.2):
     """Fits ridgepoints along the jet length by looking at a tracer slice in the jet radius 
     and weighting the x,z coordinates by the maximum tracer, stops when a window of 5 points has 
     reached a an average of some cutoff value e.g. 0.2. Will also stop if the dot product is (-) 
@@ -567,17 +978,19 @@ def get_jet_splines(sdata,output,tr_cut):
     sim_time = output
     part_time = round(sdata.simtime_to_part(sim_time))
 
-    particle_data = sdata.load_particle_data(output=(part_time,),tr_cut=tr_cut)
+    particle_data = sdata.load_particle_data(output=(part_time,),tr_cut=None)
     
     #was int but that causes rounding error
     def calc_ridgepoints(jet_side,particle_data,sim_time):
         window = [] #windowed averages
         window_size = 5
-        step_size = 1 #kpc
+        step_size = 0.5 #kpc
         tr_peak = 0
         tr_min = 1 
+        n_steps = 0 
 
         inj_array = sdata.get_injection_region(output=sim_time) #gets the location of the injection region -> converts particle time to simtime
+        
         xz_start = [inj_array[0].value, inj_array[2].value] # start at injection region coords
         z_current = xz_start[1]
         x_current = xz_start[0]
@@ -585,6 +998,12 @@ def get_jet_splines(sdata,output,tr_cut):
         ridgepoints = [xz_start.copy()] #initial ridgepoint at inj region
 
         while True:
+            n_steps += 1 
+
+            if n_steps > 5000:
+                print("Maximum ridgepoint iterations reached")
+                break
+
             if len(ridgepoints) >=2:
                 dx = ridgepoints[-1][0] - ridgepoints[-2][0] #difference btwn last two x ridgepoints
                 dz = ridgepoints[-1][1] - ridgepoints[-2][1] #difference btwn last two z ridgepoints
@@ -602,36 +1021,59 @@ def get_jet_splines(sdata,output,tr_cut):
                     (np.abs(particle_data["x1"] - x_current) < r_jet) #tracers at the ridgepoint with plane width of jet radius
             
             if tr_plane.sum() == 0: #if no tracers
+                # x_current += step_size
                 continue
-
+                # break
+            
             tr_val = particle_data['tracer'][tr_plane][np.argmax(particle_data['tracer'][tr_plane])] #current max tracer in plane
             tr_peak = max(tr_peak, tr_val) #maximum recorded tracer
             tr_min = min(tr_min,tr_val)
+            window.append(tr_val)
 
-            window.append(tr_min)
             if len(window) > window_size: #shift window values over to fit new value
                 window.pop(0)
 
-            if len(window) == window_size and np.mean(window) < 0.2: #NOTE once window is full and if min tracer drops below some value, stop
+            if len(window) == window_size and np.mean(window) < tr_stop: #NOTE once window is full and if min tracer drops below some value, stop
                 print(f"Jet head detected @ z= {z_current:.3f} kpc")
                 break
             
             x_new = np.average(particle_data["x1"][tr_plane], weights=particle_data['tracer'][tr_plane]) #average all xz points (midpoint) in plane weighted by value of tracer
             z_new = np.average(particle_data["x3"][tr_plane], weights=particle_data['tracer'][tr_plane])
 
-            if len(ridgepoints) > 5:
-                # Vector of the current step
-                prev = np.array(ridgepoints[-1])
-                current_step = np.array([x_new, z_new]) - prev
+            # Prevent following backflow
+            tolerance = 0.1*step_size
+            if len(ridgepoints) >= 2 and tr_stop > 1e-3:
 
-                # Mean direction of recent N steps
-                recent = np.array(ridgepoints[-5:])
-                recent_dir = recent[-1] - recent[0]  # overall direction over last 5 points
-
-                # Dot product — negative means we've reversed direction
-                if np.dot(current_step, recent_dir) < 0:
-                    print(f"Direction reversal detected @ z = {z_current:.3f} kpc")
+                dz_motion = z_new - ridgepoints[-1][1]
+                if jet_side == "top" and dz_motion < -tolerance:
+                    print(f"Backflow detected @ z = {z_current:.3f} kpc")
+                    ridgepoints.pop()
                     break
+
+                if jet_side == "bot" and dz_motion > tolerance:
+                    print(f"Backflow detected @ z = {z_current:.3f} kpc")
+                    ridgepoints.pop()
+                    break
+            
+            elif len(ridgepoints) >= 2 and tr_stop <= 1e-3:
+
+                prev_step = np.array(ridgepoints[-1]) - np.array(ridgepoints[-2])
+                new_step  = np.array([x_new, z_new]) - np.array(ridgepoints[-1])
+
+                prev_norm = np.linalg.norm(prev_step)
+                new_norm  = np.linalg.norm(new_step)
+
+                if prev_norm > tolerance and new_norm > tolerance:
+
+                    prev_dir = prev_step / prev_norm
+                    new_dir  = new_step / new_norm
+
+                    # Only stop if it reverses relative to the local plume direction
+                    if np.dot(prev_dir, new_dir) < -0.2:
+                        print(f"Plume reversal detected @ z = {z_current:.3f} kpc")
+                        ridgepoints.pop()
+                        break
+
             ridgepoints.append([x_new, z_new])
         ridgepoints = np.array(ridgepoints)
         return ridgepoints
@@ -648,10 +1090,19 @@ def get_jet_splines(sdata,output,tr_cut):
     max_resolution = min([sdata.grid_setup['x1-grid']['dx'],sdata.grid_setup['x2-grid']['dx'],sdata.grid_setup['x3-grid']['dx']])
     n_points = int(arc_length / max_resolution) #determines the resampling resolution
 
-    tck, u = splprep([ridgepoints_all[:,0],ridgepoints_all[:,1]],s=0)
+    # remove duplicate / zero-distance ridgepoints
+    d = np.sqrt(np.diff(ridgepoints_all[:, 0])**2 + np.diff(ridgepoints_all[:, 1])**2)
+    keep = np.concatenate([[True], d > 1e-6])
+    ridgepoints_all = ridgepoints_all[keep]
+    k = min(3, len(ridgepoints_all) - 1)
+
+    tck, u = splprep([ridgepoints_all[:,0],ridgepoints_all[:,1]],s=0,k=k)
     u2 = np.linspace(u[0],u[-1],n_points) #use the spline array to generate a higher resolution array
     spline_points = splev(u2,tck)
     spline_points = np.column_stack(spline_points) #resampled ridgepoints with higher resolution
+
+    u_inj = u[len(ridgepoints_bot) - 1]
+    inj_idx_spline = np.argmin(np.abs(u2 - u_inj))
 
     x1_data = sdata.load_fluid_data(["ccx"], output=sim_time, load_slice=sdata.quick_slice_1D("yz"))["ccx"]
     x3_data = sdata.load_fluid_data(["ccz"], output=sim_time, load_slice=sdata.quick_slice_1D("xy"))["ccz"]
@@ -672,6 +1123,7 @@ def get_jet_splines(sdata,output,tr_cut):
         "spline_slice_map": spline_slice_map,
         "ridgepoints": ridgepoints_all,
         "jet_length": [top_length,bot_length],
+        "inj_idx": inj_idx_spline,
     }
     return returns
 
