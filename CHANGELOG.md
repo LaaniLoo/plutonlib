@@ -33,6 +33,7 @@ gets all PLUTO simulation times and returns it as a dict with key = output and v
 - *(analysis.py)* save and load surface brightness to hdf5
 
 Can now save and load PRAiSE surface brightness arrays to hdf5 using `save_sb_hdf5` and `load_sb_hdf5`. File is generated per redshift value with structure like
+<pre>
 sbdata_0.02.h5
 ├── @freqs = [1]
 ├── @redshift = 0.02
@@ -55,6 +56,7 @@ sbdata_0.02.h5
     ├── @ray_depth_max = 200
     ├── @ray_depth_min = -200
     └── gaussian_kernel (11, 11) float64
+</pre>
 
 - *(fancy_plot.py)* added fancy plotter functions
 
