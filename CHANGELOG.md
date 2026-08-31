@@ -2,6 +2,94 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2026-08-31
+
+### Documentation
+
+
+- *(general)* update changelog
+
+
+
+### 🚀 Features
+
+
+- *(plot.py)* plot jet splines, plot 1D slice along jet
+
+Added `plot_jet_splines()` to see how the splines are fitted to a scatterplot of the particles. `plot_1D_slice_splines()` shows a 1D slice for a variable e.g. `rho` along the jet arc length
+
+- *(analysis.py)* jet spline fitting, removed deprecated functions
+
+Function to find ridgepoints along the jet arc length and resample using splines from `scipy.interpolate.splprep` and `scipy.interpolate.splev`. x,z array of splines returned as `spline_points`, interpolates to grid cells using the return `spline_slice_map`
+
+- *(load.py)* function to get all simulation times
+
+gets all PLUTO simulation times and returns it as a dict with key = output and value as sim_time, also returns a matched dict for every output that matches its simulation time
+
+- *(simulations.py)* Chunked particle files,spline data and simulation times attrs
+
+`save_particle_data_hdf5()` added as a test function to test chunking of particles.hdf5 files will migrate to `load.py`. Added `load_jet_spline_data()` to load the simulation fluid qunatities along the arc length of the jet, same use case as `load_fluid_data()`. Added `self.sim_times` and `self.sim_times_matched`
+
+- *(analysis.py)* save and load surface brightness to hdf5
+
+Can now save and load PRAiSE surface brightness arrays to hdf5 using `save_sb_hdf5` and `load_sb_hdf5`. File is generated per redshift value with structure like
+  sbdata_0.02.h5
+  ├── @freqs = [1]
+  ├── @redshift = 0.02
+  ├── Q36_v01_a25_wz09
+  │   ├── 500
+  │   │   └── [0, 0, 0]
+  │   │       ├── contour_levels (3,) float64
+  │   │       ├── log_sb (477, 310) float64
+  │   │       ├── rot_mat (3, 3) float64
+  │   │       └── sb (310, 477) float64
+  │   └── grid
+  │       └── xz
+  │           ├── grid_mx (310,) float64
+  │           ├── grid_my (477,) float64
+  │           ├── grid_x (311,) float64
+  │           └── grid_y (478,) float64
+  └── metadata
+      ├── @delta_r = 0.3
+      ├── @omega_beam = 10.197810319111186
+      ├── @ray_depth_max = 200
+      ├── @ray_depth_min = -200
+      └── gaussian_kernel (11, 11) float64
+
+- *(fancy_plot.py)* added fancy plotter functions
+
+Includes serveral plotting functions for producing clean `paper-ready` plots. Functions include `fluid` for plotting fluid variables e.g "rho" or "prs", `surface_brightness` for plotting the PRAiSE output and `spectral_idx` for plotting spectral indecies of PRAiSE output.
+
+
+### 🐛 Bug Fixes
+
+
+- *(simulations.py)* changed `__eq__` and `__hash__` to match `sim_type` and `run_name`
+
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* version 0.12.0 → 0.13.0
+
+
+- *(utils.py)* added `display_h5_tree()`
+
+
+- *(general)* doc cleanup and misc changes
+
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.13.0] - 2026-05-14
 
 ### 🚀 Features
