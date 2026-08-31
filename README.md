@@ -61,6 +61,11 @@ pip install -e .
   * Methods for retrieving variable metadata, grid information, and injection regions
   * Conversion to plutokore simulation objects
 
+* **`simulation_info`**
+  * Automatically initialise and setup `EnvInfo` and `JetInfo` dataclasses by reading the `pluto.ini` file
+  * Uses same method to automatically calculate the jet length scales from Krause (2012)
+  * Contains all useful units/values of Jet and Env params which can be accessed from `simulations.py` with `simulation.env` or `simulation.jet`
+
 * **`plot`**
   * **PlotData class:** Manages matplotlib figures, axes, and plotting state
   * Plots 2D/3D colormaps for fluid variables with automatic subplot layouts
@@ -69,6 +74,7 @@ pip install -e .
   * Interactive save functionality with custom naming
 
 * **`analysis`**
+  * Calculate synthetic surface brightness arrays using `PRAiSE` and save/load to hdf5 using `save_sb_hdf5` and `load_sb_hdf5`
   * Grid indexing and slice calculation without loading full arrays
   * Peak finding: numerical maximums and scipy-based detection
   * Time progression tracking (jet radius, length evolution)
@@ -82,6 +88,9 @@ pip install -e .
   * Incremental loading for memory-efficient compression of large files
   * Detailed logging with progress tracking and compression statistics
   * Optional deletion of original files after successful compression
+
+* **`fancy_plot`**
+* Produce 'paper-ready' style plots with proper formatting and labels
 
 # Setting and converting PLUTO units (`plutonlib/units`)
 * ini files are used to define a set of `code_unit_values` and `usr_unit_values`.
