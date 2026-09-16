@@ -28,4 +28,4 @@ from .surface_brightness import *
 from .utils import *
 from .xray import *
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
