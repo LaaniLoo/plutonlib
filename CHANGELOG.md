@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2026-09-16
+
+### 🚀 Features
+
+
+- *(splines.py)* added splines.py, skeleton path tracing
+
+WIP jet and lobe tracing starting with a skeletonised path weighed by surface brightness, then is refined again by weighing the x,z points with the SB again and fitting to splines to get jet-lobe path
+
+- *(pbs_job.py)* added a file containing some functions that help create pbs jobs for cluster
+
+see plutonlib/scripts/praise/praise_hdf5.py for use example
+
+- *(scripts)* added some scripts for PRAiSE cluster calculations
+
+praise_hdf5.py calculates SB in parallell, doing up to 28 sets of calculations at once. See praise_setup.yml for how calculations are set. hybrids_grid.py creates a massive grid-style pdf plot of all angles and freqs present in a sims sbdata.h5 file.
+
+
+### 🐛 Bug Fixes
+
+
+- *(general)* fix prev commit
+
+
+- *(read_write.py)* Changed to read_write.py, renamed pluto_loader_hdf5 and pluto_particles_hdf5
+
+Also improved `HDF5Metadata` with some properties.
+
+- *(simulations.py)* Changed assignemnt from sim_type and run_name to relative path to sim, metadata bug fix
+
+Removed `sim_type` and `run_name` in favour of a relative path starting from `~/pluto-master/Simulations` e.g. `sim5 = ps.SimulationData(rel_path = "Jet_mvinj/Q36_v01_a25_wx064z064_eox58z58")` is equivalent to `sim_type` = "jet_mvinj" and `run_name` = "Q36_v01_a25_wx064z064_eox58z58"
+
+
+### Other
+
+
+- *(general)* fix changelog formatting
+
+
+- *(general)* updated README
+
+
+- *(analysis.py)* moved SB/PRAiSE functions to their own file
+
+
+- *(surface_brightness.py)* added surface_brightness.py
+
+Moved PRAiSE functions here and `save_sb_hdf5`
+
+- *(general)* doc cleanup and misc changes
+
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.14.0] - 2026-08-31
 
 ### Documentation
