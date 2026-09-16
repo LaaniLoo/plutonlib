@@ -49,13 +49,16 @@ if [ ! -d "$save_dir" ]; then #option to create dir if required or exit if mista
     fi
 fi
 
-echo "Copying .sh/.ini files..." 
-cp "$utils_dir/job_submit.sh" "$save_dir/job_submit.sh"
-cp "$utils_dir/job_submit_compression.sh" "$save_dir/job_submit_compression.sh"
-cp "$utils_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
-cp "$utils_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
-cp "$utils_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
-cp "$utils_dir/reset_sim.sh" "$save_dir/reset_sim.sh"
+read -p "Copy pluto scripts? [y/n]: " cpy_scripts
+if [[ "$cpy_scripts" == "y" ]]; then
+    echo "Copying .sh/.ini files..." 
+    cp "$utils_dir/job_submit.sh" "$save_dir/job_submit.sh"
+    cp "$utils_dir/job_submit_compression.sh" "$save_dir/job_submit_compression.sh"
+    cp "$utils_dir/pluto_template.ini" "$save_dir/pluto_template.ini"
+    cp "$utils_dir/pluto_run.sh" "$save_dir/pluto_run.sh"
+    cp "$utils_dir/sim_setup.sh" "$save_dir/sim_setup.sh"
+    cp "$utils_dir/reset_sim.sh" "$save_dir/reset_sim.sh"
+fi
 
 printf "\n"
 read -p "Run jet-setup? [y/n]: " setup

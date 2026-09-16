@@ -1,7 +1,7 @@
 import plutonlib.utils as pu
-import plutonlib.config as pc
-import plutonlib.load as pl
-import plutonlib.simulations as ps
+# import plutonlib.config as pc
+# import plutonlib.read_write as pl
+# import plutonlib.simulations as ps
 import plutonlib.analysis as pa
 from plutonlib.colours import pcolours
 

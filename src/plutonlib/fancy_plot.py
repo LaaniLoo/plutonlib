@@ -2,6 +2,7 @@
 
 import plutonlib.analysis as pa
 import plutonlib.plot as pp
+import plutonlib.read_write as prw
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +16,8 @@ from matplotlib.collections import PathCollection
 import warnings
 import math
 
+import resource
+
 def _get_fontsize(fig_size, ttype):
     if ttype == "text":
         return 3 * fig_size
@@ -26,7 +29,7 @@ def _get_fontsize(fig_size, ttype):
 def _get_ticksize(fig_size):
     return 0.5*fig_size
 
-def setup_subplots(sim_dict,xlim=None,ylim=None,vmin=None, vmax=None,fig_size = 6):
+def setup_subplots(sim_dict,xlim=None,ylim=None,vmin=None, vmax=None,fig_size = 6,row_len = 5):
     pdata = pp.PlotData(var_choice=[], plane="xz", show_cbar=False)
     pdata.xlim = xlim
     pdata.ylim = ylim
@@ -41,7 +44,7 @@ def setup_subplots(sim_dict,xlim=None,ylim=None,vmin=None, vmax=None,fig_size = 
         # nrows = len(sim_dict.keys())
         # if len(set(ncols_list)) > 1:
         #     raise ValueError(f"Number of outputs per sim don't match: {ncols_list}")
-        ncols = min(5, max(len(v) for v in sim_dict.values()))
+        ncols = min(row_len, max(len(v) for v in sim_dict.values()))
         rows_per_sim = [math.ceil(len(v) / ncols) for v in sim_dict.values()]
         nrows = sum(rows_per_sim)
 
@@ -49,8 +52,15 @@ def setup_subplots(sim_dict,xlim=None,ylim=None,vmin=None, vmax=None,fig_size = 
         if xlim and ylim:
             data_aspect = (ylim[1] - ylim[0]) / (xlim[1] - xlim[0])
             cell_h = cell_w * data_aspect
-        else:
-            cell_h = cell_w
+        else: 
+            # cell_h = cell_w
+
+            #use pluto.ini grid values, using the max grid span for sim in sim dict
+            xlim = max((sim.xyz_lim[0] for sim in sim_dict), key=lambda t: t[1])
+            # ylim = max((sim.xyz_lim[1] for sim in sim_dict), key=lambda t: t[1])
+            ylim = max((sim.xyz_lim[2] for sim in sim_dict), key=lambda t: t[1]) #NOTE ylim is z axis
+            data_aspect = (ylim[1] - ylim[0]) / (xlim[1] - xlim[0])
+            cell_h = cell_w * data_aspect
 
         cbar_h = 0.125  # fixed inches for colorbar row — not tied to data cells
         fig_w = cell_w * ncols
@@ -132,8 +142,9 @@ def _colourbar(pdata,**kwargs):
 
     im = pdata.axes[0].collections[0]
     if pdata.var_name == 'sb': #surface brightness
-        cbar_label = r"SB [mJy beam$^{-1}$]"
-        cb = plt.colorbar(im, cax=pdata.cbar_ax, orientation='horizontal', label=f"$\\log_{{10}}$({cbar_label})")
+        label_base = r"$\log_{10}$(SB [mJy beam$^{-1}$])"
+        cbar_label = label_base + f" @ {kwargs.get('freqs')[0]} GHz" if 'freqs' in kwargs else label_base
+        cb = plt.colorbar(im, cax=pdata.cbar_ax, orientation='horizontal', label=cbar_label)
 
     elif pdata.var_name == 'alpha': #spectral index
         if 'freqs' in kwargs:
@@ -165,27 +176,26 @@ def _labels_simple(sdata,pdata):
     pdata.axes[-pdata.ncols].set_xlabel(pdata.extras['xy_labels']['ncx'])
     pdata.axes[-pdata.ncols].set_ylabel(pdata.extras['xy_labels']['ncz'])
 
-def _vlim_rasterise(pdata,**kwargs):
+def _vlim_rasterise(pdata, **kwargs):
     im = pdata.axes[0].collections[0]
     vmin = pdata.vmin if pdata.vmin is not None else im.norm.vmin
     vmax = pdata.vmax if pdata.vmax is not None else im.norm.vmax
 
     for ax in pdata.axes:
-    
         if 'bg_colour' in kwargs and kwargs.get('bg_colour') is not None:
             im = ax.collections[0]
             bg_colour = im.cmap(im.norm(kwargs.get('bg_colour')))
             ax.set_facecolor(bg_colour)
 
         for coll in ax.collections:
-            if hasattr(coll.draw, "_supports_rasterization"):
+            if getattr(coll.draw, "_supports_rasterization", False):
                 coll.set_rasterized(True)
             coll.set_clim(vmin=vmin, vmax=vmax)
 
         for artist in ax.get_children():
-            if hasattr(artist, 'collections'):   # ContourSet
+            if hasattr(artist, 'collections'):
                 for coll in artist.collections:
-                    if hasattr(coll.draw, "_supports_rasterization"):
+                    if getattr(coll.draw, "_supports_rasterization", False):
                         coll.set_rasterized(True)
                     
 def _rotate_row(pdata):
@@ -227,28 +237,41 @@ def _rotate_row(pdata):
             if pdata.xlim:
                 ax.set_xlim(pdata.xlim)     
 
-def _query_points_simple(sim,pdata,query_points):
+def _query_points_simple(sim,pdata,query_points,label_all_axes = False):
+    # plot_idx is assigned as row_start * ncols for the first subplot of each sim
+    if pdata.plot_idx != pdata.row_start * pdata.ncols and not label_all_axes: 
+        return
+    
     ax = pdata.axes[pdata.plot_idx]
+    if query_points and query_points.get(sim) is not None: #NOTE not sure what the diff btwn keying sim or not is 
+        points = {k: v for k, v in query_points[sim].items()}
 
-    if pdata.label: #this assumes that there is a function after this that sets it to false, othereise all ax get labeled
-        if query_points and query_points.get(sim) is not None:
-            points = {k: v for k, v in query_points[sim].items()}
+        fig = ax.get_figure()
+        fig_w, fig_h = fig.get_size_inches()
+        s = 25 * pdata.fig_size  # scale relative to a 6-inch reference width
 
-            fig = ax.get_figure()
-            fig_w, fig_h = fig.get_size_inches()
-            s = 25 * pdata.fig_size  # scale relative to a 6-inch reference width
+        for mkr, coords in points.items():
+            # handle both single [x,z] and list of [x,z]
+            if isinstance(coords[0], (int, float)):
+                coords = [coords]
+            for (x_val, z_val) in coords:
+                ax.scatter([x_val], [z_val], s=s, zorder=5, color='r', marker=mkr)
 
-            for mkr, coords in points.items():
-                # handle both single [x,z] and list of [x,z]
-                if isinstance(coords[0], (int, float)):
-                    coords = [coords]
-                for (x_val, z_val) in coords:
-                    ax.scatter([x_val], [z_val], s=s, zorder=5, color='r', marker=mkr)
+def _rotate_query_points(sim,query_points,rot_mat,plane='xz'):
+    """Applies a rotation matrix to provided query points, use for rotated sb plots """
+    #NOTE assumes a 2D array of query points
+    if plane != 'xz':
+        raise NotImplementedError(f"Plane = {plane}, need to implement other rotations")
+    qp_rotated = {sim: {}}
+    for qp, (x,z) in query_points[sim].items():
+        rotated = np.array([x,0,z]) @ rot_mat.T
+
+        qp_rotated[sim][qp] = rotated[[0,2]] 
+    return qp_rotated
 
 def _save(fname):
     if fname is not None:
         plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
-
 #---plotting functions---#
 
 def fluid(sim_dict,var,fname=None,rotate_row = None,query_points=None, **kwargs):
@@ -267,11 +290,10 @@ def fluid(sim_dict,var,fname=None,rotate_row = None,query_points=None, **kwargs)
         pdata.rotate_row = rotate_row
 
         # plot_idx = 0
-        ncols = pdata.ncols
-        row_start = 0
+        pdata.row_start = 0
         for sim in sim_dict.keys():
             pdata.label = True
-            plot_idx = row_start * ncols
+            plot_idx = pdata.row_start *  pdata.ncols
 
             for output in sim_dict[sim]:
                 pdata.var_choice = [var]
@@ -289,10 +311,10 @@ def fluid(sim_dict,var,fname=None,rotate_row = None,query_points=None, **kwargs)
             _labels_simple(sim,pdata)
 
             n_items = len(sim_dict[sim])  
-            sim_rows = math.ceil(n_items / ncols) #number of rows for this simulation
-            for ax in pdata.axes[row_start*ncols + n_items : (row_start + sim_rows)*ncols]:
+            sim_rows = math.ceil(n_items /  pdata.ncols) #number of rows for this simulation
+            for ax in pdata.axes[pdata.row_start* pdata.ncols + n_items : (pdata.row_start + sim_rows)* pdata.ncols]:
                 ax.set_visible(False)        # blank out unused trailing tiles in this sim's last row
-            row_start += sim_rows            # advance past this sim's rows for the next iteration
+            pdata.row_start += sim_rows            # advance past this sim's rows for the next iteration
 
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
@@ -301,7 +323,7 @@ def fluid(sim_dict,var,fname=None,rotate_row = None,query_points=None, **kwargs)
 
         plt.show()
 
-def splines(sim_dict, var, fname=None, tr_stop=0.2, query_points=None, rotate_row=None, **kwargs):
+def jet_splines(sim_dict, var, fname=None, tr_stop=0.2, query_points=None, rotate_row=None, **kwargs):
     fig_size = kwargs.get('fig_size',11)
     with plt.style.context(["science"]):
         plt.rcParams.update({'font.size': _get_fontsize(fig_size,"subplots"), 'text.usetex': False})
@@ -385,8 +407,20 @@ def splines(sim_dict, var, fname=None, tr_stop=0.2, query_points=None, rotate_ro
 
         plt.show()
 
-def surface_brightness(sim_dict, sb_data, fname=None,rotate_row =None,query_points=None, **kwargs):
+def surface_brightness(sim_dict, angle_dict,freq,redshift, fname=None,rotate_row =None,query_points=None, **kwargs):
+    #TODO most updated plotting syntax here, update all funcs to follow
+
+    if isinstance(freq,list):
+        raise TypeError("Surface brightness plotting only supports single frequency values")
+
+    sb_data = {"metadata": {"angle_dict": angle_dict, "freqs": [freq]}}
+    for sim, outputs in sim_dict.items():
+        sim_result = prw.load_sb_hdf5(sim, outputs, angle_dict[sim], [freq], redshift, plane="xz")
+        sb_data[sim] = sim_result[sim]
+
     fig_size = kwargs.get('fig_size',7)
+    label_all_axes = kwargs.get('label_all_axes',False)
+    row_len = kwargs.get('row_len',5)
     with plt.style.context(["science"]):
         plt.rcParams.update({'font.size':_get_fontsize(fig_size,"subplots"), 'text.usetex': False})
         
@@ -405,6 +439,7 @@ def surface_brightness(sim_dict, sb_data, fname=None,rotate_row =None,query_poin
             vmin=kwargs.get('vmin'),   # pass through once here
             vmax=kwargs.get('vmax'),
             fig_size=fig_size,
+            row_len=row_len,
         )
         pdata.rotate_row = rotate_row
 
@@ -418,19 +453,19 @@ def surface_brightness(sim_dict, sb_data, fname=None,rotate_row =None,query_poin
                 for cache_entry in output_cache.values()
             ]
             pdata.vmax = pdata.vmax or float(np.nanmax(all_vmax))
-            pdata.vmin = pdata.vmin or (pdata.vmax - 1)   # 1 dex range
+            pdata.vmin = pdata.vmin or (pdata.vmax - 1)   
 
         # plot_idx = 0
-        ncols = pdata.ncols
-        row_start = 0
+        # ncols = pdata.ncols
+        pdata.row_start = 0
         for sim, outputs in sim_dict.items():
             pdata.label = True
-            plot_idx = row_start * ncols
+            plot_idx = pdata.row_start * pdata.ncols
 
             for output in outputs:
                 for angles in angle_dict[sim]:
                     angle_key = tuple(angles)
-                    entry = sb_data[sim][output][angle_key]   # was sb_data[sim][output][angle]
+                    entry = sb_data[sim][output][angle_key]   
                     obs   = entry["obs_properties"]
                     ax    = pdata.axes[plot_idx]
 
@@ -438,12 +473,12 @@ def surface_brightness(sim_dict, sb_data, fname=None,rotate_row =None,query_poin
                         obs["grid_x"], obs["grid_y"],
                         entry["log_sb"],
                         vmin=pdata.vmin, vmax=pdata.vmax,
-                        cmap="viridis",          # TODO: match your cmap
+                        cmap="viridis",          # TODO: match cmap
                     )
                     ax.contour(
                         obs["grid_mx"], obs["grid_my"],
                         entry["log_sb"],
-                        levels=entry["contour_levels"],
+                        levels=entry["contour_levels"], #TODO add contours as kwarg  
                         colors='white',
                     )
 
@@ -462,25 +497,28 @@ def surface_brightness(sim_dict, sb_data, fname=None,rotate_row =None,query_poin
                         va="top",
                         fontsize=_get_fontsize(pdata.fig_size, "text"),
                     )
-
-                    _query_points_simple(sim=sim,pdata=pdata,query_points=query_points)
+                    if query_points is not None:
+                        query_points_rotated = _rotate_query_points(sim=sim,query_points=query_points,rot_mat=obs['rot_mat'])
+                        _query_points_simple(sim=sim,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
                     _ticks_labels_limits(sim,pdata)
                     plot_idx += 1
 
             _labels_simple(sim,pdata)
 
             n_items = len(outputs) * len(angle_dict[sim]) #loops on outputs and angles
-            sim_rows = math.ceil(n_items / ncols) #number of rows for this simulation
-            for ax in pdata.axes[row_start*ncols + n_items : (row_start + sim_rows)*ncols]:
+            sim_rows = math.ceil(n_items / pdata.ncols) #number of rows for this simulation
+            for ax in pdata.axes[pdata.row_start*pdata.ncols + n_items : (pdata.row_start + sim_rows)*pdata.ncols]:
                 ax.set_visible(False)        # blank out unused trailing tiles in this sim's last row
-            row_start += sim_rows            # advance past this sim's rows for the next iteration
+            pdata.row_start += sim_rows            # advance past this sim's rows for the next iteration
 
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
-        _colourbar(pdata,**kwargs)        # separate from _colourbar — label differs
+        _colourbar(pdata,freqs = sb_data['metadata']['freqs'], **kwargs)        # separate from _colourbar — label differs
         _save(fname)
 
-        plt.show()
+        # plt.show() #NOTE turn on if you dont wanna do .fig
+        plt.close(pdata.fig) 
+    return pdata
 
 def spectral_idx(sim_dict, sb_data, fname=None, rotate_row=None, **kwargs):
     fig_size = kwargs.get('fig_size',7)

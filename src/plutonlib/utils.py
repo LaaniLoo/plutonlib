@@ -1,5 +1,4 @@
 import plutonlib.config as pc
-import plutonlib.load as pl
 
 import os
 import time
@@ -12,6 +11,7 @@ import h5py
 
 from scipy import constants
 from astropy import units as u
+import multiprocessing
 
 def py_reload(module):
     if isinstance(module,str):
@@ -239,3 +239,22 @@ def gcm3_to_kgm3(val):
     original_unit = (u.g / u.cm**3)
     conv_value = original_unit.to(conv_unit)
     return (val * conv_value)
+
+def setup_workers(n_tasks,task_req_mem = 30,memory = None):
+    """Calculates the number of workers for a given task with a given required per task memory
+
+    Args:
+        n_tasks (int): number of tasks to calculate
+        task_req_mem (float, optional): Amount of memory it takes for one task. Defaults to 30.
+        memory (float, optional): Extra memory arg, use only if psutil doesn't report correct mem value. Defaults to None.
+
+    Returns:
+        int: Number of workers
+    """
+    per_task_bytes = task_req_mem * 1024**3
+    avail_bytes = memory * 1024**3 if memory is not None else psutil.virtual_memory().available
+    max_workers_by_mem = max(1, avail_bytes // per_task_bytes)
+    n_workers = min(n_tasks, multiprocessing.cpu_count(), max_workers_by_mem)
+    print(f"{avail_bytes / 1024**3:.1f} Gb available, using {n_workers} workers with {per_task_bytes / 1024**3:.1f} Gb each")
+
+    return n_workers
