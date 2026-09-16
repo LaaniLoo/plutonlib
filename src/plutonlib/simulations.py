@@ -1,4 +1,4 @@
-import plutonlib.load as pl
+import plutonlib.read_write as prw
 import plutonlib.config as pc
 import plutonlib.utils as pu
 import plutonlib.analysis as pa
@@ -14,7 +14,7 @@ import h5py
 from pathlib import Path
 # from collections import defaultdict 
 import plutokore.pluto_simulation as pk_sim
-import plutokore.particles as pk_part
+# import plutokore.particles as pk_part
 
 import warnings
 
@@ -22,101 +22,55 @@ coord_systems = pc.coord_systems
 PLUTODIR = pc.plutodir
 
 import h5py 
-import hdf5plugin
 import numpy as np
-
-def save_particle_data_hdf5(
-    sim, particle_data_dict, particle_times, particle_data_path=None
-):
-
-
-    zfp_kwargs = {"reversible": True}
-    if particle_data_path is None:
-        particle_data_path = f"{sim.processed_data_path}.particles.hdf5"
-    with h5py.File(particle_data_path, "a") as particle_data_file:
-        data_group = particle_data_file.require_group("particle_data")
-        for k, v in particle_data_dict.items():
-
-            #chunk to get all particles at 1 timestep, fast single output loading
-            # if v.ndim == 2:
-            #     chunks = (min(v.shape[0], 100_000), 1)
-            # elif v.ndim == 3:
-            #     chunks = (min(v.shape[0], 100_000), 1, v.shape[2])
-
-            #chunk to get all timesteps associated with n*1000 particles, fast multi-output loading
-            if v.ndim == 2:
-                chunks = (min(v.shape[0], 1_000), v.shape[1])
-            elif v.ndim == 3:
-                chunks = (min(v.shape[0], 1_000), v.shape[1], v.shape[2])
-
-            else:
-                chunks = None
-
-            ds_maxshape = [None] * len(v.shape)
-            # We create a dataset if it doesn't already exist
-            if k in data_group:
-                ds = data_group[k]
-                # resize dataset if necessary
-                ds.resize(v.shape)
-            else:
-                ds = data_group.create_dataset(
-                    k,
-                    shape=v.shape,
-                    dtype=np.float32,
-                    maxshape=ds_maxshape,
-                    chunks = chunks,
-                    **hdf5plugin.Zfp(**zfp_kwargs),
-                )
-            ds[...] = v.astype(np.float32)
-        # get time dataset
-        if "time" in particle_data_file:
-            ds = particle_data_file["time"]
-            # resize if necessary
-            ds.resize(particle_times.shape)
-        else:
-            # create it if it doesn't already exist
-            ds = particle_data_file.create_dataset(
-                "time",
-                shape=particle_times.shape,
-                dtype=np.float32,
-                maxshape=[None] * len(particle_times.shape),
-                chunks = None,
-                **hdf5plugin.Zfp(**zfp_kwargs),
-            )
-        ds[...] = particle_times.astype(np.float32)
 
 class SimulationSetup:
     """
     Class used to initialise PLUTO simulation information, e.g. run_name names, save directories, simulation types, ini information etc.
     """
 
-    _last_ini_file = None
-    _last_arr_type = None
-
-    def __init__(self, sim_type=None, run_name=None,ini_file=None,):
-
-        self.sim_type = sim_type
-        self.run_name = run_name
+    def __init__(self, rel_path = None,ini_file=None,):
         self.ini_file = ini_file
 
-        # Files
-        _sim_dir = os.path.join(pc.sim_dir,self.sim_type) #Simulation types in /pluto-master/Simulations
-        if self.sim_type and not os.path.isdir(_sim_dir): #error if sim_type not found
-            raise FileNotFoundError(f"Simulation type '{self.sim_type}' not found in sim dir '{pc.sim_dir}', available sim types: {os.listdir(pc.sim_dir)}")
-        
-        if self.run_name:
-            self.wdir = os.path.join(pc.sim_dir, self.sim_type, self.run_name) if self.run_name else None
-            if os.path.isdir(_sim_dir) and not os.path.isdir(self.wdir): #error if run_name not found
-                raise FileNotFoundError(f"Simulation run '{self.run_name}' does not exist for simulation type '{self.sim_type}', current simulation runs in {_sim_dir}: {os.listdir(_sim_dir)}")
-        else:
-            warnings.warn(f"No simulation run specified, continuing setup without simulation directory")
+        if self.ini_file is None:
+            raise ValueError("ini_file must be specified, for pluto defaults use 'pluto_units'")
 
-        self.avail_sims = os.listdir(pc.sim_dir)
-        self.avail_runs =  os.listdir(_sim_dir) if self.sim_type else None 
+        if self.ini_file is not None:
+            ini_dir = os.path.join(os.environ["HOME"], 'plutonlib', 'units')
+            ini_path = os.path.join(ini_dir, f"{self.ini_file}.ini")
+            if not os.path.isfile(ini_path):
+                raise FileNotFoundError(f"ini file {ini_path} not found, available units files: {os.listdir(ini_dir)}")
+        
+        if rel_path is None: #NOTE maybe change to an error?
+            warnings.warn("No simulation run specified, continuing setup without simulation directory")
+            rel_path = pc.sim_dir #NOTE not sure if this will cause errors
+            # self.wdir = self.sim_type = self.run_name = self.rel_path = self.avail_sim_types = None
+            # return
+
+        if rel_path is not None and pc.sim_dir in rel_path: #if relative path is actually full sim path
+            warnings.warn("Simulation relative path appears to contain pluto simulation directory, truncating to relative path...")
+            rel_path = os.path.relpath(rel_path,start = pc.sim_dir)
+
+        self.rel_path = rel_path
+        self.wdir = os.path.join(pc.sim_dir,rel_path)
+        path_parts = rel_path.split(os.sep)
+        self.sim_type = path_parts[0]
+        self.run_name = path_parts[-1]
+
+        avail_sim_types = [d for d in os.listdir(pc.sim_dir) if os.path.isdir(os.path.join(pc.sim_dir, d))]
+        self.avail_sim_types = avail_sim_types
+
+        if not os.path.isdir(self.wdir): #check if its an actual dir
+            print(f"Available simulation types in {pc.sim_dir}: {avail_sim_types}")
+            raise FileNotFoundError(f"Simulation directory {self.wdir} does not exist\nLikely a directory issue check that sim_type: '{self.sim_type}' and run_name: '{self.run_name}' match")
+
+        run_dir = os.path.join(pc.sim_dir,self.sim_type) #if wdir is path to sim, avail runs will show dirs inside current sim not level up
+        avail_runs = [d for d in os.listdir(run_dir) if os.path.isdir(os.path.join(run_dir, d))]
+        self.avail_runs = avail_runs
 
     #---Properties---#
     @property
-    def save_dir(self,start_dir = None):
+    def save_dir(self,start_dir = None): #NOTE not sure if this is needed
         if not start_dir:
             output_dir = os.path.join(os.environ["HOME"],"plutonlib_output")
         else:
@@ -166,22 +120,16 @@ class SimulationData(SimulationSetup):
     Class used to load/convert PLUTO simulations as well as containing from SimulationSetup 
     """
 
-    def __eq__(self, other): #objects are equal when they share the same run name and sim type
-        return (
-            isinstance(other, SimulationData)
-            and self.run_name == other.run_name
-            and self.sim_type == other.sim_type
-        )
+    def __eq__(self, other): #objects are equal when they share the same relative path
+        return isinstance(other, SimulationData) and self.rel_path == other.rel_path
 
-    def __hash__(self): #generate the hash based on both run_name and sim_type
-        return hash((self.run_name, self.sim_type))
+    def __hash__(self): #generate the hash based on its relative path
+        return hash(self.rel_path)
 
-    def __init__(self, sim_type=None, run_name=None,
-                 load_outputs=None, ini_file=None,conv=True):
+    def __init__(self, rel_path=None,load_outputs=None, ini_file=None,conv=True):
 
         # Initialize parent class first
-        super().__init__(sim_type, run_name, ini_file)
-
+        super().__init__(rel_path, ini_file)
         self.load_outputs = load_outputs
 
         # Data
@@ -193,26 +141,8 @@ class SimulationData(SimulationSetup):
         self._units = None
         self._geometry = None
 
-        # Files
-        _sim_dir = os.path.join(pc.sim_dir,self.sim_type) #Simulation types in /pluto-master/Simulations
-        if self.sim_type and not os.path.isdir(_sim_dir): #error if sim_type not found
-            raise FileNotFoundError(f"Simulation type '{self.sim_type}' not found in sim dir '{pc.sim_dir}', available sim types: {os.listdir(pc.sim_dir)}")
-        
-        if self.run_name:
-            self.wdir = os.path.join(pc.sim_dir, self.sim_type, self.run_name) if self.run_name else None
-            if os.path.isdir(_sim_dir) and not os.path.isdir(self.wdir): #error if run_name not found
-                raise FileNotFoundError(f"Simulation run '{self.run_name}' does not exist for simulation type '{self.sim_type}', current simulation runs in {_sim_dir}: {os.listdir(_sim_dir)}")
-        else:
-            raise ValueError(f"run_name is set to None, please specify a simulation run to inspect simulation data")
-        
-        self.avail_sims = os.listdir(pc.sim_dir)
-        self.avail_runs =  os.listdir(_sim_dir) if self.sim_type else None 
-
-        if isinstance(self.load_outputs, list):
-            self.load_outputs = tuple(self.load_outputs)
-
-        if self.load_outputs == "last":
-            self.load_outputs = (pl.get_file_outputs(self.wdir),)
+        if self.rel_path is None:
+            raise ValueError("rel_path is set to None, please specify a simulation run to inspect simulation data")
 
     @classmethod
     def from_setup(cls, setup,**kwargs):
@@ -229,8 +159,7 @@ class SimulationData(SimulationSetup):
             SimulationData: New SimulationData instance
         """
         defaults = {
-            'sim_type': setup.sim_type,
-            'run_name': setup.run_name,
+            'rel_path': setup.rel_path,
             'ini_file': setup.ini_file,
         }
         # Allow kwargs to override defaults
@@ -242,11 +171,14 @@ class SimulationData(SimulationSetup):
     def load_units(self):
         self._geometry = "CARTESIAN"
         self._units = pc.PlutoUnits.from_ini(ini_file=self.ini_file)
+
     def get_metadata(self,output=None):
-        if not output:
-            output = pl.get_file_outputs(self.wdir)
+        if output is None:
+            output = prw.get_file_outputs(self.wdir)
         
-        self._metadata[output] = pl.load_hdf5_metadata(wdir=self.wdir,load_output=output)
+        if output not in self._metadata:
+            self._metadata[output] = prw.load_hdf5_metadata(wdir=self.wdir, load_output=output)
+
         if self._metadata[output].time_str == '0 Myr':
             time_unit = str(self.units.sim_time.usr_uv)
             time_val = pc.code_to_usr_units("sim_time",self.metadata[output].sim_time,ini_file="jet_units")["conv_data_uuv"]
@@ -260,7 +192,7 @@ class SimulationData(SimulationSetup):
     def load_fluid_data(self,var_choice,output=None,load_slice = None,conv=None):
 
         var_choice = [var_choice] if isinstance(var_choice,str) else var_choice
-        output = pl.get_file_outputs(self.wdir) if not output else output
+        output = prw.get_file_outputs(self.wdir) if not output else output
         conv = self.conv if conv is None else conv
         cache_key = (tuple(sorted(var_choice)),output,pu._slice_to_hashable(load_slice),conv)
         # print(f"DEBUG cache_key: {cache_key}")  # Add this
@@ -269,7 +201,7 @@ class SimulationData(SimulationSetup):
             # print("using cache")
             return self._fluid_data_cache[cache_key]
 
-        data = pl.pluto_loader_hdf5(
+        data = prw.load_fluid_hdf5(
             wdir=self.wdir,
             load_outputs=(output,),
             var_choice=var_choice,
@@ -295,7 +227,7 @@ class SimulationData(SimulationSetup):
         """
         
         var_choice = [var_choice] if isinstance(var_choice,str) else var_choice
-        output = pl.get_file_outputs(self.wdir) if not output else output
+        output = prw.get_file_outputs(self.wdir) if not output else output
         conv = self.conv if conv is None else conv
         fluid_data_splines = {}
 
@@ -309,51 +241,23 @@ class SimulationData(SimulationSetup):
         fluid_data_splines['L_jet'] = spline_data['jet_length'] #TODO add to jet class pls
         return fluid_data_splines
     
-    def save_particles_hdf5(self):
-        sim = self.to_plutokore()
-        file_path = os.path.join(self.wdir,"particles.hdf5")
+    def load_particle_data(self,output=None,tr_cut = None,force_check=True):
+        prw.save_particle_data_hdf5(wdir=self.wdir,force_check=force_check)        
+        output = prw.get_particle_outputs(self.wdir) if output == "last" else output
+        data = prw.load_particles_hdf5(self.wdir,output=output,tr_cut=tr_cut)
 
-        if os.path.isfile(file_path):
-            with h5py.File(file_path,"r") as f:
-                n_outpus = f["time"][:].shape
-                part_outputs = pl.get_particle_outputs(wdir=self.wdir)
+        alias_map = {"rho": "density", "prs": "pressure", "tr1": "tracer"}
+        for short_key, long_key in alias_map.items():
+            if long_key not in data and short_key in data:
+                data[long_key] = data[short_key]
 
-                if part_outputs >= n_outpus[-1]:
-                    print("New particle files found, resaving particles.hdf5...")
-                else:
-                    raise FileExistsError(f"{file_path} allready exists")
-    
-        particle_data_dict, particle_times = pk_part.load_all_particles(sim)
-        # pk_part.save_particle_data_hdf5(
-        #     sim=sim,
-        #     particle_data_dict=particle_data_dict,
-        #     particle_times=particle_times,
-        #     particle_data_path=file_path,
-        # )
-        save_particle_data_hdf5(
-            sim=sim,
-            particle_data_dict=particle_data_dict,
-            particle_times=particle_times,
-            particle_data_path=file_path,
-        )
-        print(f"File saved to {file_path}")
-
-    def load_particle_data(self,output=None,tr_cut = None):
-        file_path = os.path.join(self.wdir,"particles.hdf5")
-        if not os.path.isfile(file_path):
-            print("particles.hdf5 not found, creating HDF5 dataset...")
-            self.save_particles_hdf5()
-
-        # output = pl.get_particle_outputs(self.wdir) if not output else output
-        output = pl.get_particle_outputs(self.wdir) if output == "last" else output
-        data = pl.pluto_particles_hdf5(self.wdir,output=output,tr_cut=tr_cut)
         return data
 
     def part_to_simtime(self,output):
         """
         Converts particle output to grid simtime
         """
-        dtype = self.get_metadata().dtype
+        dtype = self.get_metadata(output=1).dtype #NOTE assumes that there is at least 1 output, prevents r/w errors with running sims
         grid_out_freq = self.grid_output[dtype+"_freq"]
         part_out_freq = self.part_output["particles_dbl_freq"] #assuming only ever dbl
         output_ratio = part_out_freq/grid_out_freq
@@ -402,7 +306,7 @@ class SimulationData(SimulationSetup):
     def get_injection_region(self,output=None):
         """Uses pa.locate_injection_region to find x,y,z location for a moving injection region"""
 
-        output = pl.get_file_outputs(self.wdir) if not output else output
+        output = prw.get_file_outputs(self.wdir) if not output else output
         sim_time = self.load_fluid_data(var_choice="sim_time",output=output,conv=True)["sim_time"] #in Myr 
         # NOTE having simtime as the real simulation time caused a bug in ofset btwn output and simtime value -> keep as file output
         # sim_time = output
@@ -445,21 +349,21 @@ class SimulationData(SimulationSetup):
         qslice = pa.calc_var_prof(self,plane_map[plane])
         return qslice["slice_2D"]
     # ---Properties---#
-    @property
-    def dtype(self):
-        is_dbl_h5 = os.path.isfile(os.path.join(self.wdir,r"dbl.h5.out"))
-        is_flt_h5 = os.path.isfile(os.path.join(self.wdir,r"flt.h5.out"))
-        is_dbl = os.path.isfile(os.path.join(self.wdir,r"dbl.out"))
+    # @property
+    # def dtype(self):
+    #     is_dbl_h5 = os.path.isfile(os.path.join(self.wdir,r"dbl.h5.out"))
+    #     is_flt_h5 = os.path.isfile(os.path.join(self.wdir,r"flt.h5.out"))
+    #     is_dbl = os.path.isfile(os.path.join(self.wdir,r"dbl.out"))
 
-        if pu.is_dbl_and_flt(self.wdir): #combination of float and double -> get only float for analysis 
-            dext = "float" 
+    #     if pu.is_dbl_and_flt(self.wdir): #combination of float and double -> get only float for analysis 
+    #         dext = "float" 
 
-        elif is_dbl_h5 or is_flt_h5:
-            dext = "float" if is_flt_h5 else "double" #assigns correct dtype for loading, preferentially load float
+    #     elif is_dbl_h5 or is_flt_h5:
+    #         dext = "float" if is_flt_h5 else "double" #assigns correct dtype for loading, preferentially load float
 
-        elif is_dbl:
-            dext = "double"         
-        return dext
+    #     elif is_dbl:
+    #         dext = "double"         
+    #     return dext
 
     @property
     def units(self):
@@ -495,11 +399,19 @@ class SimulationData(SimulationSetup):
     
     @property
     def sim_times(self):
-        sim_times,_ = pl.get_sim_times(self.wdir)
+        sim_times,_ = prw.get_sim_times(self.wdir)
         return sim_times
     
     @property
     def sim_times_matched(self):
-        _,sim_times_matched = pl.get_sim_times(self.wdir)
+        _,sim_times_matched = prw.get_sim_times(self.wdir)
         return sim_times_matched
-    
+
+    @property
+    def xyz_lim(self):
+        """Gets xyz axis limits based on pluto.ini grid setup"""
+        xlim = (self.grid_setup["x1-grid"]['start'][0],self.grid_setup["x1-grid"]['end'][-1])
+        ylim = (self.grid_setup["x2-grid"]['start'][0],self.grid_setup["x2-grid"]['end'][-1])
+        zlim = (self.grid_setup["x3-grid"]['start'][0],self.grid_setup["x3-grid"]['end'][-1])
+
+        return [xlim,ylim,zlim]
