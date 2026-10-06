@@ -1,14 +1,7 @@
-from ast import Raise
-
 import plutonlib.config as pc
-# import plutonlib.simulations as ps
 import plutonlib.utils as pu
-from plutonlib.colours import pcolours
 
 coord_systems = pc.coord_systems
-PLUTODIR = pc.plutodir
-
-from pathlib import Path 
 import os
 
 from concurrent.futures import ThreadPoolExecutor, as_completed,ProcessPoolExecutor
@@ -22,7 +15,6 @@ import numpy as np
 
 import time
 import glob
-import inspect
 
 @dataclass
 class HDF5Metadata:
@@ -196,7 +188,7 @@ def get_sim_times(wdir):
 
     return sim_times, sim_times_matched
 
-def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
+def load_hdf5_metadata(wdir: str,grid_output: int) -> HDF5Metadata:
     """
     Loads certain metadata from a single HDF5 file with minimal performance and memory impact,
     stores information in the HDF5Metadata dataclass.
@@ -205,7 +197,7 @@ def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
     -----------
     wdir : str
         Working directory where simulation files are located.
-    load_output : int
+    grid_output : int
         Integer of which output file to load metadata from (e.g., 0 for data.0000.flt.h5).
     
     Returns:
@@ -221,20 +213,20 @@ def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
         - is_compressed: Boolean indicating if file is compressed
     """
     n_outputs = get_file_outputs(wdir)  # reads .out log, cheap
-    if load_output > n_outputs:
-        raise ValueError(f"output {load_output} exceeds last recorded output ({n_outputs}) in {wdir}")
+    if grid_output > n_outputs:
+        raise ValueError(f"output {grid_output} exceeds last recorded output ({n_outputs}) in {wdir}")
     
     dtype = get_output_dtype(wdir)        
     geometry = pc.get_geometry_gridout(wdir)
 
-    base_file_path = os.path.join(wdir, f"data.{load_output:04d}.{dtype}")
+    base_file_path = os.path.join(wdir, f"data.{grid_output:04d}.{dtype}")
     compressed_file_path = base_file_path + ".compressed"
     is_compressed = os.path.isfile(compressed_file_path)
     file_path = compressed_file_path if is_compressed else base_file_path
 
     return HDF5Metadata( #HDF5Metadata should then assign simtime etc by itself using file path
         wdir=wdir,
-        load_output=load_output,
+        load_output=grid_output,
         file_path=file_path,
         dtype=dtype,
         is_compressed=is_compressed,
@@ -242,7 +234,7 @@ def load_hdf5_metadata(wdir: str,load_output: int) -> HDF5Metadata:
     )
 
 #---Fluid data---#
-def load_hdf5_lazy(wdir,load_output,var_choice,load_slice = None):
+def load_hdf5_lazy(wdir,grid_output,var_choice,load_slice = None):
     """
     Loads specific variables from a single HDF5 file output using metadata for efficient access.
     
@@ -272,7 +264,7 @@ def load_hdf5_lazy(wdir,load_output,var_choice,load_slice = None):
 
     """
     
-    metadata = load_hdf5_metadata(wdir=wdir,load_output=load_output)
+    metadata = load_hdf5_metadata(wdir=wdir,grid_output=grid_output)
     dataset_paths = metadata.dataset_paths
 
     file_data = {}
@@ -305,7 +297,7 @@ def load_hdf5_lazy(wdir,load_output,var_choice,load_slice = None):
 
     return file_data
 
-def load_fluid_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=None,conv=True):
+def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,ini_file=None,conv=True):
     """
     Loads and optionally converts units of multiple HDF5 simulation outputs with metadata.
         
@@ -315,10 +307,10 @@ def load_fluid_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=
         Working directory where simulation files are located.
     var_choice : list or str
         List (or single string) of variable names to load (e.g., ['rho', 'prs', 'ncx', 'ncy']).
-    load_outputs : tuple, int, or "last", optional
+    grid_output : tuple, int, or "last", optional
         Which outputs to load:
         - tuple: Load specific outputs (e.g., (0, 5, 10))
-        - int: Load outputs from 0 to load_outputs (inclusive)
+        - int: Load outputs from 0 to grid_output (inclusive)
         - "last": Load only the last available output
         - None: Load the last available output (default)
     load_slice : tuple, optional
@@ -349,21 +341,21 @@ def load_fluid_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=
     tsteps = []
     
     n_outputs = get_file_outputs(wdir)
-    if load_outputs == None or load_outputs == "last":
-        load_outputs = (n_outputs,)
+    if grid_outputs == None or grid_outputs == "last":
+        grid_outputs = (n_outputs,)
 
-    if isinstance(load_outputs,int):
-        load_outputs = tuple(i for i in range(1,load_outputs+1)) #create a tuple of outputs up to int e.g load all up to 10
+    if isinstance(grid_outputs,int):
+        grid_outputs = tuple(i for i in range(1,grid_outputs+1)) #create a tuple of outputs up to int e.g load all up to 10
 
-    if isinstance(load_outputs, int) and load_outputs > n_outputs:
-        raise ValueError(f"Trying to load more outputs ({load_outputs}) than available ({n_outputs})")
+    if isinstance(grid_outputs, int) and grid_outputs > n_outputs:
+        raise ValueError(f"Trying to load more outputs ({grid_outputs}) than available ({n_outputs})")
     
-    if isinstance(load_outputs, tuple) and max(load_outputs) > n_outputs:
-        raise ValueError(f"Trying to load more outputs ({max(load_outputs)}) than available ({n_outputs})")
+    if isinstance(grid_outputs, tuple) and max(grid_outputs) > n_outputs:
+        raise ValueError(f"Trying to load more outputs ({max(grid_outputs)}) than available ({n_outputs})")
 
-    for output in load_outputs:
+    for output in grid_outputs:
         pluto_units = pc.PlutoUnits.from_ini(ini_file=ini_file)
-        metadata = load_hdf5_metadata(wdir=wdir,load_output=output)
+        metadata = load_hdf5_metadata(wdir=wdir,grid_output=output)
         time_val = pc.code_to_usr_units("sim_time",metadata.sim_time,ini_file="jet_units")["conv_data_uuv"]
         time_unit = str(pluto_units.sim_time.usr_uv)
         time_str = f"${time_val:.2f} \\; [{time_unit}]$"
@@ -372,11 +364,11 @@ def load_fluid_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=
         tsteps.append(time_str)
 
         if not conv:
-            pluto_data[output] = load_hdf5_lazy(wdir=wdir,load_output=output,var_choice=var_choice,load_slice=load_slice)
+            pluto_data[output] = load_hdf5_lazy(wdir=wdir,grid_output=output,var_choice=var_choice,load_slice=load_slice)
             metadata.is_conv = False
 
         if conv:
-            raw_data = load_hdf5_lazy(wdir=wdir,load_output=output,var_choice=var_choice,load_slice=load_slice)
+            raw_data = load_hdf5_lazy(wdir=wdir,grid_output=output,var_choice=var_choice,load_slice=load_slice)
             def convert_var(var_name):
                 conv = pc.code_to_usr_units(
                     var_name=var_name,
@@ -401,12 +393,12 @@ def load_fluid_hdf5(wdir,var_choice, load_outputs=None,load_slice=None,ini_file=
     return pluto_data
 
 #---Particles---#
-def get_particle_outputs(wdir,load_outputs=None):
+def get_particle_outputs(wdir,part_output=None):
     '''
     Gets the number of simulation particle file outputs
     
     :param wdir: working directory containing the particle files
-    :param load_outputs: used to make a list of all particle file directories to load
+    :param part_output: used to make a list of all particle file directories to load
     '''
     # part_files = []
     pattern = os.path.join(wdir, "particles.*.dbl")
@@ -414,24 +406,24 @@ def get_particle_outputs(wdir,load_outputs=None):
     file_ext = particle_paths[0].split(".")[-1]
     n_outputs = int(particle_paths[-1].split(".")[-2])
     
-    if load_outputs == None:
+    if part_output == None:
         return n_outputs
 
     if not particle_paths:
         raise FileNotFoundError(f"No files found that match `particles.` in {wdir}")
 
-    if isinstance(load_outputs,int):
-        load_outputs = tuple(i for i in range(1,load_outputs+1)) #create a tuple of outputs up to int e.g load all up to 10
+    if isinstance(part_output,int):
+        part_output = tuple(i for i in range(1,part_output+1)) #create a tuple of outputs up to int e.g load all up to 10
 
-    elif load_outputs == "last":
-        load_outputs = (particle_paths[n_outputs],)
+    elif part_output == "last":
+        part_output = (particle_paths[n_outputs],)
 
-    max_output = max(load_outputs) if isinstance(load_outputs,tuple) else load_outputs
+    max_output = max(part_output) if isinstance(part_output,tuple) else part_output
     if max_output > n_outputs:
         raise ValueError(f"Attempting to load output {max_output} when there are {n_outputs} outputs")
 
-    loaded_files = [particle_paths[output_n] for output_n in load_outputs if output_n <= n_outputs]
-    part_files = list(load_outputs)
+    loaded_files = [particle_paths[output_n] for output_n in part_output if output_n <= n_outputs]
+    part_files = list(part_output)
 
     returns = {
         "n_outputs":n_outputs,
@@ -486,11 +478,11 @@ def read_particle_file(file_name):
     returns = {"hdict":hdict,"data_str":data_str,"tot_fdim":tot_fdim}
     return returns
 
-def load_particles(wdir,load_outputs=None):
+def load_particles(wdir,part_output=None):
     particle_data = defaultdict(list)  # Stores variables for each particle file
     var_map = {"tracer":"tr1","density":"rho","pressure":"prs"}
 
-    particle_outputs = get_particle_outputs(wdir,load_outputs)
+    particle_outputs = get_particle_outputs(wdir,part_output)
     loaded_files = particle_outputs["loaded_files"]
     part_files = particle_outputs["part_files"]
 
@@ -514,7 +506,7 @@ def load_particles(wdir,load_outputs=None):
 
         fdims = np.array(hdict["field_dim"], dtype=int)
 
-        if n_particles <= 0 and isinstance(load_outputs,tuple) and len(load_outputs) == 1: 
+        if n_particles <= 0 and isinstance(part_output,tuple) and len(part_output) == 1: 
             print(DataDict_)
             raise AttributeError(f"Particle file {file_name} has nparticles = 0")
 
@@ -551,7 +543,7 @@ def load_all_particles_batched(wdir, existing_data=None, existing_times=None):
         ptimes = np.pad(existing_times, (0, total_outputs - existing_outputs),
                          mode="constant", constant_values=0.0)
 
-    all_data = load_particles(wdir, load_outputs=tuple(outputs))   
+    all_data = load_particles(wdir, part_output=tuple(outputs))   
 
     last_output = all_data[n_outputs]   
     total_particle_count = int(last_output["id"].astype(int).max())
@@ -596,7 +588,7 @@ def save_particle_data_hdf5(wdir,force_check=True):
     if os.path.isfile(file_path): #if particles.hdf5 already exists and there are more outputs, update
         with h5py.File(file_path,"r") as f:
             if not force_check:
-                print(f"'force_check' = False, skipping particle update check, using existing particle data")
+                # print(f"'force_check' = False, skipping particle update check, using existing particle data")
                 return
 
             n_saved = f["time"][:].shape[0]
@@ -671,7 +663,8 @@ def save_particle_data_hdf5(wdir,force_check=True):
 
     print(f"File saved to {file_path}")
 
-def load_particles_hdf5(wdir,output = None,tr_cut = None):
+def load_particles_hdf5(wdir,part_outputs = None,tr_cut = None,var_choice = None):
+    """if output = int, load all particles up to output, if output = tuple, load just that particle output"""
     particle_data_path = os.path.join(wdir,"particles.hdf5")
 
     particle_dict = {}
@@ -680,46 +673,58 @@ def load_particles_hdf5(wdir,output = None,tr_cut = None):
     # particle_data_file = h5py.File(particle_data_path, "r")
     with h5py.File(particle_data_path,"r") as f:
         n_outpus = f["time"][:].shape[0]
-        part_outputs = get_particle_outputs(wdir=wdir) #int
-        loaded_outputs = part_outputs if not output else output
+        n_available_outputs = get_particle_outputs(wdir=wdir)  # int, total outputs on disk
+        loaded_outputs = get_particle_outputs(wdir=wdir) if part_outputs is None else part_outputs
 
-        if part_outputs >= n_outpus:
-            print(f"particles.hdf5 only has {n_outpus} outputs saved, there are {part_outputs} outputs, consider resaving file.\n")
+        if n_available_outputs >= n_outpus:
+            print(f"particles.hdf5 only has {n_outpus} outputs saved, there are {n_available_outputs} outputs, consider resaving file.\n")
 
         if isinstance(loaded_outputs,tuple) and max(loaded_outputs) > n_outpus:
             raise IndexError(f"Trying to load output {max(loaded_outputs)}, when there are only {n_outpus} outputs saved")
         
         if isinstance(loaded_outputs,int) and loaded_outputs > n_outpus:
             raise IndexError(f"Trying to load output {loaded_outputs}, when there are only {n_outpus} outputs saved")
-        
-        for k, v in f["particle_data"].items():
-            # particle_dict[k] = v[:,output] if output is not None else v[:]
-            if output is None:
-                particle_dict[k] = v[:]
-            elif isinstance(output, int):
-                particle_dict[k] = v[:, :output + 1]   # (n_particles, 0:5) → 2D
+
+        available_vars = list(f["particle_data"].keys())
+        if var_choice is None:
+            selected_vars = available_vars
+        else:
+            selected_vars = [var_choice] if isinstance(var_choice, str) else list(var_choice)
+            missing = set(selected_vars) - set(available_vars)
+            if missing:
+                raise KeyError(f"Requested var_choice {sorted(missing)} not in particle_data: {available_vars}")
+
+        for var in selected_vars:
+            dset = f["particle_data"][var]
+            if part_outputs is None:
+                particle_dict[var] = dset[:]
+            elif isinstance(part_outputs, int):
+                particle_dict[var] = dset[:, :part_outputs + 1] # (n_particles, 0:5) → 2D
             else:  # tuple
-                particle_dict[k] = v[:, list(output)]   # specific columns
+                particle_dict[var] = dset[:, list(part_outputs)]# specific columns
 
         particle_times = f["time"][:]
         particle_dict["particle_times"] = particle_times
 
-    if tr_cut is not None: #using tracer cuttoff 
-        tr_mask = particle_dict["tracer"] >= tr_cut
+    if tr_cut is not None:
+        if "tr1" not in particle_dict:
+            raise KeyError("tr_cut requires 'tr1' in var_choice (or var_choice=None) to filter on")
+        tr_mask = particle_dict["tr1"] >= tr_cut
         for var in particle_dict:
-            if var != "particle_times":  # skip the time array
+            if var != "particle_times":
                 particle_dict[var] = particle_dict[var][tr_mask]
 
     return particle_dict
 
 #---Surface brightness----#
-def load_sb_hdf5(sim, outputs, angles, freqs, redshift=0.05, plane='xz'):
+def load_sb_hdf5(sim, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
+    # part_outputs = sim.simtime_to_part(grid_outputs,round_val=True) #convert to particle times
     file_path = os.path.join(sim.wdir, f"sbdata.h5")
 
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"SB data file '{file_path}' does not exist")
 
-    print(f"Found {file_path}")
+    # print(f"Found {file_path}")
     with h5py.File(file_path, "r") as data_file:
         if data_file.attrs["run_name"] != sim.run_name: 
             raise ValueError(f"File {file_path} does not have matching run_name attr, \n{dict(data_file.attrs)}")
@@ -729,6 +734,10 @@ def load_sb_hdf5(sim, outputs, angles, freqs, redshift=0.05, plane='xz'):
 
         run_data = data_file[str(redshift)]
         avail_outputs = [int(k) for k in list(run_data.keys()) if k.isdigit()]
+        angles_all = { #dict[output] of all angles at output
+            o: [[int(x) for x in k.strip("[]").split(",")] for k in run_data[str(o)].keys()]
+            for o in avail_outputs
+        }
         file_freqs = list(run_data.attrs["freqs"])
         freqs = file_freqs if freqs == "all" else freqs
         missing_freqs = [f for f in freqs if f not in file_freqs]
@@ -747,7 +756,7 @@ def load_sb_hdf5(sim, outputs, angles, freqs, redshift=0.05, plane='xz'):
         grid_mx, grid_my = grid["grid_mx"][()], grid["grid_my"][()]
 
         sb_data = {}
-        for output in outputs:
+        for output in grid_outputs:
             if str(output) not in run_data:
                 raise ValueError(f"Output {output} not found for redshift {redshift} in {file_path}\n Available outputs: {avail_outputs}")
 
@@ -773,12 +782,23 @@ def load_sb_hdf5(sim, outputs, angles, freqs, redshift=0.05, plane='xz'):
                 if len(freqs) == 1:
                     log_sb_vals, contour_vals = log_sb_vals[freqs[0]], contour_vals[freqs[0]]
 
+                alpha = None
+                if "alpha" in sb_entry:
+                    alpha_ds = sb_entry["alpha"]
+                    freqs_grouped = [(float(a), float(b)) for a, b in zip(*[iter(entry_freqs)] * 2)]
+                    if len(freqs_grouped) != alpha_ds.shape[0]:
+                        raise ValueError(
+                            f"alpha has {alpha_ds.shape[0]} slices but entry freqs {entry_freqs} "
+                            f"give {len(freqs_grouped)} pairs (output {output}, angles {angle_set})"
+                        )
+                    alpha = {pair: alpha_ds[i] for i, pair in enumerate(freqs_grouped)}
+
                 sb_data[output][tuple(angle_set)] = {
                     "sb":             sb_entry["sb"][()],
                     "obs_properties": obs_properties,
                     "log_sb":         log_sb_vals,
                     "contour_levels": contour_vals,
-                    "alpha":          sb_entry["alpha"][()] if "alpha" in sb_entry else None,
+                    "alpha":          alpha,   # {(f_lo, f_hi): (ny, nx) array} or None
                 }
 
-    return {"metadata": {"angles": angles, "freqs": freqs}, **{sim: sb_data}}
+    return {"metadata": {"angles": angles,"angles_all":angles_all, "freqs": freqs}, **{sim: sb_data}}
