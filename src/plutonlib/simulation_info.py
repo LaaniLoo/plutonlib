@@ -8,6 +8,8 @@ from astropy import units as u
 from astropy import constants as astro_const 
 import scipy.constants as const
 
+import numpy as np 
+
 class SimInfoSetup:
     """Simple class to initialise units from plutonlib user unit ini file, with methods for fetching dataclass
     atributes from pluto.ini
@@ -108,7 +110,6 @@ class SimInfoSetup:
             # kwargs["env"] = EnvInfo.from_usr_params(usr_params)
 
         return cls(**mapped_params,**kwargs)
-
 
 @dataclass
 class EnvInfo(SimInfoSetup):
@@ -230,8 +231,8 @@ class JetInfo(SimInfoSetup):
                     v_wind = getattr(self.env, w)
                     wvx_counter += 1
                 if wvx_counter > 1:
-                    print(f"Wind velocities have multiple components, cannot find L_bend")
-                    v_wind = 0 #NOTE needs fixing
+                    # print(f"Wind velocities have multiple components, cannot find L_bend")
+                    v_wind = np.nan #NOTE needs fixing
     
             lscales = pa.calc_length_scales(
                 Q       = self.Q,

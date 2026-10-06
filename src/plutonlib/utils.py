@@ -2,14 +2,12 @@ import plutonlib.config as pc
 
 import os
 import time
-import sys
-from time import sleep
 import importlib
 from glob import glob 
 import psutil
 import h5py
+import math
 
-from scipy import constants
 from astropy import units as u
 import multiprocessing
 
@@ -69,9 +67,9 @@ def is_dbl_and_flt(wdir):
     """
     Checks pluto.ini to see if sim outputs both dbl and flt h5 files
     """
-    grid_output = pc.pluto_ini_info(sim_dir = wdir)["grid_output"]
-    dbl = grid_output["dbl.h5_freq"]
-    flt = grid_output["flt.h5_freq"]
+    ini_grid_output = pc.pluto_ini_info(sim_dir = wdir)["ini_grid_output"]
+    dbl = ini_grid_output["dbl.h5_freq"]
+    flt = ini_grid_output["flt.h5_freq"]
     is_dbl = True if dbl != 0 else False
     is_flt = True if flt != 0 else False
 
@@ -251,10 +249,11 @@ def setup_workers(n_tasks,task_req_mem = 30,memory = None):
     Returns:
         int: Number of workers
     """
-    per_task_bytes = task_req_mem * 1024**3
+    req_mem = math.ceil(task_req_mem)*1.2 #add an extra 20% of headroom
+    per_task_bytes =  req_mem * 1024**3 #rounds up and conv to int
     avail_bytes = memory * 1024**3 if memory is not None else psutil.virtual_memory().available
     max_workers_by_mem = max(1, avail_bytes // per_task_bytes)
     n_workers = min(n_tasks, multiprocessing.cpu_count(), max_workers_by_mem)
     print(f"{avail_bytes / 1024**3:.1f} Gb available, using {n_workers} workers with {per_task_bytes / 1024**3:.1f} Gb each")
 
-    return n_workers
+    return int(n_workers)
