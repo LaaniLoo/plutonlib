@@ -5,10 +5,11 @@ import plutonlib.analysis as pa
 from astropy import units as u
 from astropy import constants as const 
 
-from IPython.display import display, Latex
+# from IPython.display import display
 import numpy as np
 
 import os
+from pathlib import Path
 import configparser
 import glob 
 import re
@@ -89,16 +90,15 @@ class PlutoUnits:
 
 src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
 main_path = os.path.join(os.path.expanduser('~'),'plutonlib/')
-try: #Checks for PLUTO_DIR env var
-    plutodir = os.environ["PLUTO_DIR"]
+
+try:
+    PLUTO_PATH = Path(os.environ["PLUTO_DIR"])
 except KeyError:
-    print(f'{pcolours.WARNING}PLUTO_DIR env var not found, please set the location of the PLUTO code')
+    raise EnvironmentError(f"{pcolours.WARNING}PLUTO_DIR env var not found, please set the location of the PLUTO code")
 
-
-if os.path.isdir(os.path.join(plutodir, "Simulations")): #if simulation dir doesn't exist 
-    sim_dir = os.path.join(plutodir, "Simulations")
-else:
-    raise FileNotFoundError(f"{pcolours.WARNING} Simulation directory not found, needs to be in PLUTO_DIR ({plutodir}), see sim_save.sh")
+SIM_PATH = PLUTO_PATH / "Simulations"
+if not SIM_PATH.is_dir():#if simulation dir doesn't exist 
+    raise FileNotFoundError(f"{pcolours.WARNING} Simulation directory '$PLUTO_DIR/Simulations' not found, needs to be in PLUTO_DIR ({PLUTO_PATH}), ")
 
 arr_type_key = {
     "e": "1D cell edge coordinate arrays [x, y, z]",
@@ -236,7 +236,7 @@ def pluto_ini_info(sim_dir=None,ini_file = None):
     }
 
     raw_grid_output = config.options("Static Grid Output")
-    grid_output = {
+    ini_grid_output = {
         # k: str(v.split(";",1)[0].strip())
         k: [pu.is_num_or_str(x) for x in v.split() ]
         for line in raw_grid_output if " " in line
@@ -277,10 +277,10 @@ def pluto_ini_info(sim_dir=None,ini_file = None):
 
     returns = {
         "grid_setup": grid_setup,
-        "grid_output": grid_output,
+        "ini_grid_output": ini_grid_output,
         "usr_params": usr_params,
-        "grid_output": static_output_dict,
-        "part_output": particle_output_dict,
+        "ini_grid_output": static_output_dict,
+        "ini_part_output": particle_output_dict,
         "key_params": key_params,
         "ini_name": ini_name,
     }
@@ -369,7 +369,7 @@ def calc_chi_from_ini(ini_file):
         jet_rho = pa.calc_jet_density(jet_pwr,jet_spd,jet_angle,inj_rad)
 
     chi = pa.calc_chi(jet_rho,env_prs,5/3).si
-    display(chi)
+    # display(chi)
 
     return chi
 
@@ -426,5 +426,5 @@ def plutonlib_tree_helper():
             │   ├── pluto.4.log
             │   └── pluto.5.log
             └── run_name_plutonlib_output
-                └── Jet_wind_test_temp_xz_vel_plot.png"""
+                └── plot.png"""
     print(tree)
