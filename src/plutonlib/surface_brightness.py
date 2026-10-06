@@ -1,6 +1,6 @@
 import plutonlib.utils as pu
 import plutonlib.read_write as prw
-import plutonlib.simulations as ps
+# import plutonlib.simulations as ps
 
 import plutokore.radio as pk_radio
 
@@ -82,7 +82,7 @@ def setup_obs_properties_praise(sdata,redshift,angles = [0,0,0],plane="xz"):
 
     return returns
 
-def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outputs="last",angles=[0,0,0],plane="xz"):
+def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,part_outputs="last",angles=[0,0,0],plane="xz"):
     """
     Calculates the particle emssion using PRAiSE (plutokore: pk_radio) under adiabatic, sychrotron and inverse compton losses.
     Surface brightness is then calculated by integrating emissivity with raytracing.    
@@ -93,19 +93,22 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
     :param angle: Description
     """
     pk_sim = sdata.to_plutokore() #convert SimulationData object to plutokore PlutoSimulation
-    particle_outputs = [prw.get_particle_outputs(sdata.wdir)] if particle_outputs == "last" else particle_outputs
-    particle_spacing = sdata.part_to_simtime(particle_outputs[0]) / particle_outputs[0]
+    part_outputs = [prw.get_particle_outputs(sdata.wdir)] if part_outputs == "last" else part_outputs
+    particle_spacing = sdata.part_to_simtime(part_outputs[0]) / part_outputs[0]
     s=2.2   # for injection spectral index alpha=-0.55. NOTE: the PRAiSE default is also 2.2
 
-    particle_data = sdata.load_particle_data(output=particle_outputs[-1],force_check=False) #NOTE force_check turned off here to allow faster calcs with no checks
-    if "density" not in particle_data and "rho" in particle_data:
-        particle_data["density"] = particle_data["rho"]
+    #load all the available particle files from hdf5
+    particle_data = sdata.load_particle_data(part_output=part_outputs[-1],force_check=False) #NOTE force_check turned off here to allow faster calcs with no checks
+    alias_map = {"rho": "density", "prs": "pressure", "tr1": "tracer"} #NOTE use to convert to praise format
+    for short_key, long_key in alias_map.items():
+        if long_key not in particle_data and short_key in particle_data:
+            particle_data[long_key] = particle_data[short_key]
 
     particle_times = particle_data["particle_times"]
     particle_emis = pk_radio.praise2.praise(
         sim=pk_sim,
-        max_output=particle_outputs[-1],
-        emit_outputs=particle_outputs, #calc emission for these outputs
+        max_output=part_outputs[-1],
+        emit_outputs=part_outputs, #calc emission for these outputs
         output_system="particles", #idx in grid or particles
         freqs=(freqs*u.GHz).si.value, #list of GHz freqs to calc for 
         part_data=particle_data, 
@@ -123,8 +126,8 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
     all_nan_masks = []
     sb_arr = []
     integ_emis = []
-    for i in  range(0, len(particle_outputs), 1):    
-        part_ind = particle_outputs[i]
+    for i in  range(0, len(part_outputs), 1):    
+        part_ind = part_outputs[i]
         nan_mask = ~np.isnan(particle_data["id"][:, part_ind]) 
         all_nan_masks.append(nan_mask)
         
@@ -169,18 +172,19 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,particle_outp
 
     return sb_arr
 
-def _compute_sb_task(sim,output,angles,freqs,redshift,plane='xz'):
+def _compute_sb_task(sim,grid_output,angles,freqs,redshift,plane='xz'):
     """Runs the computation needed for save_sb_hdf5 to run in parallel"""
-    print(f"Computing SB data for {sim.run_name} output={output} angle={angles}°...")
+    print(f"Computing SB data for {sim.run_name} grid output={grid_output} angle={angles}°...")
     obs_properties = setup_obs_properties_praise(
         sdata=sim, redshift=redshift, angles=angles, plane=plane   # angles= not angle=
     )
 
+    part_output = sim.simtime_to_part(grid_output,round_val=True) #convert to particle output for calculation
     sb_arr = calc_surface_brightness_praise(
         sdata=sim,
         freqs=freqs,
         redshift=redshift,
-        particle_outputs=[output],
+        part_outputs=[part_output],
         angles=angles,
         plane=plane,
     )
@@ -221,7 +225,9 @@ def _compute_sb_task(sim,output,angles,freqs,redshift,plane='xz'):
 
     task_data = {
         "run_name": sim.run_name,
-        "output": output,
+        # "output": part_output,
+        "grid_output": grid_output,     # the identifier you key by
+        "part_output": part_output,     # only used internally to fetch/compute
         "angles": angles,
         "freq_sb": freq_sb,
         "log_sb": log_sb,
@@ -234,23 +240,25 @@ def _compute_sb_task(sim,output,angles,freqs,redshift,plane='xz'):
   
     return task_data
 
-def save_sb_hdf5(sim,outputs,angles, freqs, redshift=0.05, plane='xz',memory=None):    
+def save_sb_hdf5(sim,grid_outputs,angles, freqs, redshift=0.05, plane='xz',memory=None,task_req_mem=30):    
+    # part_outputs = sim.simtime_to_part(grid_outputs,round_val=True)
     file_path = os.path.join(sim.wdir, f"sbdata.h5") 
     fmode = "a" if os.path.exists(file_path) else "w"
 
     task_args = []
     with h5py.File(file_path, fmode) as h5f:
-        for output in outputs:
+        for grid_output in grid_outputs:
             for angle_set in angles: #calculate sb per output per angle set 
-                if f'{redshift}/{output}/{angle_set}' in h5f:
-                    existing = set(h5f[f'{redshift}/{output}/{angle_set}'].attrs.get('freqs', []))
+                if f'{redshift}/{grid_output}/{angle_set}' in h5f:
+                    existing = set(h5f[f'{redshift}/{grid_output}/{angle_set}'].attrs.get('freqs', []))
                     if set(freqs) <= existing:
-                        print(f"Found angles '{angle_set}' with freqs {freqs} in '{file_path}/{redshift}/{output}', skipping calculation...")
+                        print(f"Found angles '{angle_set}' with freqs {freqs} in '{file_path}/{redshift}/{grid_output}', skipping calculation...")
                         continue
-                task_args.append((sim, output, angle_set, freqs, redshift, plane))
+                task_args.append((sim, grid_output, angle_set, freqs, redshift, plane))
 
 
-    n_workers = pu.setup_workers(n_tasks=len(task_args),task_req_mem=30,memory=memory) #NOTE helper to find number of workers
+    n_workers = pu.setup_workers(n_tasks=len(task_args),task_req_mem=task_req_mem,memory=memory) #NOTE helper to find number of workers
+    # context = multiprocessing.get_context("spawn") #NOTE use if you get errors with mp
     with multiprocessing.Pool(n_workers) as pool:
         results = pool.starmap(_compute_sb_task, task_args, chunksize=1)
 
@@ -266,7 +274,7 @@ def save_sb_hdf5(sim,outputs,angles, freqs, redshift=0.05, plane='xz',memory=Non
             grid = run_data.require_group("grid").require_group(plane) #store the grid data per run and per plane
             grid_written = "grid_x" in grid 
             
-            timestep = run_data.require_group(f"{task_data['output']}") #NOTE this is a string of the particle output number -> maybe tstr?
+            timestep = run_data.require_group(f"{task_data['grid_output']}") #NOTE this is a string of the particle output number -> maybe tstr?
             angle = timestep.require_group(f"{task_data['angles']}") # /timestep/angle e.g. 500/[0,0,0] as str
 
             for name in ('sb', 'log_sb', 'rot_mat', 'contour_levels', 'alpha'): #NOTE this line runs when new freqs are found -> delete old and recompute 
