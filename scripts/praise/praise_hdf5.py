@@ -1,29 +1,40 @@
 print("Importing libraries...") #TODO add a verbose tag to see the import time
 
+from pathlib import Path
+import os
+os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+
 import plutonlib.simulations as ps
 # import plutonlib.analysis as pa
 import plutonlib.surface_brightness as pl_sb
-from plutonlib.pbs_job import create_run_script, submit_run_script
+from plutonlib.pbs_job import init_script_dirs,create_run_script, submit_run_script
 
 import yaml
-import os
 
 import itertools
 import numpy as np 
 
 import argparse
-import sys
-import logging
+# import sys
+# import logging
 
 print("Import complete")
 
-def_yml_path = "/u/alainm/plutonlib/scripts/praise/praise_setup.yml"
+def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml"
 def_redshift = 0.02
 nlfreqs = 8
 plane = 'xz'
 
+def dry_run(sim,grid_output,angles,freqs,redshift):
+    print("Executing a dry run to gauge memory usage...\n")
+    task = pl_sb._compute_sb_task(sim=sim,grid_output=grid_output,angles=angles,freqs=freqs,redshift=redshift)
+    print("Dry run complete!\n")
+    return task["peak_gb"]
+
 def run_sb_calc(args):
-    if not os.path.isfile(args.yml):
+    # if not os.path.isfile(args.yml):
+    if not Path(args.yml).exists():
         raise FileNotFoundError(f"yaml file '{args.yml}' does not exist, specify yaml file with --yml arg")
 
     with open(args.yml,'r') as file:
@@ -58,28 +69,48 @@ def run_sb_calc(args):
         elif not isinstance(angles, list):
             raise TypeError(f"'angles' is type = {type(angles)}, either use list input or 'all' for a generated list.")
 
-        # file_path = os.path.join(args.wdir,f"sbdata_{sim_params['config']}.h5")
-        # pa.save_sb_hdf5(sim_dict={sim:outputs},angle_dict={sim:angles},freqs=freqs,redshift=args.redshift,plane=plane,alt_filepath = file_path,memory = args.memory)
-        pl_sb.save_sb_hdf5(sim=sim,outputs=outputs,angles=angles,freqs=freqs,redshift=args.redshift,plane=plane,memory = args.memory)
+        if args.no_dry_run: #do a dry run to see the memory usage, else use 30gb per worker
+            req_mem = 30 
+        else:
+            req_mem = dry_run(sim,outputs[-1],angles[0],freqs,args.redshift)
+
+        pl_sb.save_sb_hdf5(
+            sim=sim,
+            grid_outputs=outputs,
+            angles=angles,
+            freqs=freqs,
+            redshift=args.redshift,
+            plane=plane,
+            memory = args.memory,
+            task_req_mem=req_mem
+            )
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--yml",type=str,help=f"Path to praise setup yaml defaults to {def_yml_path}",default=def_yml_path)
     parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
-    # parser.add_argument("-d","--wdir",type=str,help=f"Path to working dir (save location for h5 file), defaults to {"./"}",default="./")
     parser.add_argument("-c","--cluster",help="Submits this script as a PBS job to kunanyi",action="store_true")
-
+    parser.add_argument("-d","--no_dry_run",help="Dont pre-run a SB calculation to see memory usage and allocate workers",action="store_true")
     parser.add_argument("--job-name", default="sb_calc")
     parser.add_argument("--job-length", type=int, default=24)
     parser.add_argument("--nodes", type=int, default=1)
     parser.add_argument("--cpus", type=int, default=28)
-    parser.add_argument("--memory", type=int, default=840) #NOTE if using a full node worth of cpus for each 30gb job -> 840Gb of mem
-
+    parser.add_argument("--memory", type=int, default=128) #NOTE if using a full node worth of cpus for each 30gb job -> 840Gb of mem
     args = parser.parse_args()
 
     if args.cluster:
-        script_path = os.path.abspath(__file__)
-        cmd = f'python3 -u "{script_path}" --yml "{args.yml}" --redshift {args.redshift} --memory {args.memory}'
+        output_dir = init_script_dirs("~",files=[Path(args.yml).expanduser()],cluster=True) #NOTE set output dir to user home
+        script_cluster = output_dir / Path(__file__).name #use script file in output dir
+        yml_cluster = output_dir /Path(args.yml).name #use yml file in output dir
+
+        cmd = ( #NOTE removes script files after job finishes 
+            f'python3 -u "{str(script_cluster)}" --yml "{str(yml_cluster)}" '
+            f'--redshift {args.redshift} --memory {args.memory} '
+            f'&& rm -rf "{output_dir}"'
+        )
+
+        if args.no_dry_run:
+            cmd += " --no_dry_run"
         script_info = create_run_script(
             cmd=cmd,
             job_name=args.job_name,
@@ -88,8 +119,7 @@ def main():
             cpus=args.cpus,
             memory=args.memory,
         )
-        job_id = submit_run_script(script_info=script_info)
-        print(f"Submitted job {job_id}")
+        submit_run_script(script_info=script_info)
     else:
         run_sb_calc(args)
 

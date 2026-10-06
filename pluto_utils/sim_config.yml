@@ -1,0 +1,15 @@
+base_sim_dir: "~/pluto-master/Simulations/"
+
+simulations:
+  Q36_v01_a25_wx064z064_eox58z58: #relative path from base_sim_dir
+    sim_type: "Jet_mvinj"
+    ini_file: "~/plutonlib/pluto_utils/pluto_template.ini" #path to ini file
+    pluto_config: None
+    remnant: False
+    restart: [False,0]
+    long_job: False
+    compression: False
+    guess_nodes: False
+    dbl.h5: [True,1] #yes output dbl, every 1 Myr
+    flt.h5: [True,1]
+

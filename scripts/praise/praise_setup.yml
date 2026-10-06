@@ -1,5 +1,5 @@
 #Define which sims, outputs, freqs and angles to calculate PRAiSE SB for
-save_dir: "./"
+# save_dir: "./"
 redshift: 0.02
 
 configs:
@@ -13,7 +13,16 @@ configs:
     log_space: True
     angles: [[0, 0, 0], [0, 10, 0], [0, 20, 0], [0, 30, 0], [0, 40, 0], [0, 50, 0],[10, 0, 0], [10, 10, 0],]
 
+  wat_proj:
+    freqs: [0.144,0.614,1.4,4.85]
+    log_space: False
+    angles: [[0,0,0],[0,0,90],[120,0,90],[120,10,70],[120,10,80],[120,10,90],[120,10,100]]
+
 simulations:
   /u/alainm/pluto-master/Simulations/Jet_mvinj/Q36_v01_a25_wx064z064_eox58z58:
     config: "hybrids_all"
-    outputs: [500]
+    outputs: [50]
+
+  # /u/alainm/pluto-master/Simulations/Jet_mvinj/Q37_v01_a25_wx1.6:
+  #   config: "wat_proj"
+  #   outputs: [50]
