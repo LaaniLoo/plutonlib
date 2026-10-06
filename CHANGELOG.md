@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2026-10-06
+
+### 🚀 Features
+
+
+- *(simulation_report.py)* added a SimulationReport dataclass
+
+Used to quickly produce a report for a given simulation -> `SimulationReport.from_sim(sim)`. Currently WIP just prints grid, output and particle info
+
+- *(pbs_job.py)* created a script to send pbs jobs to the cluster via a python wrapper
+
+Copies the calling script to the cluster, builds the PBS script from job args (nodes, cpus, memory, walltime), submits it over ssh with qsub and prints the job info.
+
+
+### 🐛 Bug Fixes
+
+
+- *(fancy_plot.py)* cleaned up helpers, all plot functions here
+
+All plotting functions are here now, helpers properly separated by mpl image/scatter etc
+
+- *(simulations.py)* all outputs either grid_outputs or part_outputs, added quick fig, get_jet_data_sb and load_sb_data
+
+Can now do `sim.quick_fig_fluid(var="rho",gird_output = 50,**kwargs)` to quickly plot the fluid vars of a sim with `fancy_plot` `kwargs`. Can now get jet spline data from either `load_jet_data_tr` or `load_jet_data_sb`. Quick loading of sbdata with `load_sb_data`. WIP: switching to pathlib
+
+- *(splines.py)* get_jet_splines_sb now works with rotations
+
+Spline functions separated by method, either `get_jet_splines_tr` or `get_jet_splines_sb`
+
+- *(surface_brightness.py)* saving and loading surface brightness is done with grid_outputs not part_outputs
+
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Refactoring
+
+
+- *(config.py)* updated global vars to PLUTO_PATH and SIM_PATH
+
+
+- *(read_write.py)* Changed all outputs to either grid_outputs or part_outputs, load individual particle vars
+
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.15.0] - 2026-09-16
 
 ### 🚀 Features
