@@ -1,15 +1,60 @@
-base_sim_dir: "~/pluto-master/Simulations/"
+#---NOTES---#
+#STRUCTURE#
+  # Each simulation type/group (first level below `simulations`) shares a pluto/jet-setup config
+  # Individual runs are inside the simulation group with subdirectories run_name/run_info, run_name/log
+  # Remnant simulations are a subdir of simulation run e.g run_name/remnant/log etc
 
-simulations:
-  Q36_v01_a25_wx064z064_eox58z58: #relative path from base_sim_dir
-    sim_type: "Jet_mvinj"
-    ini_file: "~/plutonlib/pluto_utils/pluto_template.ini" #path to ini file
-    pluto_config: None
-    remnant: False
-    restart: [False,0]
-    long_job: False
-    compression: False
-    guess_nodes: False
+#FILE PATHS#
+  # running pluto_setup.py or pluto_run.py in SSH mode (run locally without --local flag)
+    # files specified in this yaml will be copied from the local machine to the cluster simulation
+
+  # running pluto_setup.py or pluto_run.py directly from the cluster
+    # files will be copied from cluster -> cluster
+
+  # ini_file: path to ini file to use for run, will be copied and renamed
+
+#DEFINITIONS#
+  # add only what you want to change, use the same case and syntax as .h file
+#---END---#
+
+simulations_root: "~/pluto-master/Simulations/"
+modules: ["HDF5","OpenMPI/4.1.5-GCC-12.3.0-pbs"]
+
+simulations: 
+  yml_test: 
+    pluto_config: 'cluster_hd'
+    runs: 
+      test_run:
+        ini_file:
+        job_config: 'normal'
+        restart: [False,0]
+        remnant: True
+
+job_config:
+  normal:
+    nodes: 10
+    cpus: 28
+    job_length: 24
+    compression: True
     dbl.h5: [True,1] #yes output dbl, every 1 Myr
     flt.h5: [True,1]
 
+pluto_config:
+  cluster_hd:
+    makefile: "Kunanyi.gcc.defs"
+    jet_setup_path: '~/jet-setup'
+    defs: 
+      PHYSICS: "HD"
+      DIMENSIONS: 3
+      GEOMETRY: "CARTESIAN"
+      EOS: "IDEAL"
+      TIME_STEPPING: "RK2"
+      RECONSTRUCTION: "LINEAR"
+      PARTICLES: "PARTICLES_LP"
+    defs_usr: #definitions_usr.h
+      DENSITY_PROFILE: "ENV_KING"
+      UNIQUE_JETS: "YES"
+      JET_INJECTION_ZONE: "SPHERICAL_INJECTION_ZONE"
+      JET_INJECTION_CAP: "YES"
+      JET_RELATIVISTIC_DENSITY: "NO"
+      PARTICLES_LP_RAISE: "YES"
