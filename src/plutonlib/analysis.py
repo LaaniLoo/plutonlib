@@ -1,7 +1,4 @@
 import plutonlib.utils as pu
-# import plutonlib.config as pc
-# import plutonlib.read_write as prw
-# import plutonlib.simulations as ps
 
 import numpy as np
 from scipy import constants
@@ -16,6 +13,17 @@ def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return {"idx":idx, "value": array[idx]}
+
+def nearest_cell_idx(grid, vals):
+    i = np.clip(np.searchsorted(grid, vals), 1, len(grid) - 1)
+    return i - (vals - grid[i - 1] < grid[i] - vals)
+
+def calc_path_length(points):
+    """Total length of a path through an (N, 2) array of xy points."""
+    pts = np.asarray(points, dtype=float)
+    if pts.ndim == 1:
+        pts = pts[:, None]            # treat as 1D positions
+    return np.linalg.norm(np.diff(pts, axis=0), axis=1).sum()
 
 #---Array profile slices---#
 def get_grid_idx(value,sdata,coord):
@@ -194,10 +202,28 @@ def locate_injection_region(rho_0,T,wind_vxx,sim_time):
     inj_xyz.append(sim_time)
     return inj_xyz
 
-def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
+def calc_v_wind_mag(wind_arr,jet_dir):
+    """Gets the correct v_wind magnitude based on the direction of the wind components"""
+    jet_dir = np.asarray(jet_dir,dtype=float) / np.linalg.norm(jet_dir)
+
+    wind_arr = np.array([v.value if isinstance(v, u.Quantity) else v for v in wind_arr])
+    wind_par = (wind_arr @ jet_dir) * jet_dir #part of the wind parallel to the jet
+    wind_perp = wind_arr - wind_par           #part of the wind perpendicular to the jet
+
+    headwind = wind_arr @ jet_dir < 0 
+    crosswind = np.linalg.norm(wind_perp) > 1e-9
+
+    if headwind and crosswind: #wind perpendicular and head on
+        return np.linalg.norm(wind_arr)
+    elif crosswind: #wind perpendicular to jet
+        return  np.linalg.norm(wind_perp)
+    else: #e.g HT source or one-sided jet
+        return 0.0
+
+def calc_length_scales(Q,rho,v_jet,theta,T,wind_arr = [0,0,0]):
     """
     Calculates the length scales from Krause (2012). 
-    L1: Length at which the jet density becomes compariable to the external density
+    L1: Length at which the jet density becomes comparable to the external density
     L1a: Jet recollimation, sideways ram pressure = ambient pressure
     L1b: cocoon formation
     L1c: terminal shock
@@ -207,17 +233,16 @@ def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
         Q (float): Jet kinetic power [W]
         rho (float): Environment density [kgm^-3]
         v_jet (float): Jet injection velocity [c]
-        theta (float): Half opening angle of jet in degreees
+        theta (float): Half opening angle of jet in degrees
         T (float): Environment temperature [K]
         v_wind (float): Velocity of environment cross wind [ms^-1], defaults to 0 (no wind)
 
     Returns:
         lscale_dict (dict): dictionary with L1x as keys (length scales in kpc)
     """
-    Q, rho, v_jet, theta, T,v_wind = [v.value if isinstance(v, u.Quantity) else v for v in [Q, rho, v_jet, np.deg2rad(theta), T,v_wind]]
-    
+    Q, rho, v_jet, theta, T = [v.value if isinstance(v, u.Quantity) else v for v in [Q, rho, v_jet, np.deg2rad(theta), T]]
+    wind_arr = [v.to(u.m/u.s).value if isinstance(v, u.Quantity) else v for v in wind_arr]
     to_kpc = astro_const.kpc.value / u.kpc
-    # to_kpc = 1
 
     gamma = 5/3
     Omega = 2*np.pi*(1-np.cos(theta))
@@ -225,7 +250,9 @@ def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
     prs_env = EOS(rho=rho,T=T).value
 
     M_jet = v_jet/c_s
-    M_wind = v_wind/c_s
+
+    v_winds = [calc_v_wind_mag(wind_arr,jet_dir) for jet_dir in [[0,0,1],[0,0,-1]]] #wind magnitudes for top and bottom jets
+    M_winds = [v_wind/c_s for v_wind in v_winds]
 
     L1 = (2 * np.sqrt(2) * np.sqrt(Q / (rho * v_jet ** 3)))
     L1a = (np.sqrt(((gamma)/(4*Omega)) * M_jet**2 * np.sin(theta)**2 * L1**2)) 
@@ -235,7 +262,7 @@ def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
 
     r_jet = L1a * np.tan(theta)
     # L_bend = (gamma * np.pi * (1-np.cos(theta)) * r_jet * prs_env )**-1 * M_wind**-2 * (Q/v_jet)
-    L_bend = (L1b**2/r_jet) * (M_jet**2/M_wind**2)
+    L_bend = [(L1b**2/r_jet) * (M_jet**2/M_winds[0]**2),(L1b**2/r_jet) * (M_jet**2/M_winds[1]**2)] #top and bottom jet
 
     eta = (L1b/L1a)**2
 
@@ -245,7 +272,7 @@ def calc_length_scales(Q,rho,v_jet,theta,T,v_wind = 0):
             "L1b": L1b / to_kpc,
             "L1c": L1c / to_kpc,
             "L2": L2 / to_kpc,
-            "L_bend": L_bend / to_kpc,
+            "L_bend": [L/to_kpc for L in L_bend],
             "r_jet": r_jet / to_kpc,
             "eta": eta,
 
