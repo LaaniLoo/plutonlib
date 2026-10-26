@@ -52,11 +52,12 @@ def init_script_dirs(wdir=None,files=None,cluster=False,host="kunanyi"):
 
     return script_dir
 
-def create_run_script(*,cmd,job_name,job_length,nodes,cpus=28, memory=None):
+def create_run_script(*,cmd,job_name,job_length,nodes,cpus=28,log_dir=None, memory=None):
     mem_str = " " if memory is None else f":mem={memory}gb"
     large_mem = memory is not None and memory > 128
     high_mem_q = "#PBS -q LARGE_MEM" if large_mem else ""
     cpu_resource_str = f"#PBS -lselect={nodes}:ncpus={cpus}:mpiprocs={cpus}" + mem_str
+    # log_str = [f"#PBS -o {log_dir}/", f"#PBS -e {log_dir}/"] if log_dir else [f"#PBS -e {job_name}_log"]
 
     run_script = "\n".join(
         [
@@ -65,13 +66,13 @@ def create_run_script(*,cmd,job_name,job_length,nodes,cpus=28, memory=None):
             f"#PBS -lwalltime={job_length}:00:00",
             f"#PBS -N {job_name}",
             high_mem_q,
-            f"#PBS -j eo",
-            f"#PBS -k oe",
+            # f"#PBS -j eo",
+            # f"#PBS -k oe",
             f"#PBS -m abe", #email 
             f"#PBS -M alain.mackay@utas.edu.au",
-            f"#PBS -e {job_name}_log",
+            # *log_str,
             f"conda activate {environment}",
-            f"module load {' '.join(modules)}",
+            f"module load {' '.join(modules)}", #NOTE REMOVED MODULES HERE
             "export NUMBA_THREADING_LAYER=workqueue", #NOTE fixes some multiprocessing bug causing it to crash
             "export NUMBA_NUM_THREADS=1",
             cmd, #what actually is being run
@@ -84,28 +85,6 @@ def create_run_script(*,cmd,job_name,job_length,nodes,cpus=28, memory=None):
     }
 
     return script_info
-
-def submit_run_script(*,script_info):
-    print(f"Submitting {script_info['job_name']} job to kunanyi")
-
-    try:
-        job = subprocess.run(
-            ["ssh","-vvv", "kunanyi", "qsub", "-"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            input=script_info['run_script'],
-            check=True,
-        )
-
-    except subprocess.CalledProcessError as e:
-        print(e.stdout)
-        print(e.stderr)
-        raise e
-
-    job_id = job.stdout.strip()
-    print(f"Submitted {job_id}")
-    check_job(job_id)
 
 def check_job(job_id):
     try:
@@ -145,8 +124,34 @@ def check_job(job_id):
         "Output_Path",
         "comment",
     ]    
-    info_str = [f"{k}: {job_info[k]}" for k in keys]
-    print("\n".join(info_str))
+    summary = {k: job_info.get(k, "n/a") for k in keys}
+    print("\n".join(f"{k}: {v}" for k, v in summary.items()))
+
+    return summary
+
+def submit_run_script(*,script_info,workdir=None):
+    print(f"Submitting {script_info['job_name']} job to kunanyi")
+    remote_cmd = f'cd "{workdir}" && qsub -' if workdir else "qsub -"
+    try:
+        job = subprocess.run(
+            ["ssh","-vvv", "kunanyi",remote_cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            input=script_info['run_script'],
+            check=True,
+        )
+
+    except subprocess.CalledProcessError as e:
+        print(e.stdout)
+        print(e.stderr)
+        raise e
+
+    job_id = job.stdout.strip()
+    print(f"Submitted {job_id}")
+    info_str = check_job(job_id)
+
+    return job_id,info_str
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

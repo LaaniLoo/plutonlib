@@ -4,7 +4,8 @@ import plutonlib.analysis as pa
 import plutonlib.plot_data as pp
 import plutonlib.read_write as prw
 import plutonlib.utils as pu
-import plutonlib.splines as ps
+import plutonlib.splines as pl_splines
+import plutonlib.morphology as pl_morph
 
 import matplotlib.pyplot as plt
 import scienceplots
@@ -22,7 +23,7 @@ import math
 import time
 import numpy as np
 
-def _get_fontsize(fig_size, ttype):
+def _get_fontsize(fig_size, ttype=None):
     if ttype == "text":
         return 3 * fig_size
     elif ttype == "ticks":
@@ -34,6 +35,9 @@ def _get_fontsize(fig_size, ttype):
     
 def _get_ticksize(fig_size):
     return 0.8*fig_size
+
+def _get_markersize(fig_size):
+    return 10*fig_size
 
 def _label_sim(sdata,pdata,is_1D = False):
     ax = pdata.axes[pdata.plot_idx]
@@ -219,17 +223,20 @@ def _im_scatter_particles(sdata,pdata,tr_cut=None,**kwargs):
     plane_map = {"xy": ["x1","x2"], "xz": ["x1","x3"], "yz": ["x2","x3"]}
     # var_map = {"tr1":"tracer","rho":"density","prs":"pressure"}
     ax = pdata.axes[pdata.plot_idx]
-    particle_var = pdata.var_name #var_map.get(pdata.var_name,pdata.var_name)
-    particle_data = sdata.load_particle_data(part_output=(pdata.output,),tr_cut=tr_cut)
+    coord_choice = plane_map[pdata.plane]
+    particle_data = sdata.load_particle_data(
+        part_output=(pdata.output,),
+        tr_cut=tr_cut,
+        var_choice = [pdata.var_name,coord_choice[0],coord_choice[1]]
+    )
 
     is_log = pdata.var_name in ('rho', 'prs')
     vars_data = (
-        np.log10(particle_data[particle_var])
+        np.log10(particle_data[pdata.var_name])
         if is_log
-        else particle_data[particle_var]
+        else particle_data[pdata.var_name]
     )
 
-    coord_choice = plane_map[pdata.plane]
     X = particle_data[coord_choice[0]]
     Y = particle_data[coord_choice[1]]
     pdata.im = ax.scatter(X,Y,c=vars_data,s=2.5,cmap = pdata.get_colourmap(var_name = pdata.var_name))
@@ -523,7 +530,7 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
 
                 # --- spline overlay --- (unique to this plotter) #TODO needs helper
                 ax = pdata.axes[pdata.plot_idx]
-                spline_data = ps.get_jet_splines_tr(sdata=sim, grid_output=output, tr_stop=tr_stop)
+                spline_data = pl_splines.get_jet_splines_tr(sdata=sim, grid_output=output, tr_stop=tr_stop)
                 spline_points = spline_data["spline_points"]
                 ax.plot(spline_points[:, 0], spline_points[:, 1], color='k', linestyle='--')
 
@@ -569,6 +576,8 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
 
+    if len(sim_dict) != len(angle_dict):
+        raise KeyError("Length of sim_dict and angle_dict dont match")
     entries = {}
     for sim, outputs in sim_dict.items():
         for output in outputs:
@@ -617,9 +626,15 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
         plt.close(pdata.fig) 
     return pdata
 
-def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,params,fname=None,query_points=None,**kwargs):
+def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
+    path_params = path_params or pl_splines.PathParams()
+
+    
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
+
+    if len(sim_dict) != len(angle_dict):
+        raise KeyError("Length of sim_dict and angle_dict dont match")
 
     entries = {}
     for sim, outputs in sim_dict.items():
@@ -637,10 +652,9 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,params,fname=None,
         pdata = setup_subplots(sim_dict=sim_dict_angles, **kwargs)
 
         if pdata.vmax is None:
-            pdata.vmax = float(max(np.log10(np.nanpercentile(e["sb"], 99)) for e in entries.values())) #this should be across all freqs
+            pdata.vmax = float(max(np.log10(np.nanpercentile(e["sb"], 99)) for e in entries.values())) 
         if pdata.vmin is None:
             pdata.vmin = pdata.vmax - 1
-
 
         for sim, outputs in sim_dict.items():
             pdata.label = True
@@ -651,14 +665,30 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,params,fname=None,
                     pdata.output    = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
-                    ax = pdata.axes[pdata.plot_idx]
-                    spline_data = ps.get_jet_splines_sb(sim,output,angles,freq,redshift,params=params)
-                    jet_splines = spline_data['jet_splines']
-                    grid_my, grid_mx = spline_data["grid_my"],spline_data["grid_mx"]
+                    ax = pdata.axes[pdata.plot_idx]                    
+                    spline_data = pl_splines.get_jet_splines_sb(
+                        sim=sim,
+                        grid_output=output,
+                        freq=freq,
+                        redshift=redshift,
+                        angle=angles,
+                        path_params=path_params,
+                    )
+                    top = spline_data["splines_top"]
+                    bot = spline_data["splines_bot"]
+                    mx, my = spline_data["grid_mx"],spline_data["grid_my"]
                     inj_idx = spline_data['inj_idx']
 
-                    ax.plot(jet_splines[:,0],jet_splines[:,1],color="k",linewidth = 1.5,linestyle = 'dashed')
-                    ax.scatter(grid_mx[inj_idx],grid_my[inj_idx],marker="x",color='red')
+                    peak_x, peak_y = pl_morph.get_sb_max_xy(spline_data)
+                    fr_info_top, fr_info_bot = pl_morph.get_fr_idx_spl(spline_data)
+                    fr_labels = [f"{info[1]} ({info[0]:.2f})" if info[0] is not None else "Single-sided" for info in (fr_info_top,fr_info_bot)]
+
+                    ax.scatter(mx[inj_idx],my[inj_idx],marker = "x", color = "r",s=_get_markersize(fig_size))
+                    ax.scatter(peak_x,peak_y,color = "red", s = 3*fig_size,label = "$x_{\\rm{bright}}$") #max sb for top jet
+                    ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = f"Top jet: {fr_labels[0]}") #plot the top splines
+                    ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = f"Bottom jet: {fr_labels[1]}") #plot the bottom splines
+
+                    ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
 
                     if query_points is not None:
                         query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
@@ -678,6 +708,9 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,params,fname=None,
     return pdata
 
 def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=None, **kwargs):
+    if len(sim_dict) != len(angle_dict):
+        raise KeyError("Length of sim_dict and angle_dict dont match")
+    
     entries = {}
     for sim, outputs in sim_dict.items():
         for output in outputs:
@@ -783,7 +816,7 @@ def surface_brightnes_1D(sdata,grid_output,angles,freq,redshift,tick_axis='x',fn
         pdata.var_name = "sb"
         pdata.label = True
 
-        spline_data = ps.get_jet_splines_sb(
+        spline_data = pl_splines.get_jet_splines_sb(
             sim=sdata,
             grid_output=grid_output,
             angles=angles,

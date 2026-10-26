@@ -1,9 +1,10 @@
 # from logging import warn
 
 import plutonlib.config as pc
+import plutonlib.units as pl_units
 import plutonlib.analysis as pa
 
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from astropy import units as u
 from astropy import constants as astro_const 
 import scipy.constants as const
@@ -16,9 +17,9 @@ class SimInfoSetup:
     """
     _unit_map = {} #maps dataclass attrs to user specified unit values in plutonlib/units ini files
     _param_map = {} #maps dataclass attrs to user parameters present in pluto.ini setups
-    ini_file = "jet_units"
+    usr_ini_path = None #defaults to /plutonlib/units/usr_units.ini
     def __post_init__(self):
-        units = pc.PlutoUnits.from_ini(ini_file=self.ini_file)
+        units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=self.usr_ini_path)
         for sim_v,map_v in self._unit_map.items():
             value = getattr(self,sim_v)
             if map_v is None:
@@ -59,7 +60,7 @@ class SimInfoSetup:
         Returns:
             SimInfoSetup: _description_
         """
-        units = pc.PlutoUnits.from_ini(ini_file=cls.ini_file)
+        units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=cls.usr_ini_path)
         mapped_params = {}
         for usr_param, param in cls._param_map.items():
             unit_key = cls._unit_map.get(param)
@@ -90,7 +91,8 @@ class SimInfoSetup:
             SimInfoSetup: _description_
         """
         usr_params = pc.pluto_ini_info(ini_file=ini_file)["usr_params"]
-        units = pc.PlutoUnits.from_ini(ini_file=cls.ini_file)
+        # units = pl_units.PlutoUnits.from_ini(ini_file=cls.ini_file)
+        units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=cls.usr_ini_path)
 
         mapped_params = {}
         for usr_param, param in cls._param_map.items():
@@ -177,8 +179,6 @@ class JetInfo(SimInfoSetup):
     Args:
         SimInfoSetup (class): setup class that initialises units/parameter fetching from methods shared by dataclasses
 
-    Raises:
-        ValueError: raises value error if multiple wind components due to L_bend, #NOTE change to 3D vector
     """
     Q:          u.Quantity = 0
     v:          u.Quantity = 0
@@ -193,7 +193,7 @@ class JetInfo(SimInfoSetup):
     L1b:        u.Quantity = 0
     L1c:        u.Quantity = 0
     L2:         u.Quantity = 0
-    L_bend:     u.Quantity = 0
+    L_bend: list[u.Quantity] = field(default_factory=lambda: [0*u.kpc, 0*u.kpc]) #[top, bottom]
     env:        EnvInfo = None   # optional, only needed for lscales
 
     _unit_map = { #map info variables to pluto units
@@ -224,23 +224,13 @@ class JetInfo(SimInfoSetup):
         
 
         if self.env is not None:
-            wvx_counter = 0
-            v_wind = 0
-            for w in ["wx1", "wx2", "wx3"]:
-                if getattr(self.env, w).value != 0:
-                    v_wind = getattr(self.env, w)
-                    wvx_counter += 1
-                if wvx_counter > 1:
-                    # print(f"Wind velocities have multiple components, cannot find L_bend")
-                    v_wind = np.nan #NOTE needs fixing
-    
             lscales = pa.calc_length_scales(
                 Q       = self.Q,
                 rho     = self.env.rho,
                 v_jet   = self.v,
                 theta   = self.theta,
                 T       = self.env.T,
-                v_wind  = v_wind
+                wind_arr  = [self.env.wx1, self.env.wx2, self.env.wx3]
             )
             self.L1    = lscales["L1"]
             self.L1a   = lscales["L1a"]
@@ -251,5 +241,5 @@ class JetInfo(SimInfoSetup):
             self.radius = lscales["r_jet"]
             self.M = self.v / self.env.c_s
 
-            self.theta_bend = pa.calc_jet_bending_angle(self.L1c.value,self.L_bend.value)
+            self.theta_bend = [pa.calc_jet_bending_angle(self.L1c.value,L.value) for L in self.L_bend]
             self.rho = (pa.calc_jet_density(self.Q,self.v,self.theta,self.radius.to(u.m))).to(u.kg / u.m**3)

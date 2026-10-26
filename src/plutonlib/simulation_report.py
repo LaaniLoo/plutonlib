@@ -101,7 +101,7 @@ class SimulationReport:
     time_unit: str
     last_sim_time: float             # user units
     is_conv: bool                    # whether data is converted to user units
-    ini_file: str
+    # ini_file: str
 
     #---Compression information---#
     n_compressed: int                # outputs with a .compressed file
@@ -132,7 +132,7 @@ class SimulationReport:
         return cls(
             wdir=sim.wdir,
             run_name=sim.run_name,
-            ini_file=pc.get_ini_file(sim.ini_file),
+            # ini_file=pc.get_ini_file(sim.ini_file),
             **_grid_info(sim),
             **_grid_summary(sim),
             **_compression_info(sim),
@@ -170,7 +170,7 @@ class SimulationReport:
             row("last sim time:", f"{self.last_sim_time:.2f} {self.time_unit}"),
             row("data type:", self.dtype),
             row("geometry:", self.geometry),
-            row("units ini file path:",self.ini_file),
+            # row("units ini file path:",self.ini_file),
             row("convert to usr units:", "yes" if self.is_conv else "no (code units)"),
         ]
 
