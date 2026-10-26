@@ -17,79 +17,11 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 
-@dataclass
-class VarInfo:
-    code_uv:    u.Unit      # code unit value  e.g. 1.0023678e-24 g/cm³
-    usr_uv:     u.Unit      # user unit value  e.g. 1 kg/m³
-    code_unit:  u.Unit      # just the unit         e.g. g/cm³
-    var_name:   str         # latex string          e.g. r"$\rho$"
-    coord_name: str = None  # only for x1, x2, x3
-    shp: tuple = None
-    ndim: tuple = None
+from functools import lru_cache
 
-@dataclass
-class PlutoUnits:
-    rho:       VarInfo
-    prs:       VarInfo
-    vx1:       VarInfo
-    vx2:       VarInfo
-    vx3:       VarInfo
-    x1:        VarInfo
-    x2:        VarInfo
-    x3:        VarInfo
-    T:         VarInfo
-    Q:         VarInfo
-    sim_time:  VarInfo
-    tr1:       VarInfo
-
-    @classmethod
-    def from_ini(cls, ini_file=None):
-        if ini_file is None: #gets raise error safer than null assignment
-            ini_path = get_ini_file(ini_file=None)
-            raise ValueError(f"{pcolours.WARNING}ini_file is None, please load defaults from {ini_path}")
-
-        ini_path = get_ini_file(ini_file=ini_file)
-        sel_coords = coord_systems["CARTESIAN"] #gets the coord vars for the specific coord sys #NOTE replace if not cartesian
-
-        config = configparser.ConfigParser()
-        config.optionxform = str
-        config.read(ini_path)
-
-        c_unit = u.def_unit("c",const.c) #adds 1c (speed of light) as constant
-        u.add_enabled_units([c_unit])
-        code_unit_values = {k: u.Unit(v) for k, v in config["code_unit_values"].items()}
-        code_units = {k: u.Unit(v.split("*", 1)[-1]) for k, v in config["code_unit_values"].items()}
-        usr_unit_values = {k: u.Unit(v) for k, v in config["usr_unit_values"].items()}
-
-        var_metadata = { #NOTE can probably depreciate coord_name
-            "rho":      {"var_name": r"$\rho$"},
-            "prs":      {"var_name": r"$P$"},
-            "vx1":      {"var_name": f"$V_{{{sel_coords[0]}}}$"},
-            "vx2":      {"var_name": f"$V_{{{sel_coords[1]}}}$"},
-            "vx3":      {"var_name": f"$V_{{{sel_coords[2]}}}$"},
-            "x1":       {"var_name": f"${sel_coords[0]}$", "coord_name": f"${sel_coords[0]}$"},
-            "x2":       {"var_name": f"${sel_coords[1]}$", "coord_name": f"${sel_coords[1]}$"},
-            "x3":       {"var_name": f"${sel_coords[2]}$", "coord_name": f"${sel_coords[2]}$"},
-            "tr1":      {"var_name": f"Tracer"},
-            "T":        {"var_name": r"$T$"},
-            "Q":        {"var_name": r"$Q_{\rm{jet}}$"},
-            "sim_time": {"var_name": r"$t$"},
-        }
-
-        var_infos = {
-            v: VarInfo(
-                code_uv=code_unit_values[v],
-                usr_uv=usr_unit_values[v],
-                code_unit=code_units[v],
-                **metadata
-            ) for v, metadata in var_metadata.items()
-        }
-        return cls(**var_infos)
-
-# start_dir = r"/mnt/g/My Drive/Honours S4E (2025)/Notebooks/" #starting directory, used to save files starting in this dir
-
-src_path = os.path.join(os.path.expanduser('~'),'plutonlib/src/plutonlib')
-main_path = os.path.join(os.path.expanduser('~'),'plutonlib/')
+#---Paths---#
+PLUTONLIB = Path("~/plutonlib").expanduser()
+SRC_PATH = PLUTONLIB / "src" / "plutonlib"
 
 try:
     PLUTO_PATH = Path(os.environ["PLUTO_DIR"])
@@ -100,6 +32,7 @@ SIM_PATH = PLUTO_PATH / "Simulations"
 if not SIM_PATH.is_dir():#if simulation dir doesn't exist 
     raise FileNotFoundError(f"{pcolours.WARNING} Simulation directory '$PLUTO_DIR/Simulations' not found, needs to be in PLUTO_DIR ({PLUTO_PATH}), ")
 
+#--useful dicts---#
 arr_type_key = {
     "e": "1D cell edge coordinate arrays [x, y, z]",
     "m": "1D cell midpoint coordinate arrays [x, y, z]",
@@ -119,24 +52,6 @@ coord_systems = {
     "SPHERICAL": ['r','theta','phi']  
 }
 
-# Read norm values from ini file
-def get_ini_file(ini_file = None):
-    """
-    Gets pluto_units.ini file from plutonlib src directory,
-    should follow naming convention: name_units.ini 
-    """
-    if ini_file is None:
-        ini_path = os.path.join(main_path,"units","pluto_units" + ".ini")
-
-    else:
-        ini_path = os.path.join(main_path,"units",ini_file + ".ini")
-    
-    is_file = os.path.isfile(ini_path)
-    if not is_file:
-        raise FileNotFoundError(f"{pcolours.WARNING}{ini_path} Not found")
-    
-    return ini_path 
-
 def get_grid_dimensions(grid_setup):
     dim_info = {}
     
@@ -153,20 +68,21 @@ def get_grid_dimensions(grid_setup):
      
     return active_dims
 
-def pluto_ini_info(sim_dir=None,ini_file = None):
+def pluto_ini_info(sim_dir=None,pluto_ini = None):
 
-    if ini_file is not None: #direct ini file input
-            latest_ini = ini_file
+    if pluto_ini is not None: #direct ini file input
+            latest_ini = pluto_ini
     else:
-        job_info_dir = os.path.join(sim_dir,"job_info")
+        run_info_dir = os.path.join(sim_dir,"run_info")
 
-        if os.path.isdir(job_info_dir):
-            job_dir_files = glob.glob(f"{job_info_dir}/*.ini")
+        if os.path.isdir(run_info_dir):
+            job_dir_files = glob.glob(f"{run_info_dir}/*.ini")
             latest_ini = max(job_dir_files,key=os.path.getctime)
 
         else:
-            dir_files = glob.glob(f"{sim_dir}/*.ini")
-            latest_ini = max(dir_files,key=os.path.getctime)
+            raise FileNotFoundError(f"Unable to find latest ini in '{job_dir_files}'")
+            # dir_files = glob.glob(f"{sim_dir}/*.ini")
+            # latest_ini = max(dir_files,key=os.path.getctime)
 
     ini_name = latest_ini.split("/")[-1]
 
@@ -287,40 +203,6 @@ def pluto_ini_info(sim_dir=None,ini_file = None):
 
     return returns
 
-def code_to_usr_units(var_name,raw_data = None, self = 0,ini_file = None):
-    """
-    gets unit value from PlutoUnits to convert from code units to the user specified units in the ini file.
-    """
-    mapped_var_name = pu.map_coord_name(var_name) #makes sure to convert diff XYZ arrays to x1,x2,x3
-    can_convert = True
-    
-    try:
-        pluto_units = getattr(PlutoUnits.from_ini(ini_file=ini_file),mapped_var_name)
-    except AttributeError:
-        print(f"PlutoUnits doesn't have attribute '{mapped_var_name}', may be unitless")
-        can_convert = False
-    
-    # code_uv = pluto_units[mapped_var_name]["code_uv"]
-    code_uv = pluto_units.code_uv if can_convert else None
-    usr_uv = pluto_units.usr_uv if can_convert else None
-    np.asarray(raw_data) if np.any(raw_data) and not isinstance(raw_data,np.ndarray) else raw_data #calc only works if raw_data is numpy array 
-
-    #convert raw_data
-    if code_uv is None or usr_uv is None:  #skips if it doesn't need converting
-        conv_data_uuv = raw_data
-        uv_usr = None
-    else:
-        uv_usr = (1*code_uv).to(usr_uv).value
-        raw_data *= uv_usr
-        conv_data_uuv = raw_data
-
-    returns = {
-        "uv_usr":uv_usr, #like a scale factor??
-        "conv_data_uuv":conv_data_uuv 
-    }
-
-    return returns
-
 # ---Make changes to pluto.ini---#
 def update_ini_value(filepath, section, key, new_value):
     """
@@ -348,11 +230,11 @@ def update_ini_value(filepath, section, key, new_value):
     with open(filepath, 'w') as f:
         f.write('\n'.join(lines))
 
-def calc_chi_from_ini(ini_file):
+def calc_chi_from_ini(pluto_ini):
     """
     Calculates the chi parameter required to pressure match jet in both rel and non-rel cases
     """
-    usr_params = pluto_ini_info(sim_dir=os.path.dirname(ini_file))['usr_params']
+    usr_params = pluto_ini_info(sim_dir=os.path.dirname(pluto_ini))['usr_params']
 
     jet_pwr = usr_params['jet_pwr'] * u.erg / u.s 
     jet_angle = usr_params['jet_oa_primary'] * u.deg
@@ -373,13 +255,13 @@ def calc_chi_from_ini(ini_file):
 
     return chi
 
-def update_chi_pluto_ini(ini_file):
+def update_chi_pluto_ini(pluto_ini):
     """
     Updates pluto.ini with correct JET_CHI parameter to pressure match jet
     """
-    chi = calc_chi_from_ini(ini_file)
+    chi = calc_chi_from_ini(pluto_ini)
     update_ini_value(
-        ini_file,
+        pluto_ini,
         section='Parameters',
         key='JET_CHI',
         new_value=f'{chi.value:.1f}'
