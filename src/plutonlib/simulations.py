@@ -1,5 +1,8 @@
+from matplotlib.pyplot import grid
+
 import plutonlib.read_write as prw
 import plutonlib.config as pc
+import plutonlib.units as pl_units
 import plutonlib.utils as pu
 import plutonlib.analysis as pa
 import plutonlib.splines as ps
@@ -7,6 +10,7 @@ import plutonlib.simulation_info as psim_info
 import plutonlib.simulation_report as pl_report
 import plutonlib.fancy_plot as pl_fancypl
 
+import numpy as np
 
 import os
 import gc
@@ -25,18 +29,8 @@ class SimulationSetup:
     Class used to initialise PLUTO simulation information, e.g. run_name names, save directories, simulation types, ini information etc.
     """
 
-    def __init__(self, rel_path = None,ini_file=None,):
-        self.ini_file = ini_file
-
-        if self.ini_file is None:
-            raise ValueError("ini_file must be specified, for pluto defaults use 'pluto_units'")
-
-        if self.ini_file is not None:
-            ini_dir = Path(Path.home()) / 'plutonlib' / 'units'
-            ini_path = ini_dir / f"{ini_file}.ini"
-
-            if not ini_path.is_file():
-                raise FileNotFoundError(f"ini file {ini_path} not found, available units files: {[f.name for f in ini_dir.iterdir()]}")
+    def __init__(self, rel_path = None,usr_units_ini=None,):
+        self.usr_units_ini = usr_units_ini
 
         #Check that path naming and pluto sim directories are in order
         rel = Path(rel_path)
@@ -82,8 +76,6 @@ class SimulationSetup:
                 raise FileNotFoundError(f"Simulation run name ('{self.run_name}') does not exist in path '{run_dir}'\nAvailable runs in {run_dir}: {avail_runs}")
         if not Path(self.wdir).is_dir(): #NO path at all
             raise FileNotFoundError(f"Simulation directory {self.wdir} does not exist\nNo match for sim_type: '{self.sim_type}' and run_name: '{self.run_name}'")
-
-
 
     #---Properties---#
     @property
@@ -139,10 +131,10 @@ class SimulationData(SimulationSetup):
     def __hash__(self): #generate the hash based on its relative path
         return hash(self.rel_path)
 
-    def __init__(self, rel_path=None,load_outputs=None, ini_file=None,conv=True):
+    def __init__(self, rel_path=None,load_outputs=None, usr_units_ini=None,conv=True):
 
         # Initialize parent class first
-        super().__init__(rel_path, ini_file)
+        super().__init__(rel_path, usr_units_ini)
         self.load_outputs = load_outputs
 
         # Data
@@ -152,7 +144,6 @@ class SimulationData(SimulationSetup):
         
         # Extra
         self._units = None
-        self._geometry = None
 
         if self.rel_path is None:
             raise ValueError("rel_path is set to None, please specify a simulation run to inspect simulation data")
@@ -166,14 +157,13 @@ class SimulationData(SimulationSetup):
             **kwargs: Override specific parameters:
                 - sim_type: str - Simulation type
                 - run_name: str - Run name
-                - ini_file: str - INI file
                 - conv: bool - Whether to convert data  
         Returns:
             SimulationData: New SimulationData instance
         """
         defaults = {
             'rel_path': setup.rel_path,
-            'ini_file': setup.ini_file,
+            'usr_units_ini': setup.usr_units_ini,
         }
         # Allow kwargs to override defaults
         for key, val in defaults.items():
@@ -181,20 +171,19 @@ class SimulationData(SimulationSetup):
                 kwargs[key] = val
         return cls(**kwargs)
 
-    def load_units(self):
-        self._geometry = "CARTESIAN"
-        self._units = pc.PlutoUnits.from_ini(ini_file=self.ini_file)
+    def _load_units(self):
+        self._units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=self.usr_units_ini)
 
     def get_metadata(self,grid_output=None):
         if grid_output is None:
             grid_output = prw.get_file_outputs(self.wdir)
         
         if grid_output not in self._metadata:
-            self._metadata[grid_output] = prw.load_hdf5_metadata(wdir=self.wdir, grid_output=grid_output)
+            self._metadata[grid_output] = prw.HDF5Metadata.from_wdir(wdir=self.wdir, grid_output=grid_output)
 
         if self._metadata[grid_output].time_str == '0 Myr':
             time_unit = str(self.units.sim_time.usr_uv)
-            time_val = pc.code_to_usr_units("sim_time",self.metadata[grid_output].sim_time,ini_file="jet_units")["conv_data_uuv"]
+            time_val = pl_units.code_to_usr_units("sim_time",self.metadata[grid_output].sim_time,usr_ini_path=self.usr_units_ini)["conv_data_uuv"]
             time_str = f"${time_val:.2f} \\; [{time_unit}]$"
 
             self._metadata[grid_output].time_str = time_str
@@ -225,7 +214,7 @@ class SimulationData(SimulationSetup):
             grid_outputs=(grid_output,),
             var_choice=var_choice,
             load_slice=load_slice,
-            ini_file=self.ini_file,
+            usr_ini_path=self.usr_units_ini,
             conv=conv,
         )
         self._metadata[grid_output] = data[grid_output]["metadata"]
@@ -272,7 +261,7 @@ class SimulationData(SimulationSetup):
         data_splines['L_jet'] = interp_data["jet_length"]
         return data_splines
     
-    def load_particle_data(self,grid_output=None,part_output=None,tr_cut = None,force_check=True):
+    def load_particle_data(self,grid_output=None,part_output=None,tr_cut = None,var_choice=None,force_check=True):
         """if output = int, load all particles up to output, if output = tuple, load just that particle output"""
         prw.save_particle_data_hdf5(wdir=self.wdir, force_check=force_check)
 
@@ -291,7 +280,7 @@ class SimulationData(SimulationSetup):
         else:
             part_output = self.simtime_to_part(grid_output, round_val=True)
 
-        data = prw.load_particles_hdf5(self.wdir,part_outputs=part_output,tr_cut=tr_cut)
+        data = prw.load_particles_hdf5(self.wdir,part_outputs=part_output,tr_cut=tr_cut,var_choice=var_choice)
 
         # alias_map = {"rho": "density", "prs": "pressure", "tr1": "tracer"}
         # for short_key, long_key in alias_map.items():
@@ -404,9 +393,15 @@ class SimulationData(SimulationSetup):
         wind_vxx = [self.usr_params["wind_vx1"],self.usr_params["wind_vx2"],self.usr_params["wind_vx3"]]
         return pa.locate_injection_region(rho_0=rho_0,T=T,wind_vxx=wind_vxx,sim_time=sim_time)
 
-    def quick_fig_fluid(self,var="rho",grid_output=None,**kwargs):
-        grid_output = prw.get_file_outputs(self.wdir) if not grid_output else grid_output
-        pdata = pl_fancypl.fluid(sim_dict={self:[grid_output]},var=var,**kwargs)
+    def quick_fig_fluid(self,var="rho",grid_outputs=None,**kwargs):
+        if grid_outputs is None:
+            grid_outputs = [prw.get_file_outputs(self.wdir)]
+        elif isinstance(grid_outputs, (list, tuple, np.ndarray, range)):
+            grid_outputs = list(grid_outputs)  
+        else:
+            grid_outputs = [grid_outputs]
+
+        pdata = pl_fancypl.fluid(sim_dict={self:grid_outputs},var=var,**kwargs)
 
         return pdata.fig
 
@@ -450,15 +445,8 @@ class SimulationData(SimulationSetup):
     @property
     def units(self):
         if self._units is None:
-            self.load_units()
+            self._load_units()
         return self._units
-
-    @property
-    def geometry(self):
-        if self._geometry is None:
-            self.load_raw()
-            # raise ValueError("Missing geometry data")
-        return self._geometry
 
     @property
     def metadata(self): 
