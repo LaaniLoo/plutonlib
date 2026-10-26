@@ -8,6 +8,11 @@ configs:
     log_space: True
     angles: "all"  
 
+  hybrids_rand:
+    freqs: [0.15,5]
+    log_space: True
+    angles: "random" 
+
   hybrids_test:
     freqs: [0.15,5]
     log_space: True
@@ -16,7 +21,6 @@ configs:
   wat_proj:
     freqs: [0.144,0.614,1.4,4.85]
     log_space: False
-    angles: [[0,0,0],[0,0,90],[120,0,90],[120,10,70],[120,10,80],[120,10,90],[120,10,100]]
 
 simulations:
   /u/alainm/pluto-master/Simulations/Jet_mvinj/Q36_v01_a25_wx064z064_eox58z58:

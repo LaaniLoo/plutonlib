@@ -1,5 +1,5 @@
 import plutonlib.compression as pcomp
-import plutonlib.load as pl
+import plutonlib.read_write as pl
 import plutonlib.utils as pu
 
 import h5py

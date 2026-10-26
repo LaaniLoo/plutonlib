@@ -11,7 +11,7 @@ import math
 import resource
 
 import plutonlib.simulations as ps
-# import plutonlib.read_write as prw
+import plutonlib.read_write as prw
 import plutonlib.splines as pl_splines
 import plutonlib.fancy_plot as fancypl
 from plutonlib.pbs_job import init_script_dirs,create_run_script, submit_run_script
@@ -20,11 +20,22 @@ def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml" #NOTE loc
 def_redshift = 0.02
 nlfreqs = 8
 plane = 'xz'
-chunk_size = 100
+chunk_size = 80
+
+angle_mode = None
+sb_meta = None
 
 def chunked(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i:i + size]
+
+def angle_tag(chunk):
+    arr = np.array(chunk)
+    parts = []
+    for ax, name in zip(arr.T, "xyz"):
+        lo, hi = ax.min(), ax.max()
+        parts.append(f"{name}{lo}" if lo == hi else f"{name}{lo}-{hi}")
+    return "_".join(parts)
 
 def create_hybrid_plot(args):
     with open(args.yml,'r') as file:
@@ -33,7 +44,7 @@ def create_hybrid_plot(args):
 
     base_dir = os.path.join(args.wdir,"hybrids_grid")  
     for sim_path in setup_yml["simulations"].keys(): #this will do sim by sim rather than constructing a sim dict
-        sim = ps.SimulationData(ini_file="jet_units",rel_path=sim_path)
+        sim = ps.SimulationData(rel_path=sim_path)
         sim_params = setup_yml["simulations"][sim_path]
 
         if sim_params['config'] not in configs:
@@ -52,15 +63,25 @@ def create_hybrid_plot(args):
             freqs = np.geomspace(freqs[0], freqs[1], num=nlfreqs).round(2)
             print(f"Using logarithmically spaced frequencies between {freqs[0]} and {freqs[-1]}\nfrequencies = {freqs}\n")
 
-        if isinstance(angles, str): #angles = all config
+        if isinstance(angles, str):
             if angles == "all":
-                angles = [list(combo) for combo in itertools.product(list(range(0, 100, 10)), repeat=3)]
+                angle_mode = "all"
+                angles = [list(combo) for combo in itertools.product(range(0, 100, 10), repeat=3)]
+            elif angles == "random":
+                angle_mode = "random"
+                sb_meta = prw.SBMetadata(wdir=sim.wdir, redshift=args.redshift)  # built once per sim
             else:
-                raise ValueError(f"'angles' string value '{angles}' not recognized, only 'all' is supported.")
+                raise ValueError(f"'angles' string value '{angles}' not recognized, only 'all' and 'random' are supported.")
         elif not isinstance(angles, list):
-                raise TypeError(f"'angles' is type = {type(angles)}, either use list input or 'all' for a generated list.")
+            raise TypeError(f"'angles' is type = {type(angles)}, either use list input or 'all' for a generated list.")
 
         for output in outputs: #sim/output/freq/500_1_grid1.pdf -> 500Myr,1Ghz file 1 (of 10 for 100 angles) #NOTE each grid file corresponds to an angle in x
+            if angle_mode == "random":
+                pool = sb_meta.angles_all[output]
+                rng = np.random.default_rng(0)  # fixed seed, see note below
+                perm = rng.permutation(len(pool))
+                angles = [list(pool[i]) for i in perm]
+
             for freq in freqs:
                 grid_dir = os.path.join(base_dir,f"{sim.run_name}/{output}/{freq}")
                 if not os.path.isdir(grid_dir):
@@ -69,7 +90,7 @@ def create_hybrid_plot(args):
                     print(f"Found {grid_dir}, skipping directory creation")  
 
                 sim_dict = {sim:[output]}
-                # sb_file = os.path.join(args.wdir,f"sbdata_{sim_params['config']}.h5")
+
                 for itr, angle_chunk in enumerate(chunked(angles, chunk_size), start=0): #group into plots of 100 angles, each file +10 deg in x 
                     print(f"Plotting {sim.run_name} at output = {output}, freq = {freq} angles = \n{angle_chunk}")
                     angle_dict = {sim: angle_chunk}
@@ -79,7 +100,8 @@ def create_hybrid_plot(args):
                     #     "x": [sim.get_injection_region(50)[0].value,sim.get_injection_region(50)[2].value],
                     # }
 
-                    grid_file = os.path.join(grid_dir,f"{output}_{freq}_grid{itr}")
+                    label = angle_tag(angle_chunk) if angle_mode == "all" else f"grid{itr}"
+                    grid_file = os.path.join(grid_dir,f"{output}_{freq}_{label}")
 
                     if not os.path.isfile(f"{grid_file}.pdf"):
                         #TODO change vmin vmax and xlim ylim etc
@@ -89,13 +111,12 @@ def create_hybrid_plot(args):
                             "ylim": (-45, 70),
                             # "query_points": query_points,
                             "label_all_axes": True,
-                            "row_len": math.ceil(math.sqrt(len(angle_chunk)))
+                            "row_len": 10#math.ceil(math.sqrt(len(angle_chunk)))
                             # "vmin": 0,
                             # "vmax": 0.75,
                         }
-
-                        params = pl_splines.SplineParams(max_itr = 0,percentile = 50,sb_weight = 10,smoothing=0.1)
-                        fancypl.surf_brightness_splines(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=args.redshift,params=params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
+                        path_params = pl_splines.PathParams(sb_percentile=50,smoothing = 0.005,length_penalty=1e-4,bright_exp=1,inj_exp=1,angle_cut=35,block_width=1) 
+                        fancypl.surf_brightness_splines(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=args.redshift,path_params=path_params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
 
                     else:
                         print(f"File {grid_file}.pdf already exists, skipping...")
@@ -113,7 +134,7 @@ def main():
     parser.add_argument("--job-length", type=int, default=5)
     parser.add_argument("--nodes", type=int, default=1)
     parser.add_argument("--cpus", type=int, default=1)
-    parser.add_argument("--memory", type=int, default=400)
+    parser.add_argument("--memory", type=int, default=128)
     args = parser.parse_args()
 
     if args.cluster:
@@ -135,7 +156,7 @@ def main():
             cpus=args.cpus,
             memory=args.memory,
         )
-        submit_run_script(script_info=script_info)
+        job_id,info_str = submit_run_script(script_info=script_info)
     else:
         create_hybrid_plot(args)
 

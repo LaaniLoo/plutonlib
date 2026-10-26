@@ -42,7 +42,7 @@ def run_sb_calc(args):
     configs = setup_yml['configs']
 
     for sim_path in setup_yml["simulations"].keys(): #this will do sim by sim rather than constructing a sim dict
-        sim = ps.SimulationData(ini_file="jet_units",rel_path=sim_path)
+        sim = ps.SimulationData(rel_path=sim_path)
         sim_params = setup_yml["simulations"][sim_path]
 
         if sim_params['config'] not in configs:
@@ -119,7 +119,7 @@ def main():
             cpus=args.cpus,
             memory=args.memory,
         )
-        submit_run_script(script_info=script_info)
+        job_id, info_str = submit_run_script(script_info=script_info)
     else:
         run_sb_calc(args)
 
