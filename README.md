@@ -62,30 +62,30 @@ pip install -e .
   * Provides coordinate system mappings for different array types (node/cell coords)
 
 * **`fancy_plot`**
-* Produce 'paper-ready' style plots with proper formatting and labels
-* Plots are grouped by simulation, use `.fig` attribute to show plot
-* file saving defaults to a rasterised pdf (`fname='name'` saves to `sim.save_dir` e.g. `$SAVE_DIR/name.pdf`)
-* Common kwargs: `xlim`, `ylim`, `vmin`, `vmax`, `fig_size`, `plane`, `row_len`, `rotate_row`, `query_points`
-* `fluid`: pcolormesh plot of simulation fluid variable e.g. 'rho'
-  * `fluid(sim_dict={sim5:[50,75]},var='rho').fig`
-* `jet_splines`: scatter plot of PLUTO particles for a variable with tracer spline fitting, at the particle output matching each sim time
-  * `jet_splines(sim_dict={sim5:[50]},var='tr1').fig`
-* `surf_brightness`: pcolormesh plot of PRAiSE particle emisivity
-  * `surf_brightness({sim5:[50]},{sim5:angles},freq,0.02,).fig`
-  * `freq` must be a single value (not a list), one subplot per output per angle set
-* `surf_brightness_splines`: as `surf_brightness`, with the jet spline and injection point overlaid
-  * `surf_brightness_splines({sim5:[50]},{sim5:angles},freq,0.02,params).fig`
-* `spectral_idx`: pcolormesh plot of spectral index between a pair of frequencies
-  * `spectral_idx({sim5:[50]},{sim5:angles},[freq1,freq2],0.02).fig`
-* `fluid_1D_tr_spl`: 1D profile of a fluid variable along the jet using tracer splines
-  * `fluid_1D_tr_spl(sim5,var='rho',grid_output=50,tick_axis='x').fig`
-* `surface_brightnes_1D`: 1D surface brightness profile along the jet
-  * `surface_brightnes_1D(sim5,grid_output=50,angles=angles,freq=freq,redshift=0.02).fig`
-* `animation_fluid`: gif of a fluid variable over all valid outputs, saved to `sim.save_dir`
-  * `animation_fluid(sim5,var_name='rho',fps=20)`
+	* Produce 'paper-ready' style plots with proper formatting and labels
+	* Plots are grouped by simulation, use `.fig` attribute to show plot
+	* file saving defaults to a rasterised pdf (`fname='name'` saves to `sim.save_dir` e.g. `$SAVE_DIR/name.pdf`)
+	* Common kwargs: `xlim`, `ylim`, `vmin`, `vmax`, `fig_size`, `plane`, `row_len`, `rotate_row`, `query_points`
+	* `fluid`: pcolormesh plot of simulation fluid variable e.g. 'rho'
+	  * `fluid(sim_dict={sim5:[50,75]},var='rho').fig`
+	* `jet_splines`: scatter plot of PLUTO particles for a variable with tracer spline fitting, at the particle output matching each sim time
+	  * `jet_splines(sim_dict={sim5:[50]},var='tr1').fig`
+	* `surf_brightness`: pcolormesh plot of PRAiSE particle emisivity
+	  * `surf_brightness({sim5:[50]},{sim5:angles},freq,0.02,).fig`
+	  * `freq` must be a single value (not a list), one subplot per output per angle set
+	* `surf_brightness_splines`: as `surf_brightness`, with the jet spline and injection point overlaid
+	  * `surf_brightness_splines({sim5:[50]},{sim5:angles},freq,0.02,params).fig`
+	* `spectral_idx`: pcolormesh plot of spectral index between a pair of frequencies
+	  * `spectral_idx({sim5:[50]},{sim5:angles},[freq1,freq2],0.02).fig`
+	* `fluid_1D_tr_spl`: 1D profile of a fluid variable along the jet using tracer splines
+	  * `fluid_1D_tr_spl(sim5,var='rho',grid_output=50,tick_axis='x').fig`
+	* `surface_brightnes_1D`: 1D surface brightness profile along the jet
+	  * `surface_brightnes_1D(sim5,grid_output=50,angles=angles,freq=freq,redshift=0.02).fig`
+	* `animation_fluid`: gif of a fluid variable over all valid outputs, saved to `sim.save_dir`
+	  * `animation_fluid(sim5,var_name='rho',fps=20)`
 
 * **`morphology`**
-* **WIP** functions to determine morphology of jets e.g FR morphology of jets using surface brightness splines in `get_fr_idx_spl`
+	* **WIP** functions to determine morphology of jets e.g FR morphology of jets using surface brightness splines in `get_fr_idx_spl`
 
 * **`plot_data`**
   * **PlotData class:** stores plotting state, used to track plotting variables across the plot functions
@@ -137,13 +137,13 @@ pip install -e .
     * See `get_jet_splines_sb()`
 
 * **`surface_brightness`**
-* Use PRAiSE analytic model and plutokore to generate and raytrace particles -> surface brightness
-* Save these arrays to hdf5 (`save_sb_hdf5`) on a per-sim basis with structure /sim_dir/sbdata.h5
-  * h5 structure: redshift/output/angles/sb e.g; `0.02/500/[0,0,0]/sb`
+	* Use PRAiSE analytic model and plutokore to generate and raytrace particles -> surface brightness
+	* Save these arrays to hdf5 (`save_sb_hdf5`) on a per-sim basis with structure /sim_dir/sbdata.h5
+	  * h5 structure: redshift/output/angles/sb e.g; `0.02/500/[0,0,0]/sb`
 
 * **`units`**
-* Each unit e.g. time, density, pressure is either defined or derived in the `UnitDefinitions` class. Defaults to defining a unit `length` and `velocity` with `mu_norm = 0.60364`
-unit metadata now comes from `PlutoUnits.from_definitions` where individual units are fetched from `UnitDefinitions` or from `definitions.h` (NOT IMPLEMENTED), each var is then converted to the values in `user_ini_path` (defaults to `plutonlib/src/plutonlib/user_units.ini`)
+	* Each unit e.g. time, density, pressure is either defined or derived in the `UnitDefinitions` class. Defaults to defining a unit `length` and `velocity` with `mu_norm = 0.60364`
+	unit metadata now comes from `PlutoUnits.from_definitions` where individual units are fetched from `UnitDefinitions` or from `definitions.h` (NOT IMPLEMENTED), each var is then converted to the values in `user_ini_path` (defaults to `plutonlib/src/plutonlib/user_units.ini`)
 
 * **`utils`**
   * Module reloading utilities
@@ -164,7 +164,7 @@ unit metadata now comes from `PlutoUnits.from_definitions` where individual unit
     * `--cpus`: cpus per node, defaults to 28
     * `--memory`: memory per node in GB, defaults to None; values above 128 automatically use the `LARGE_MEM` queue
 
-# Setting and converting PLUTO units (`plutonlib/units`)
+# Setting and converting PLUTO units (`plutonlib/src/plutonlib/user_units.ini`)
 * ini files are used to define a set of `usr_unit_values`.
   * `usr_unit_values` are the desired unit values that you wish to convert to later.
 
@@ -232,7 +232,7 @@ tr1 = 1
   * Example: `python pluto_run.py --sim-type hd_jet --run-name Q36_v01_a25`
   * Example (inside `hd_jet`): `python pluto_run.py --run-name Q36_v03_a15 -r 5`
 
-#### Simulation directory structure**
+#### **Simulation directory structure**
 ```
 simulations_root/
 └── sim_type/                      # shared jet-setup + PLUTO build
