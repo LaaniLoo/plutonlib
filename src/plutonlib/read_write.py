@@ -1,8 +1,8 @@
 import plutonlib.config as pc
+import plutonlib.units as pl_units
 import plutonlib.utils as pu
 
 coord_systems = pc.coord_systems
-import os
 
 from concurrent.futures import ThreadPoolExecutor, as_completed,ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -15,6 +15,8 @@ import numpy as np
 
 import time
 import glob
+import os
+from pathlib import Path
 
 @dataclass
 class HDF5Metadata:
@@ -28,7 +30,7 @@ class HDF5Metadata:
     t_load: float = 0
     geometry: str = "CARTESIAN"
     is_compressed: bool = False   
-    is_conv: bool = True
+    is_conv: bool = False
     time_str: str = "0 Myr"
     extra_info: Dict[str, Any] = field(default_factory=dict)
 
@@ -80,6 +82,78 @@ class HDF5Metadata:
             self._dataset_paths = paths
         finally:
             data_file.close()
+
+    @classmethod
+    def from_wdir(cls,wdir:str,grid_output:int) -> "HDF5Metadata":
+        """
+        Loads certain metadata from a single HDF5 file with minimal performance and memory impact,
+        stores information in the HDF5Metadata dataclass.
+
+        Parameters:
+        -----------
+        wdir : str
+            Working directory where simulation files are located.
+        grid_output : int
+            Integer of which output file to load metadata from (e.g., 0 for data.0000.flt.h5).
+        
+        Returns:
+        --------
+        HDF5Metadata
+            Dataclass containing:
+            - file_path: Path to the HDF5 file (compressed or uncompressed)
+            - sim_time: Simulation time at this output
+            - dataset_paths: Dictionary mapping variable names to their HDF5 dataset paths
+            - load_output: The output number loaded
+            - geometry: Coordinate system geometry (default "CARTESIAN")
+            - dtype: Data type string ("hdf5_float" or "hdf5_double")
+            - is_compressed: Boolean indicating if file is compressed
+        """
+        n_outputs = get_file_outputs(wdir)  # reads .out log, cheap
+        if grid_output > n_outputs:
+            raise ValueError(f"output {grid_output} exceeds last recorded output ({n_outputs}) in {wdir}")
+        
+        dtype = get_output_dtype(wdir)        
+        geometry = pc.get_geometry_gridout(wdir)
+
+        base_file_path = os.path.join(wdir, f"data.{grid_output:04d}.{dtype}")
+        compressed_file_path = base_file_path + ".compressed"
+        is_compressed = os.path.isfile(compressed_file_path)
+        file_path = compressed_file_path if is_compressed else base_file_path
+
+        return cls( #HDF5Metadata should then assign simtime etc by itself using file path
+            wdir=wdir,
+            load_output=grid_output,
+            file_path=file_path,
+            dtype=dtype,
+            is_compressed=is_compressed,
+            geometry=geometry,
+        )
+    
+@dataclass
+class SBMetadata:
+    wdir: str
+    redshift: float
+    file_path: Path = field(init=False)
+    avail_outputs: list[int] = field(init=False)
+    angles_all: dict[int, list[list[int]]] = field(init=False)
+    freqs: list[float] = field(init=False)
+
+    def __post_init__(self):
+        self.file_path = Path(self.wdir).expanduser() / "sbdata.h5"
+
+        if not self.file_path.is_file():
+            raise FileNotFoundError(f"{self.file_path} not present in {self.wdir}")
+
+        h5_kwargs = dict(rdcc_nbytes=512 * 1024 * 1024, rdcc_nslots=2_000_003, rdcc_w0=0.75)
+        with h5py.File(self.file_path, "r", **h5_kwargs) as data_file:
+            run_data = data_file[str(self.redshift)]
+            run_data_attrs = dict(run_data.attrs.items()) #should be freqs and redshift
+            self.avail_outputs = [int(k) for k in run_data.keys() if k.isdigit()]
+            self.angles_all = {
+                o: [[int(x) for x in k.strip("[]").split(",")] for k in run_data[str(o)].keys()]
+                for o in self.avail_outputs
+            }
+            self.freqs = run_data_attrs['freqs']
 
 def get_file_outputs(wdir):
     """
@@ -176,11 +250,11 @@ def get_sim_times(wdir):
     n_outputs = get_file_outputs(wdir)
     for output in range(1,n_outputs + 1):
         try:
-            metadata = load_hdf5_metadata(wdir,output)
+            metadata = HDF5Metadata.from_wdir(wdir,output)
         except (FileNotFoundError,OSError) as e:
             print(e)
 
-        sim_time = pc.code_to_usr_units("sim_time",metadata.sim_time,ini_file = "jet_units")["conv_data_uuv"]
+        sim_time = pl_units.code_to_usr_units("sim_time",metadata.sim_time,usr_ini_path = None)["conv_data_uuv"]
         
         if round(sim_time) == output:
             sim_times_matched[output] = sim_time
@@ -188,57 +262,12 @@ def get_sim_times(wdir):
 
     return sim_times, sim_times_matched
 
-def load_hdf5_metadata(wdir: str,grid_output: int) -> HDF5Metadata:
-    """
-    Loads certain metadata from a single HDF5 file with minimal performance and memory impact,
-    stores information in the HDF5Metadata dataclass.
-
-    Parameters:
-    -----------
-    wdir : str
-        Working directory where simulation files are located.
-    grid_output : int
-        Integer of which output file to load metadata from (e.g., 0 for data.0000.flt.h5).
-    
-    Returns:
-    --------
-    HDF5Metadata
-        Dataclass containing:
-        - file_path: Path to the HDF5 file (compressed or uncompressed)
-        - sim_time: Simulation time at this output
-        - dataset_paths: Dictionary mapping variable names to their HDF5 dataset paths
-        - load_output: The output number loaded
-        - geometry: Coordinate system geometry (default "CARTESIAN")
-        - dtype: Data type string ("hdf5_float" or "hdf5_double")
-        - is_compressed: Boolean indicating if file is compressed
-    """
-    n_outputs = get_file_outputs(wdir)  # reads .out log, cheap
-    if grid_output > n_outputs:
-        raise ValueError(f"output {grid_output} exceeds last recorded output ({n_outputs}) in {wdir}")
-    
-    dtype = get_output_dtype(wdir)        
-    geometry = pc.get_geometry_gridout(wdir)
-
-    base_file_path = os.path.join(wdir, f"data.{grid_output:04d}.{dtype}")
-    compressed_file_path = base_file_path + ".compressed"
-    is_compressed = os.path.isfile(compressed_file_path)
-    file_path = compressed_file_path if is_compressed else base_file_path
-
-    return HDF5Metadata( #HDF5Metadata should then assign simtime etc by itself using file path
-        wdir=wdir,
-        load_output=grid_output,
-        file_path=file_path,
-        dtype=dtype,
-        is_compressed=is_compressed,
-        geometry=geometry,
-    )
-
 #---Fluid data---#
 def load_hdf5_lazy(wdir,grid_output,var_choice,load_slice = None):
     """
     Loads specific variables from a single HDF5 file output using metadata for efficient access.
     
-    This function uses load_hdf5_metadata to locate datasets, then loads only the requested
+    This function uses HDF5Metadata to locate datasets, then loads only the requested
     variables from the HDF5 file. Arrays are automatically transposed from PLUTO's [z,y,x]
     ordering to [x,y,z] ordering for compatibility.
     
@@ -264,7 +293,7 @@ def load_hdf5_lazy(wdir,grid_output,var_choice,load_slice = None):
 
     """
     
-    metadata = load_hdf5_metadata(wdir=wdir,grid_output=grid_output)
+    metadata = HDF5Metadata.from_wdir(wdir=wdir,grid_output=grid_output)
     dataset_paths = metadata.dataset_paths
 
     file_data = {}
@@ -297,7 +326,7 @@ def load_hdf5_lazy(wdir,grid_output,var_choice,load_slice = None):
 
     return file_data
 
-def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,ini_file=None,conv=True):
+def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,usr_ini_path=None,conv=True):
     """
     Loads and optionally converts units of multiple HDF5 simulation outputs with metadata.
         
@@ -315,8 +344,8 @@ def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,ini_file=
         - None: Load the last available output (default)
     load_slice : tuple, optional
         Array slice to load a subset of data (e.g., (slice(None, None, None), slice(None, None, None), 733)).
-    ini_file : str, optional
-        INI file name (without extension) to use for unit conversion e.g. jet_units.
+    usr_ini_path : str, optional
+        INI file path to use for unit conversion e.g. ~/plutonlib/units/usr_units.ini
     conv : bool, optional
         If True, convert data from code units to user units (default True).
         If False, return raw code unit data.
@@ -354,9 +383,9 @@ def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,ini_file=
         raise ValueError(f"Trying to load more outputs ({max(grid_outputs)}) than available ({n_outputs})")
 
     for output in grid_outputs:
-        pluto_units = pc.PlutoUnits.from_ini(ini_file=ini_file)
-        metadata = load_hdf5_metadata(wdir=wdir,grid_output=output)
-        time_val = pc.code_to_usr_units("sim_time",metadata.sim_time,ini_file="jet_units")["conv_data_uuv"]
+        pluto_units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=usr_ini_path)
+        metadata = HDF5Metadata.from_wdir(wdir=wdir,grid_output=output)
+        time_val = pl_units.code_to_usr_units("sim_time",metadata.sim_time,usr_ini_path=None)["conv_data_uuv"]
         time_unit = str(pluto_units.sim_time.usr_uv)
         time_str = f"${time_val:.2f} \\; [{time_unit}]$"
         basename = (os.path.basename(metadata.file_path))
@@ -369,11 +398,12 @@ def load_fluid_hdf5(wdir,var_choice, grid_outputs=None,load_slice=None,ini_file=
 
         if conv:
             raw_data = load_hdf5_lazy(wdir=wdir,grid_output=output,var_choice=var_choice,load_slice=load_slice)
+            metadata.is_conv = True
             def convert_var(var_name):
-                conv = pc.code_to_usr_units(
+                conv = pl_units.code_to_usr_units(
                     var_name=var_name,
                     raw_data=raw_data[var_name],
-                    ini_file=ini_file
+                    usr_ini_path=usr_ini_path
                 )
                 return var_name, conv["conv_data_uuv"]
             
