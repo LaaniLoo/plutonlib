@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2026-10-26
+
+### 🚀 Features
+
+
+- *(morphology.py)* added morphology module
+
+WIP, Can determine FR class using sb splines
+
+- *(splines.py)* Increase tr spline fitting speed with var_choice, switched sb splines method
+
+Changed slow skeleton based fitting to cost-map based. Create a cost map for the sb data using `cost = length_penalty + (1-normalised_sb)^exponent` this gives the cost to each sb value form inj point. see `path_build_with_endpoints` how each path is drawn using the specific endpoint selection criteria.
+
+- *(units.py)* added units module
+
+Units functionality is now more robust, each unit e.g. time,density,pressure is either defined or derived in the `UnitDefinitions` class. Defaults to defining a unit `length` and `velocity` with `mu_norm = 0.60364`
+  unit metadata now comes from `PlutoUnits.from_definitions` where individual units are fetched from `UnitDefinitions` or from `definitions.h` (NOT IMPLEMENTED), each var is then converted to the values in `user_ini_path` (defaults to `plutonlib/src/plutonlib/user_units.ini`)
+
+- *(pluto_utils)* updated sh scripts to python with yml setup
+
+Can now use `pluto_setup.py`,`sim_config.yml` and `pluto_run.py` to automatically setup and run a pluto simulation: 1. setup:  construct sim dirs, 2. setup: run `jet-setup`, 3. setup:  update `definitions.h` (and user defs), 4. setup: build pluto, 5. run: run pluto locally or on cluster. See `README.md` for instructions, setup relies on `sim_config.yml`
+
+
+### 🐛 Bug Fixes
+
+
+- *(analysis.py)* fixed L_bend for multiple wind components
+
+Uses `calc_v_wind_mag` to find the correct wind magnitude depending on the direction of jet propagation relative to the wind vector
+
+
+### Other
+
+
+- *(general)* doc cleanup and misc changes
+
+
+- *(general)* doc cleanup and misc changes
+
+
+
+### Refactoring
+
+
+- *(read_write.py)* replaced load_hdf5_metadata with classmethod
+
+replaced load_hdf5_metadata function with classmethod HDF5Metadata.from_wdir
+
+- *(simulations.py)* Replaced ini_file with usr_units_ini
+
+`usr_units_ini` arg is now the file path to the ini file with the user unit conversions, replacing e.g. `jet_units.ini`
+  value defaults to `None` which points to `plutonlib/src/plutonlib/user_units.ini`
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
 ## [0.16.0] - 2026-10-06
 
 ### 🚀 Features
