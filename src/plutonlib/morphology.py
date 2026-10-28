@@ -171,3 +171,21 @@ def get_fr_idx_spl(spline_data):
     fr_info_top = _fr_for_jet(top_path, x_lengths[0], err_top)
     fr_info_bot = _fr_for_jet(bot_path, x_lengths[1], err_bot)
     return fr_info_top, fr_info_bot
+
+def get_peak_spline_seg(spline_data):
+    """Gets the spline segments from injection to peak sb value for top/bottom jets
+
+    Args:
+        spline_data (dict): dict returned by `plutonlib.splines.get_jet_splines_sb()`
+
+    Returns:
+        top_segment,bot_segment: truncated jet_splines from inj->peak for top/bottom jets
+    """
+
+    top_idx,bot_idx = get_sb_max_idx(spline_data)
+    inj_idx = spline_data["inj_idx"]
+    
+    top_segment = spline_data["jet_splines"][inj_idx:top_idx]
+    bot_segment = spline_data["jet_splines"][bot_idx:inj_idx][::-1] #reversed, inj->peak  
+
+    return top_segment,bot_segment
