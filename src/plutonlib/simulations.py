@@ -26,41 +26,42 @@ class SimulationSetup:
     Class used to initialise PLUTO simulation information, e.g. run_name names, save directories, simulation types, ini information etc.
     """
 
-    def __init__(self, rel_path = None,usr_units_ini=None,):
+    def __init__(self,sim_root=None, rel_path = None,usr_units_ini=None,):
         self.usr_units_ini = usr_units_ini
 
         #Check that path naming and pluto sim directories are in order
+        self.sim_root = Path(pc.SIM_PATH) if sim_root is None else Path(sim_root).expanduser() 
         rel = Path(rel_path)
-        if rel.is_relative_to(pc.SIM_PATH):
+        if rel.is_relative_to(self.sim_root):
             warnings.warn("Simulation relative path appears to contain pluto simulation directory, truncating to relative path...")
-            rel = rel.relative_to(pc.SIM_PATH)
+            rel = rel.relative_to(self.sim_root)
 
-        elif rel.parts[:len(pc.SIM_PATH.parts) - 1] == pc.SIM_PATH.parts[1:]:    # full path but missing the root
-            raise ValueError(f"'{rel_path}' looks like a full path but is missing the leading '{pc.SIM_PATH.anchor}', "
-                            f"try '{pc.SIM_PATH.anchor}{rel_path}'")
+        elif rel.parts[:len(self.sim_root.parts) - 1] == self.sim_root.parts[1:]:    # full path but missing the root
+            raise ValueError(f"'{rel_path}' looks like a full path but is missing the leading '{self.sim_root.anchor}', "
+                            f"try '{self.sim_root.anchor}{rel_path}'")
         
         elif rel.is_absolute():
-            raise ValueError(f"'{rel_path}' is an absolute path outside the simulation directory ({pc.SIM_PATH}), "
+            raise ValueError(f"'{rel_path}' is an absolute path outside the simulation directory ({self.sim_root}), "
                             f"use a path relative to it, e.g. 'MHD_jet/run_name'")
 
         if not rel.parts:
             raise ValueError("rel_path points at the simulation directory itself, include a sim type and run name")
 
         self.rel_path = str(rel) #NOTE convert back to passable str
-        self.wdir = str(pc.SIM_PATH / rel)
+        self.wdir = str(self.sim_root / rel)
         self.sim_type = rel.parts[0]
         self.run_name = rel.parts[-1]
 
-        avail_sim_types = [d.name for d in pc.SIM_PATH.iterdir() if Path(d).is_dir()]
+        avail_sim_types = [d.name for d in self.sim_root.iterdir() if Path(d).is_dir()]
         self.avail_sim_types = avail_sim_types
 
-        run_dir = pc.SIM_PATH / self.sim_type #if wdir is path to sim, avail runs will show dirs inside current sim not level up
+        run_dir = self.sim_root / self.sim_type #if wdir is path to sim, avail runs will show dirs inside current sim not level up
         if not run_dir.is_dir(): #if path to sim_type doesn't exist
             closest_sims = difflib.get_close_matches(self.sim_type,self.avail_sim_types,n=3)
             if len(closest_sims) > 1:
-                raise FileNotFoundError(f"Simulation sim type ('{self.sim_type}') does not exist in path '{pc.SIM_PATH}'\nPotential matching sim types: {closest_sims}")
+                raise FileNotFoundError(f"Simulation sim type ('{self.sim_type}') does not exist in path '{self.sim_root}'\nPotential matching sim types: {closest_sims}")
             else:
-                raise FileNotFoundError(f"Simulation sim type ('{self.sim_type}') does not exist in path '{pc.SIM_PATH}'\nAvailable simulation types in {pc.SIM_PATH}: {avail_sim_types}")
+                raise FileNotFoundError(f"Simulation sim type ('{self.sim_type}') does not exist in path '{self.sim_root}'\nAvailable simulation types in {self.sim_root}: {avail_sim_types}")
   
         avail_runs = [d.name for d in run_dir.iterdir() if Path(d).is_dir()]
         self.avail_runs = avail_runs
@@ -128,19 +129,23 @@ class SimulationData(SimulationSetup):
     def __hash__(self): #generate the hash based on its relative path
         return hash(self.rel_path)
 
-    def __init__(self, rel_path=None,load_outputs=None, usr_units_ini=None,conv=True):
+    def __init__(self,sim_root=None,rel_path=None,load_outputs=None, usr_units_ini=None,conv=True):
 
         # Initialize parent class first
-        super().__init__(rel_path, usr_units_ini)
-        self.load_outputs = load_outputs
+        super().__init__(sim_root=sim_root,rel_path=rel_path,usr_units_ini=usr_units_ini)
+        #NOTE don't reassign paths to properly inherit them
 
         # Data
+        self.load_outputs = load_outputs
         self.conv = conv
         self._fluid_data_cache = {}
         self._metadata = {}
         
         # Extra
         self._units = None
+
+        # if self.sim_root is None:
+            # self.sim_root = pc.SIM_PATH
 
         if self.rel_path is None:
             raise ValueError("rel_path is set to None, please specify a simulation run to inspect simulation data")
@@ -151,10 +156,6 @@ class SimulationData(SimulationSetup):
         Create SimulationData from existing SimulationSetup.
         Args:
             setup: The SimulationSetup object to inherit from
-            **kwargs: Override specific parameters:
-                - sim_type: str - Simulation type
-                - run_name: str - Run name
-                - conv: bool - Whether to convert data  
         Returns:
             SimulationData: New SimulationData instance
         """
@@ -278,11 +279,6 @@ class SimulationData(SimulationSetup):
             part_output = self.simtime_to_part(grid_output, round_val=True)
 
         data = prw.load_particles_hdf5(self.wdir,part_outputs=part_output,tr_cut=tr_cut,var_choice=var_choice)
-
-        # alias_map = {"rho": "density", "prs": "pressure", "tr1": "tracer"}
-        # for short_key, long_key in alias_map.items():
-        #     if long_key not in data and short_key in data:
-        #         data[long_key] = data[short_key]
 
         return data
 

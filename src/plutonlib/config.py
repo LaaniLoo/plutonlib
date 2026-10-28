@@ -26,7 +26,8 @@ SRC_PATH = PLUTONLIB / "src" / "plutonlib"
 try:
     PLUTO_PATH = Path(os.environ["PLUTO_DIR"])
 except KeyError:
-    raise EnvironmentError(f"{pcolours.WARNING}PLUTO_DIR env var not found, please set the location of the PLUTO code")
+    print(f"{pcolours.WARNING}PLUTO_DIR env var not found, guessing PLUTO code dir as '~/pluto-master'")
+    PLUTO_PATH = Path("~/pluto-master").expanduser()
 
 SIM_PATH = PLUTO_PATH / "Simulations"
 if not SIM_PATH.is_dir():#if simulation dir doesn't exist 
