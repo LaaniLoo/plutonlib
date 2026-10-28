@@ -22,8 +22,6 @@ import argparse
 print("Import complete")
 
 def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml"
-def_redshift = 0.02
-nlfreqs = 8
 plane = 'xz'
 
 def dry_run(sim,grid_output,angles,freqs,redshift):
@@ -51,8 +49,15 @@ def run_sb_calc(args):
 
         freqs = config["freqs"]
         log_space = config["log_space"]
+        nlfreqs = None
+        if log_space:
+            nlfreqs = config.get("nfreqs")
+            if nlfreqs is None:
+                raise ValueError("`log_space` is True but the yaml config is missing `nfreqs`.")
+        
         angles = config["angles"]
         outputs = sim_params["outputs"]
+        redshift = sim_params["redshift"]
 
         if isinstance(freqs,list) and log_space:
             if len(freqs) > 2:
@@ -72,14 +77,14 @@ def run_sb_calc(args):
         if args.no_dry_run: #do a dry run to see the memory usage, else use 30gb per worker
             req_mem = 30 
         else:
-            req_mem = dry_run(sim,outputs[-1],angles[0],freqs,args.redshift)
+            req_mem = dry_run(sim,outputs[-1],angles[0],freqs,redshift)
 
         pl_sb.save_sb_hdf5(
             sim=sim,
             grid_outputs=outputs,
             angles=angles,
             freqs=freqs,
-            redshift=args.redshift,
+            redshift=redshift,
             plane=plane,
             memory = args.memory,
             task_req_mem=req_mem
@@ -88,7 +93,7 @@ def run_sb_calc(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--yml",type=str,help=f"Path to praise setup yaml defaults to {def_yml_path}",default=def_yml_path)
-    parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
+    # parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
     parser.add_argument("-c","--cluster",help="Submits this script as a PBS job to kunanyi",action="store_true")
     parser.add_argument("-d","--no_dry_run",help="Dont pre-run a SB calculation to see memory usage and allocate workers",action="store_true")
     parser.add_argument("--job-name", default="sb_calc")
@@ -105,7 +110,7 @@ def main():
 
         cmd = ( #NOTE removes script files after job finishes 
             f'python3 -u "{str(script_cluster)}" --yml "{str(yml_cluster)}" '
-            f'--redshift {args.redshift} --memory {args.memory} '
+            f'--memory {args.memory} ' #--redshift {args.redshift}
             f'&& rm -rf "{output_dir}"'
         )
 

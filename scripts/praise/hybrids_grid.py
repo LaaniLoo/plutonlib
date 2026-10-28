@@ -17,10 +17,9 @@ import plutonlib.fancy_plot as fancypl
 from plutonlib.pbs_job import init_script_dirs,create_run_script, submit_run_script
 
 def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml" #NOTE local yml path
-def_redshift = 0.02
-nlfreqs = 8
+
 plane = 'xz'
-chunk_size = 80
+chunk_size = 80 #80 is about the max for 128gb of ram
 
 angle_mode = None
 sb_meta = None
@@ -53,8 +52,15 @@ def create_hybrid_plot(args):
 
         freqs = config["freqs"]
         log_space = config["log_space"]
+        nlfreqs = None
+        if log_space:
+            nlfreqs = config.get("nfreqs")
+            if nlfreqs is None:
+                raise ValueError("`log_space` is True but the yaml config is missing `nfreqs`.")
+        
         angles = config["angles"]
         outputs = sim_params["outputs"]
+        redshift = sim_params["redshift"]
 
         if isinstance(freqs,list) and log_space:
             if len(freqs) > 2:
@@ -69,7 +75,7 @@ def create_hybrid_plot(args):
                 angles = [list(combo) for combo in itertools.product(range(0, 100, 10), repeat=3)]
             elif angles == "random":
                 angle_mode = "random"
-                sb_meta = prw.SBMetadata(wdir=sim.wdir, redshift=args.redshift)  # built once per sim
+                sb_meta = prw.SBMetadata(wdir=sim.wdir, redshift=redshift)  # built once per sim
             else:
                 raise ValueError(f"'angles' string value '{angles}' not recognized, only 'all' and 'random' are supported.")
         elif not isinstance(angles, list):
@@ -115,8 +121,8 @@ def create_hybrid_plot(args):
                             # "vmin": 0,
                             # "vmax": 0.75,
                         }
-                        path_params = pl_splines.PathParams(sb_percentile=50,smoothing = 0.005,length_penalty=1e-4,bright_exp=1,inj_exp=1,angle_cut=35,block_width=1) 
-                        fancypl.surf_brightness_splines(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=args.redshift,path_params=path_params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
+                        path_params = pl_splines.PathParams(sb_percentile=50,smoothing = 0.005,length_penalty=1e-5,bright_exp=1,inj_exp=1,angle_cut=40,block_width=1) 
+                        fancypl.surf_brightness_splines(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift,path_params=path_params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
 
                     else:
                         print(f"File {grid_file}.pdf already exists, skipping...")
@@ -127,7 +133,7 @@ def create_hybrid_plot(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--yml",type=str,help=f"Path to praise setup yaml defaults to {def_yml_path}",default=def_yml_path)
-    parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
+    # parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
     parser.add_argument("-d","--wdir",type=str,help=f"Path to working dir (save location for h5 file), defaults to {'./'}",default="./")
     parser.add_argument("-c","--cluster",help="Submits this script as a PBS job to kunanyi",action="store_true")
     parser.add_argument("--job-name", default="hybrids_grid")
@@ -144,7 +150,7 @@ def main():
 
         cmd = ( #NOTE removes script files after job finishes 
             f'python3 -u "{script_cluster}" --yml "{yml_cluster}" '
-            f'--redshift {args.redshift} --memory {args.memory} '
+            f'--memory {args.memory} ' #--redshift {args.redshift} 
             f'&& rm -rf "{output_dir}"'
         )
 
