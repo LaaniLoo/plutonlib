@@ -114,12 +114,15 @@ pip install -e .
 
 * **`simulations`**
   * **SimulationSetup:** Initializes simulation metadata, directories, and INI file parameters
+  * **paths:**
+    *  `sim_root`is the root directory of where simulations are stored e.g. `~/pluto-master/Simulations`
+    * `rel_path`is the relative path from the simulation root directory to your simulation e.g. `Jet_mvinj/Q36_v01_a25`
   * **SimulationData:** Simulation module to quickly load and cache fluid/particle data for a specific simulation object
     * See `load_fluid_data()`, `load_particle_data()`, `load_sb_data()` etc...
   * Methods for retrieving variable metadata, grid information, and injection regions
   * Units automatically converted to user units using `usr_units_ini`(see `user_units.ini`)
   * Conversion to plutokore simulation objects
-  * E.g. `sim5 = ps.SimulationData(rel_path="Jet_mvinj/Q36_v01_a25_wx064z064_eox58z58")`
+  * E.g. `sim5 = ps.SimulationData(rel_path="Jet_mvinj/Q36_v01_a25")`
 
 * **`splines`**
   * Two methods of tracing jet path: tracer and surface brightness
