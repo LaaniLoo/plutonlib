@@ -99,21 +99,23 @@ def write_commits_md(commits_md_path,commits,version):
     fence = "`" * 3 
     blocks = [f"---\nversion: {version}\n---"]
     for name,entries in groups.items():
-        blocks.append(f"#### **{name}**")
+        blocks.append(f"#### **{name}** ")
         for cm in entries:
             file_name = f"`{cm['File']}`" if cm.get("File") else ""
             subject = f"{cm['Type']}({name}): {cm['Summary']}"
             desc = cm.get("Description", "").split("\n")[0]
             blocks.append(
+                f"- [ ] \n"
                 f"**File:** {file_name}\n"
                 f"**Summary:**\n{fence}bash\n{subject}\n{fence}\n"
                 f"**Description:**\n{fence}bash\n{desc}\n{fence}\n"
             )
 
     cmd = f"git tag v{version} && git push origin v{version}"
+    misc_changes = f"chore: update miscellaneous files and minor fixes"    
     blocks.append(
-        f"#### **Tag and push command:**\n{fence}bash\n{cmd}\n{fence}\n"
-    )    
+        f"#### **Git commands:**\n**Tag and push:**\n{fence}bash\n{cmd}\n{fence}\n**Misc changes:** `{misc_changes}`\n"
+    )
     out_file.write_text("\n".join(blocks))
 
 def update_changelog(changelog_path,commits,version):
