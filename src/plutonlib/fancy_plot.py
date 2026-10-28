@@ -154,6 +154,36 @@ def _plot_style(fig_size):
         plt.rcParams.update({'font.size': _get_fontsize(fig_size, "subplots"), 'text.usetex': False})
         yield
 
+#---SB specific helpers---#
+def _get_sbdata_entries(sim_dict,angle_dict,freq,redshift):
+    """Groups output, angle, freq and redshift data per simulation, 
+    returns a dict keyed by a tuple -> (sim, output, tuple(angles))"""
+    entries = {}
+    for sim, outputs in sim_dict.items():
+        for output in outputs:
+            for angles in angle_dict[sim]: #load all the entries first
+                entries[(sim, output, tuple(angles))] = sim.load_sb_data(output, angles, freq, redshift)
+    return entries
+
+def _set_vlim_contours_sb(pdata,sb_entries,freq_tuple=None):
+    """Gets the vmin, vmax for surface brightness data based on Vmin = Vmax - 2, where Vmax is 99th percentile of sb data"""
+    if pdata.var_name == 'sb':
+        if pdata.vmax is None:
+            pdata.vmax = float(max(np.log10(np.nanpercentile(e["sb"], 99)) for e in sb_entries.values())) 
+        if pdata.vmin is None:
+            pdata.vmin = pdata.vmax - 2
+
+        pdata.contours = np.linspace(pdata.vmin,pdata.vmax,4) #since vlim are log-spaced, linspace == log spacing?
+    elif pdata.var_name == "alpha":
+        if freq_tuple is None:
+            raise ValueError("Frequency tuple is set to none, please set to tuple of freqs to key into alpha array e.g. (0.15,0.25)")
+        if pdata.vmax is None:
+            pdata.vmax = float(max(np.nanpercentile(e["alpha"][freq_tuple], 98) for e in sb_entries.values())) 
+        if pdata.vmin is None:
+            pdata.vmin = float(min(np.nanpercentile(e["alpha"][freq_tuple], 2) for e in sb_entries.values()))
+    else:
+        raise ValueError(f"PlotData.var_name is set to {pdata.var_name}, please set to 'sb' or 'alpha'")
+
 #---plotters for pcmesh,scatter etc---#
 def _im_2d_fluid(sdata,pdata,**kwargs):
     ax = pdata.axes[pdata.plot_idx]
@@ -188,26 +218,32 @@ def _im_2d_sb(entry,angles,pdata,freqs=None,**kwargs):
             cmap="viridis",          # TODO: match cmap
         )
 
-        contours = np.linspace(pdata.vmin,pdata.vmax,4)
+        # pdata.contours = np.linspace(pdata.vmin,pdata.vmax,4) #NOTE should be set in _set_vlim_contours_sb
+        if len(pdata.contours) == 0:
+            print("pdata.contours has len = 0, check that _set_vlim_contours_sb is being called")
+
         # contours = entry["contour_levels"]                    
         # print(f"Contours: {contours}")
         ax.contour(
             entry["grid_mx"], entry["grid_my"],
             entry["log_sb"],
-            levels=contours, #or entry["contour_levels"]
+            levels=pdata.contours, #or entry["contour_levels"]
             colors='white',
         )
 
     if pdata.var_name == 'alpha':
         if freqs is None:
             raise ValueError("freqs arg is set to none, for spectral index please input array of frequencies")
+
+        if tuple(freqs) not in entry["alpha"].keys():
+            raise ValueError(f"Frequency pair {tuple(freqs)} is not in sbdata alpha pairs.\nAvailable pairs are: {list(entry['alpha'].keys())}")
+        
         pdata.im = ax.pcolormesh(
             entry["grid_x"], entry["grid_y"],
             entry["alpha"][tuple(freqs)],
             vmin=pdata.vmin, vmax=pdata.vmax,
             cmap="turbo",
         )
-
     ax.annotate(
         f"x={angles[0]}° y={angles[1]}° z={angles[2]}°",
         xy=(0.032, 0.98),
@@ -411,25 +447,6 @@ def _save(fname):
     if fname is not None:
         plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
 
-#---other helpers---#
-def _alpha_percentiles(entries, freq_pair, lo=10, hi=90):
-    """(lo, hi) percentiles of alpha for one freq pair, pooled over all entries."""
-    vals = []
-    for entry in entries.values():
-        if entry is None or entry.get("alpha") is None:
-            continue
-        a = entry["alpha"].get(freq_pair)          # 2D array for this pair, or None
-        if a is None:
-            continue
-        a = np.asarray(a).ravel()
-        a = a[np.isfinite(a)]                      # drop NaN/inf up front
-        if a.size:
-            vals.append(a)
-    if not vals:
-        return None, None
-    vals = np.concatenate(vals)
-    return float(np.percentile(vals, lo)), float(np.percentile(vals, hi))
-
 #---Subplot setup---#
 def setup_subplots(sim_dict,cbar=True,use_grid_limits=True,subplot_aspect=None,**kwargs):
     """Returns a PlotData obj"""
@@ -578,11 +595,8 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
 
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
-    entries = {}
-    for sim, outputs in sim_dict.items():
-        for output in outputs:
-            for angles in angle_dict[sim]: #load all the entries first
-                entries[(sim, output, tuple(angles))] = sim.load_sb_data(output, angles, freq, redshift)
+    
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift) #gets all grouped sbdata
 
     sim_dict_angles = { #subplot size should be output*angles
         sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
@@ -592,19 +606,14 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict_angles, **kwargs)
-
-        if pdata.vmax is None:
-            pdata.vmax = float(max(np.log10(np.nanpercentile(e["sb"], 99)) for e in entries.values())) #this should be across all freqs
-        if pdata.vmin is None:
-            pdata.vmin = pdata.vmax - 1
-
+        pdata.var_name  = 'sb'
+        _set_vlim_contours_sb(pdata,entries) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
         for sim, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
                 for angles in angle_dict[sim]:
                     entry = entries[(sim, output, tuple(angles))]
-                    pdata.var_name  = 'sb'
                     pdata.output    = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
@@ -628,7 +637,6 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
 
 def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
     path_params = path_params or pl_splines.PathParams()
-
     
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
@@ -636,11 +644,7 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
 
-    entries = {}
-    for sim, outputs in sim_dict.items():
-        for output in outputs:
-            for angles in angle_dict[sim]: #load all the entries first
-                entries[(sim, output, tuple(angles))] = sim.load_sb_data(output, angles, freq, redshift)
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift)
 
     sim_dict_angles = { #subplot size should be output*angles
         sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
@@ -650,46 +654,47 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict_angles, **kwargs)
-
-        if pdata.vmax is None:
-            pdata.vmax = float(max(np.log10(np.nanpercentile(e["sb"], 99)) for e in entries.values())) 
-        if pdata.vmin is None:
-            pdata.vmin = pdata.vmax - 1
+        pdata.var_name  = 'sb'
+        _set_vlim_contours_sb(pdata,entries) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
         for sim, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
                 for angles in angle_dict[sim]:
                     entry = entries[(sim, output, tuple(angles))]
-                    pdata.var_name  = 'sb'
                     pdata.output    = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
-                    ax = pdata.axes[pdata.plot_idx]                    
-                    spline_data = pl_splines.get_jet_splines_sb(
-                        sim=sim,
-                        grid_output=output,
-                        freq=freq,
-                        redshift=redshift,
-                        angle=angles,
-                        path_params=path_params,
-                    )
-                    top = spline_data["splines_top"]
-                    bot = spline_data["splines_bot"]
-                    mx, my = spline_data["grid_mx"],spline_data["grid_my"]
-                    inj_idx = spline_data['inj_idx']
+                    try:
+                        ax = pdata.axes[pdata.plot_idx]                    
+                        spline_data = pl_splines.get_jet_splines_sb(
+                            sim=sim,
+                            grid_output=output,
+                            freq=freq,
+                            redshift=redshift,
+                            angle=angles,
+                            path_params=path_params,
+                        )
+                        top = spline_data["splines_top"]
+                        bot = spline_data["splines_bot"]
+                        mx, my = spline_data["grid_mx"],spline_data["grid_my"]
+                        inj_idx = spline_data['inj_idx']
 
-                    peak_x, peak_y = pl_morph.get_sb_max_xy(spline_data)
-                    fr_info_top, fr_info_bot = pl_morph.get_fr_idx_spl(spline_data)
-                    fr_labels = [f"{info[1]} ({info[0]:.2f})" if info[0] is not None else "Single-sided" for info in (fr_info_top,fr_info_bot)]
+                        peak_x, peak_y = pl_morph.get_sb_max_xy(spline_data)
+                        fr_info_top, fr_info_bot = pl_morph.get_fr_idx_spl(spline_data)
+                        fr_labels = [f"{info[1]} ({info[0]:.2f})" if info[0] is not None else "Single-sided" for info in (fr_info_top,fr_info_bot)]
 
-                    ax.scatter(mx[inj_idx],my[inj_idx],marker = "x", color = "r",s=_get_markersize(fig_size))
-                    ax.scatter(peak_x,peak_y,color = "red", s = 3*fig_size,label = "$x_{\\rm{bright}}$") #max sb for top jet
-                    ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = f"Top jet: {fr_labels[0]}") #plot the top splines
-                    ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = f"Bottom jet: {fr_labels[1]}") #plot the bottom splines
+                        ax.scatter(mx[inj_idx],my[inj_idx],marker = "x", color = "r",s=_get_markersize(fig_size))
+                        ax.scatter(peak_x,peak_y,color = "red", s = 3*fig_size,label = "$x_{\\rm{bright}}$") #max sb for top jet
+                        ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = f"Top jet: {fr_labels[0]}") #plot the top splines
+                        ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = f"Bottom jet: {fr_labels[1]}") #plot the bottom splines
 
-                    ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
-
+                        ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
+                    except ValueError as e:
+                        if "no minimum-cost path was found to the specified end point" in str(e):
+                            print(f"Skipping angles = {angles} due to no minimum-cost path...")
+                        else:
+                            raise
                     if query_points is not None:
                         query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
                         _query_points_2D(sdata=sim,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
@@ -711,11 +716,7 @@ def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=Non
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
     
-    entries = {}
-    for sim, outputs in sim_dict.items():
-        for output in outputs:
-            for angles in angle_dict[sim]: #load all the entries first
-                entries[(sim, output, tuple(angles))] = sim.load_sb_data(output, angles, freqs[0], redshift)
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freqs[0],redshift=redshift)
 
     sim_dict_angles = { #subplot size should be output*angles
         sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
@@ -725,46 +726,17 @@ def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=Non
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict_angles, **kwargs)
-
-        # --- compute global vmin/vmax from alpha percentiles ---
-        if pdata.vmin is None or pdata.vmax is None:
-            vmin, vmax = _alpha_percentiles(entries,freq_pair=tuple(freqs))
-            if pdata.vmin is None:
-                pdata.vmin = vmin
-            if pdata.vmax is None:
-                pdata.vmax = vmax
+        pdata.var_name   = 'alpha'
+        _set_vlim_contours_sb(pdata,entries,freq_tuple=tuple(freqs)) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
         for sim, outputs in sim_dict.items():
             pdata.label = True            
             for output in outputs:
                 for angles in angle_dict[sim]:
                     entry = entries[(sim, output, tuple(angles))]
-                    ax    = pdata.axes[pdata.plot_idx]
-                    pdata.var_name   = 'alpha'
                     pdata.output = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata,freqs=freqs)
-
-                    # ax.pcolormesh(
-                    #     entry["grid_x"], entry["grid_y"],
-                    #     entry["alpha"],
-                    #     vmin=pdata.vmin, vmax=pdata.vmax,
-                    #     cmap="turbo",
-                    # )
-
-
-                    # # pdata.output     = round(sim.part_to_simtime(output))
-
-                    # ax.annotate(
-                    #     f"x={angles[0]}° y={angles[1]}° z={angles[2]}°",
-                    #     xy=(0.032, 0.98),
-                    #     xycoords=ax.transAxes,
-                    #     xytext=(0, 0),          # fixed offset from top
-                    #     textcoords="offset points",
-                    #     ha="left",
-                    #     va="top",
-                    #     fontsize=_get_fontsize(pdata.fig_size, "text"),
-                    # )
 
                     if query_points is not None:
                         query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
@@ -808,21 +780,21 @@ def fluid_1D_tr_spl(sdata,var,grid_output,tick_axis='x',tr_stop=0.2,fname=None,q
         plt.close(pdata.fig) 
         return pdata
 
-def surface_brightnes_1D(sdata,grid_output,angles,freq,redshift,tick_axis='x',fname=None,query_points=None,**kwargs):
+def surface_brightnes_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
     fig_size = kwargs.get('fig_size',7)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict={sdata:[grid_output]},cbar=False,use_grid_limits=False,**kwargs)
         pdata.output = grid_output
         pdata.var_name = "sb"
         pdata.label = True
-
+        pdata.fig_size = fig_size
         spline_data = pl_splines.get_jet_splines_sb(
             sim=sdata,
             grid_output=grid_output,
-            angles=angles,
+            angle=angle,
             freq=freq,
             redshift=redshift,
-            params=None)
+            path_params=path_params)
 
         _scatter_splines_1D(spline_data,sdata,pdata,tick_axis,query_points,use_sb=True)
 
@@ -835,7 +807,7 @@ def surface_brightnes_1D(sdata,grid_output,angles,freq,redshift,tick_axis='x',fn
         ax.set_xlabel("Arc length along jet [kpc]", fontsize=label_fontsize)
         ax.legend(fontsize = 0.5*_get_fontsize(pdata.fig_size, "text"),loc='lower left')
         ax.annotate(
-            f"x={angles[0]}° y={angles[1]}° z={angles[2]}°",
+            f"x={angle[0]}° y={angle[1]}° z={angle[2]}°",
             xy=(0.032, 0.98),
             xycoords=ax.transAxes,
             xytext=(0, 0),          # fixed offset from top

@@ -1,5 +1,6 @@
 import plutonlib.utils as pu
 import matplotlib as mpl
+from IPython.display import display
 
 class PlotData:
     """
@@ -61,7 +62,13 @@ class PlotData:
             return mpl.colormaps["PuRd"]
 
         return mpl.colormaps[self.cmap_dict[var_name]]
-        
+
+    def show(self):
+        """Analagous to plt.show(), used for ipynb display of pdata.fig e.g inside a loop"""
+        if type(self.fig) != mpl.figure.Figure:
+            raise TypeError(f"pdata.fig needs to be of type matplotlib.figure.Figure, type = {type(self.fig)}")
+        display(self.fig)
+    
     @property
     def spare_coord(self):
         '''e.g. returns y if profile is xz etc...'''
