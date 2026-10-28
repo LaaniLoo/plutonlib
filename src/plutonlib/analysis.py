@@ -98,9 +98,6 @@ def calc_var_prof(sdata,sel_coord,value_2D: float = None,value_1D: dict = None,*
         else:
             idx_map[coord] = get_grid_idx(value=0,sdata=sdata,coord=coord)
 
-
-
-
     # --- Define slicing maps ---
     if sdata.grid_ndim > 2:
         slice_map_1D = {

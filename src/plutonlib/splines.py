@@ -31,29 +31,25 @@ class PathParams:
 
 def path_setup(sim,grid_output,freq,redshift,angle): #setup required data, POS image
     """Setup all of the sb data required to path trace"""
-    sbdata = prw.load_sb_hdf5(sim=sim,grid_outputs=[grid_output],angles=[angle],freqs=[freq],redshift = redshift)
-    entry = sbdata[sim][grid_output][tuple(angle)]
+    #new method using sim obj
+    sbdata = sim.load_sb_data(grid_output=grid_output,angles=angle,freq=freq,redshift=redshift) 
     
-    obs = entry["obs_properties"]
-    rot_mat = obs["rot_mat"]
-    grid_dxy = [obs["grid_x"][1] - obs["grid_x"][0],obs["grid_y"][1] - obs["grid_y"][0]]
-    grid_mxy = [obs["grid_mx"],obs["grid_my"]]
+    grid_dxy = [sbdata["grid_x"][1] - sbdata["grid_x"][0],sbdata["grid_y"][1] - sbdata["grid_y"][0]]
+    grid_mxy = [sbdata["grid_mx"],sbdata["grid_my"]]
     # grid_xy = [obs["grid_x"],obs["grid_y"]]
 
     inj_grid = sim.get_injection_region(grid_output)
     inj_3d = np.array([inj_grid[0].value, 0, inj_grid[2].value])
-    inj_xz = (inj_3d @ rot_mat.T)[[0, 2]]
-    # inj_obs = inj_xz[0], inj_xz[1] #log_sb is indexed z,y,x 
-    # inj_obs = inj_grid[2].value,inj_grid[0].value
+    inj_xz = (inj_3d @ sbdata["rot_mat"].T)[[0, 2]]
 
-    inj_pxl = [pa.nearest_cell_idx(obs["grid_my"], inj_xz[1]),   # z -> rows
-        pa.nearest_cell_idx(obs["grid_mx"], inj_xz[0])]   # x -> cols
-    log_sb = entry["log_sb"]
+    inj_pxl = [pa.nearest_cell_idx(sbdata["grid_my"], inj_xz[1]),   # z -> rows
+        pa.nearest_cell_idx(sbdata["grid_mx"], inj_xz[0])]   # x -> cols
+    log_sb = sbdata["log_sb"]
     path_data = {
         "grid_dxy":grid_dxy,
         "grid_mxy":grid_mxy,
         "angle": angle,
-        "rot_mat":rot_mat,
+        "rot_mat":sbdata["rot_mat"],
         "inj_xz": inj_xz,
         "inj_pxl": inj_pxl,
         "log_sb":log_sb,
@@ -264,7 +260,7 @@ def get_jet_splines_sb(sim,grid_output,freq,redshift,angle,path_params):
         "splines_top":splines_top,
         "splines_bot":splines_bot,
         "log_sb_spline": path_data["log_sb"][y_idx,x_idx],
-        "jet_length":arc_length, #NOTE is top -> bottom
+        "jet_length":np.asarray(arc_length), #NOTE is top -> bottom
         "path_data":path_data,
         "inj_xz": inj_xz,
         "inj_idx": inj_idx,

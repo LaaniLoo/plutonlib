@@ -1,5 +1,3 @@
-from matplotlib.pyplot import grid
-
 import plutonlib.read_write as prw
 import plutonlib.config as pc
 import plutonlib.units as pl_units
@@ -12,13 +10,12 @@ import plutonlib.fancy_plot as pl_fancypl
 
 import numpy as np
 
-import os
+# import os
 import gc
 import h5py
 from pathlib import Path
 import warnings
 import difflib
-
 
 coord_systems = pc.coord_systems
 

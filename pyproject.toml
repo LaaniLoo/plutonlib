@@ -4,8 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plutonlib"
-version = "0.4.4"
-# dynamic = ["version"]
+dynamic = ["version"]
 description = ""
 readme = "README.md"
 license = "GPL-3.0"
@@ -18,6 +17,7 @@ keywords = [
 ]
 
 dependencies = [
+    "plutokore @ git+https://gitlab.com/utas-agn/plutokore.git@master",
     "astropy",
     "contextlib2",
     "future",
@@ -27,14 +27,17 @@ dependencies = [
     "matplotlib",
     "numba",
     "numpy",
-    "pyyaml",
+    "yaml",
+    "os",
+    "pathlib",
     "scipy",
-    "tabulate",
-    "yt",
 ]
 
-[tool.hatch.dependencies]
-plutokore = { git = "https://gitlab.com/utas-agn/plutokore.git", branch = "master" } #check if can git clone with SSH key without prompts
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.setuptools.dynamic]
+version = {attr = "plutonlib.__version__"}
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plutonlib"]
