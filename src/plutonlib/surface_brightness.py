@@ -172,16 +172,16 @@ def calc_surface_brightness_praise(sdata,freqs=[1.4],redshift=0.05,part_outputs=
 
     return sb_arr
 
-def _compute_sb_task(sim,grid_output,angles,freqs,redshift,plane='xz'):
+def _compute_sb_task(sdata,grid_output,angles,freqs,redshift,plane='xz'):
     """Runs the computation needed for save_sb_hdf5 to run in parallel"""
-    print(f"Computing SB data for {sim.run_name} grid output={grid_output} angle={angles}°...")
+    print(f"Computing SB data for {sdata.run_name}: grid output ={grid_output}, angle={angles}°")
     obs_properties = setup_obs_properties_praise(
-        sdata=sim, redshift=redshift, angles=angles, plane=plane   # angles= not angle=
+        sdata=sdata, redshift=redshift, angles=angles, plane=plane   # angles= not angle=
     )
 
-    part_output = sim.simtime_to_part(grid_output,round_val=True) #convert to particle output for calculation
+    part_output = sdata.simtime_to_part(grid_output,round_val=True) #convert to particle output for calculation
     sb_arr = calc_surface_brightness_praise(
-        sdata=sim,
+        sdata=sdata,
         freqs=freqs,
         redshift=redshift,
         part_outputs=[part_output],
@@ -224,7 +224,7 @@ def _compute_sb_task(sim,grid_output,angles,freqs,redshift,plane='xz'):
     print(f"Memory used: {peak_gb:.2f} GB")  
 
     task_data = {
-        "run_name": sim.run_name,
+        "run_name": sdata.run_name,
         # "output": part_output,
         "grid_output": grid_output,     # the identifier you key by
         "part_output": part_output,     # only used internally to fetch/compute
@@ -240,9 +240,8 @@ def _compute_sb_task(sim,grid_output,angles,freqs,redshift,plane='xz'):
   
     return task_data
 
-def save_sb_hdf5(sim,grid_outputs,angles, freqs, redshift=0.05, plane='xz',memory=None,task_req_mem=30):    
-    # part_outputs = sim.simtime_to_part(grid_outputs,round_val=True)
-    file_path = os.path.join(sim.wdir, f"sbdata.h5") 
+def save_sb_hdf5(sdata,grid_outputs,angles, freqs, redshift=0.05, plane='xz',memory=None,task_req_mem=30):    
+    file_path = os.path.join(sdata.wdir, f"sbdata.h5") 
     fmode = "a" if os.path.exists(file_path) else "w"
 
     task_args = []
@@ -254,7 +253,7 @@ def save_sb_hdf5(sim,grid_outputs,angles, freqs, redshift=0.05, plane='xz',memor
                     if set(freqs) <= existing:
                         print(f"Found angles '{angle_set}' with freqs {freqs} in '{file_path}/{redshift}/{grid_output}', skipping calculation...")
                         continue
-                task_args.append((sim, grid_output, angle_set, freqs, redshift, plane))
+                task_args.append((sdata, grid_output, angle_set, freqs, redshift, plane))
 
 
     n_workers = pu.setup_workers(n_tasks=len(task_args),task_req_mem=task_req_mem,memory=memory) #NOTE helper to find number of workers
@@ -263,7 +262,7 @@ def save_sb_hdf5(sim,grid_outputs,angles, freqs, redshift=0.05, plane='xz',memor
         results = pool.starmap(_compute_sb_task, task_args, chunksize=1)
 
     with h5py.File(file_path, "a") as h5f: #reopen file to assign data
-        h5f.attrs['run_name'] = sim.run_name #store run_name and freq as base attrs
+        h5f.attrs['run_name'] = sdata.run_name #store run_name and freq as base attrs
         for task_data in results:
             run_data = h5f.require_group(f"{redshift}")
             run_data.attrs['redshift'] = redshift

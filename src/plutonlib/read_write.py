@@ -6,7 +6,7 @@ coord_systems = pc.coord_systems
 
 from concurrent.futures import ThreadPoolExecutor, as_completed,ProcessPoolExecutor
 from dataclasses import dataclass, field
-from typing import Dict, Any, List
+from typing import Dict, Any, List,Optional
 from collections import defaultdict 
 import h5py as h5py
 import hdf5plugin
@@ -21,9 +21,9 @@ from pathlib import Path
 @dataclass
 class HDF5Metadata:
     wdir: str
-    file_path: str
-    # sim_time: float #NOTE now done by the property
     load_output: int
+    file_path: Optional[str] = None #not required, used for _load_from_file
+    # sim_time: float #NOTE now done by the property
     dtype: str = "dbl.h5"
     # dataset_paths: Dict[str, str] #NOTE now done by the property
 
@@ -747,16 +747,15 @@ def load_particles_hdf5(wdir,part_outputs = None,tr_cut = None,var_choice = None
     return particle_dict
 
 #---Surface brightness----#
-def load_sb_hdf5(sim, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
-    # part_outputs = sim.simtime_to_part(grid_outputs,round_val=True) #convert to particle times
-    file_path = os.path.join(sim.wdir, f"sbdata.h5")
+def load_sb_hdf5(sdata, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
+    file_path = os.path.join(sdata.wdir, f"sbdata.h5")
 
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"SB data file '{file_path}' does not exist")
 
     # print(f"Found {file_path}")
     with h5py.File(file_path, "r") as data_file:
-        if data_file.attrs["run_name"] != sim.run_name: 
+        if data_file.attrs["run_name"] != sdata.run_name: 
             raise ValueError(f"File {file_path} does not have matching run_name attr, \n{dict(data_file.attrs)}")
 
         if str(redshift) not in data_file:
@@ -831,4 +830,4 @@ def load_sb_hdf5(sim, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
                     "alpha":          alpha,   # {(f_lo, f_hi): (ny, nx) array} or None
                 }
 
-    return {"metadata": {"angles": angles,"angles_all":angles_all, "freqs": freqs}, **{sim: sb_data}}
+    return {"metadata": {"angles": angles,"angles_all":angles_all, "freqs": freqs}, **{sdata: sb_data}}

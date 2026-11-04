@@ -159,10 +159,10 @@ def _get_sbdata_entries(sim_dict,angle_dict,freq,redshift):
     """Groups output, angle, freq and redshift data per simulation, 
     returns a dict keyed by a tuple -> (sim, output, tuple(angles))"""
     entries = {}
-    for sim, outputs in sim_dict.items():
+    for sdata, outputs in sim_dict.items():
         for output in outputs:
-            for angles in angle_dict[sim]: #load all the entries first
-                entries[(sim, output, tuple(angles))] = sim.load_sb_data(output, angles, freq, redshift)
+            for angles in angle_dict[sdata]: #load all the entries first
+                entries[(sdata, output, tuple(angles))] = sdata.load_sb_data(output, angles, freq, redshift)
     return entries
 
 def _set_vlim_contours_sb(pdata,sb_entries,freq_tuple=None):
@@ -471,9 +471,9 @@ def setup_subplots(sim_dict,cbar=True,use_grid_limits=True,subplot_aspect=None,*
         #use pluto.ini grid values, using the max grid span for sim in sim dict #NOTE this is for 2D pcmesh
         if use_grid_limits:
             if pdata.xlim is None: 
-                pdata.xlim = max((sim.xyz_lim[0] for sim in sim_dict), key=lambda t: t[1])
+                pdata.xlim = max((sdata.xyz_lim[0] for sdata in sim_dict), key=lambda t: t[1])
             if pdata.ylim is None:
-                pdata.ylim = max((sim.xyz_lim[2] for sim in sim_dict), key=lambda t: t[1]) #NOTE ylim is z axis
+                pdata.ylim = max((sdata.xyz_lim[2] for sdata in sim_dict), key=lambda t: t[1]) #NOTE ylim is z axis
 
         #automatically set the aspect ratio of the subplot grid using xylim, arg, else: arbitrary value
         if subplot_aspect is None:
@@ -509,20 +509,20 @@ def fluid(sim_dict,var,fname=None,query_points=None,**kwargs):
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict, **kwargs)
-        for sim in sim_dict.keys():
+        for sdata in sim_dict.keys():
             pdata.label = True
-            for output in sim_dict[sim]:
+            for output in sim_dict[sdata]:
                 pdata.var_name = var
                 pdata.output = output
 
-                _im_2d_fluid(sim,pdata)
-                _query_points_2D(sdata=sim,pdata=pdata,query_points=query_points)
-                _ticks_labels_limits(sim,pdata)
+                _im_2d_fluid(sdata,pdata)
+                _query_points_2D(sdata=sdata,pdata=pdata,query_points=query_points)
+                _ticks_labels_limits(sdata,pdata)
                 pdata.plot_idx += 1
 
-            _labels_2D(sim,pdata)
-            _colourbar(sim,pdata,**kwargs)
-            _hide_unused_tiles(pdata, len(sim_dict[sim]))
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,**kwargs)
+            _hide_unused_tiles(pdata, len(sim_dict[sdata]))
 
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
@@ -535,27 +535,27 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict, **kwargs)
-        for sim in sim_dict.keys():
+        for sdata in sim_dict.keys():
             pdata.label = True
-            for output in sim_dict[sim]:
+            for output in sim_dict[sdata]:
                 pdata.var_name = var
 
-                pdata.output = sim.simtime_to_part(output,round_val=True) # NOTE: particle time, not sim time, im scatter particles needs part_output
-                _im_scatter_particles(sim,pdata,tr_cut=None,**kwargs) #base particles image
+                pdata.output = sdata.simtime_to_part(output,round_val=True) # NOTE: particle time, not sim time, im scatter particles needs part_output
+                _im_scatter_particles(sdata,pdata,tr_cut=None,**kwargs) #base particles image
                 pdata.output = output       # back to sim_time
-                _ticks_labels_limits(sim, pdata)  # ticks, limits, time/name text
+                _ticks_labels_limits(sdata, pdata)  # ticks, limits, time/name text
 
                 # --- spline overlay --- (unique to this plotter) #TODO needs helper
                 ax = pdata.axes[pdata.plot_idx]
-                spline_data = pl_splines.get_jet_splines_tr(sdata=sim, grid_output=output, tr_stop=tr_stop)
+                spline_data = pl_splines.get_jet_splines_tr(sdata=sdata, grid_output=output, tr_stop=tr_stop)
                 spline_points = spline_data["spline_points"]
                 ax.plot(spline_points[:, 0], spline_points[:, 1], color='k', linestyle='--')
 
-                if query_points and query_points.get(sim) is not None:
-                    points = {k: v for k, v in query_points[sim].items() if k != 'roc'}
-                    roc = query_points[sim].get('roc')
+                if query_points and query_points.get(sdata) is not None:
+                    points = {k: v for k, v in query_points[sdata].items() if k != 'roc'}
+                    roc = query_points[sdata].get('roc')
                     colours = ['#67001f', '#980043', '#e7298a', '#df65b0', '#c994c7']
-                    inj_pos = sim.get_injection_region(output)
+                    inj_pos = sdata.get_injection_region(output)
                     inj_x, inj_z = inj_pos[0].value, inj_pos[2].value
 
                     dx = np.diff(spline_points[:, 0])
@@ -570,7 +570,7 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
                                    s=12, zorder=5, color=colours[col_idx],
                                    label=f"{lbl} = {offset:.2f} kpc")
 
-                    if roc is not None and output == sim_dict[sim][-1]:
+                    if roc is not None and output == sim_dict[sdata][-1]:
                         circle = Circle(xy=(inj_x + roc, 0), radius=roc,
                                         fill=False, edgecolor='k', linewidth=1.5, linestyle=':')
                         ax.add_patch(circle)
@@ -578,9 +578,9 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
 
                 pdata.plot_idx += 1
 
-            _labels_2D(sim,pdata)
-            _colourbar(sim,pdata,**kwargs)
-            _hide_unused_tiles(pdata, len(sim_dict[sim]))
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,**kwargs)
+            _hide_unused_tiles(pdata, len(sim_dict[sdata]))
 
         _rotate_row(pdata)
         _vlim_rasterise(pdata)
@@ -599,8 +599,8 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
     entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift) #gets all grouped sbdata
 
     sim_dict_angles = { #subplot size should be output*angles
-        sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
-        for sim in sim_dict.keys()
+        sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
+        for sdata in sim_dict.keys()
     }
     label_all_axes = kwargs.get('label_all_axes',False)
     fig_size = kwargs.get('fig_size',5)
@@ -609,24 +609,24 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
         pdata.var_name  = 'sb'
         _set_vlim_contours_sb(pdata,entries) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
-        for sim, outputs in sim_dict.items():
+        for sdata, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
-                for angles in angle_dict[sim]:
-                    entry = entries[(sim, output, tuple(angles))]
+                for angles in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angles))]
                     pdata.output    = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
                     
                     if query_points is not None:
-                        query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
-                        _query_points_2D(sdata=sim,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
-                    _ticks_labels_limits(sim,pdata)
+                        query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
+                        _query_points_2D(sdata=sdata,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
+                    _ticks_labels_limits(sdata,pdata)
                     pdata.plot_idx += 1
  
-            _labels_2D(sim,pdata)
-            _colourbar(sim,pdata,freqs = [freq], **kwargs)        # separate from _colourbar — label differs
-            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sim]))
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,freqs = [freq], **kwargs)        # separate from _colourbar — label differs
+            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sdata]))
  
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
@@ -647,8 +647,8 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
     entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift)
 
     sim_dict_angles = { #subplot size should be output*angles
-        sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
-        for sim in sim_dict.keys()
+        sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
+        for sdata in sim_dict.keys()
     }
     label_all_axes = kwargs.get('label_all_axes',False)
     fig_size = kwargs.get('fig_size',5)
@@ -657,18 +657,18 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
         pdata.var_name  = 'sb'
         _set_vlim_contours_sb(pdata,entries) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
-        for sim, outputs in sim_dict.items():
+        for sdata, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
-                for angles in angle_dict[sim]:
-                    entry = entries[(sim, output, tuple(angles))]
+                for angles in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angles))]
                     pdata.output    = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
                     try:
                         ax = pdata.axes[pdata.plot_idx]                    
                         spline_data = pl_splines.get_jet_splines_sb(
-                            sim=sim,
+                            sdata=sdata,
                             grid_output=output,
                             freq=freq,
                             redshift=redshift,
@@ -696,14 +696,14 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
                         else:
                             raise
                     if query_points is not None:
-                        query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
-                        _query_points_2D(sdata=sim,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
-                    _ticks_labels_limits(sim,pdata)
+                        query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
+                        _query_points_2D(sdata=sdata,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
+                    _ticks_labels_limits(sdata,pdata)
                     pdata.plot_idx += 1
  
-            _labels_2D(sim,pdata)
-            _colourbar(sim,pdata,freqs = [freq], **kwargs)        # separate from _colourbar — label differs
-            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sim]))
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,freqs = [freq], **kwargs)        # separate from _colourbar — label differs
+            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sdata]))
  
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
@@ -719,8 +719,8 @@ def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=Non
     entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freqs[0],redshift=redshift)
 
     sim_dict_angles = { #subplot size should be output*angles
-        sim: list(range(len(sim_dict[sim]) * len(angle_dict[sim]))) 
-        for sim in sim_dict.keys()
+        sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
+        for sdata in sim_dict.keys()
     }
     label_all_axes = kwargs.get('label_all_axes',False)
     fig_size = kwargs.get('fig_size',5)
@@ -729,24 +729,24 @@ def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=Non
         pdata.var_name   = 'alpha'
         _set_vlim_contours_sb(pdata,entries,freq_tuple=tuple(freqs)) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
 
-        for sim, outputs in sim_dict.items():
+        for sdata, outputs in sim_dict.items():
             pdata.label = True            
             for output in outputs:
-                for angles in angle_dict[sim]:
-                    entry = entries[(sim, output, tuple(angles))]
+                for angles in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angles))]
                     pdata.output = output
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata,freqs=freqs)
 
                     if query_points is not None:
-                        query_points_rotated = _rotate_query_points(sdata=sim,query_points=query_points,rot_mat=entry['rot_mat'])
-                        _query_points_2D(sdata=sim,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
-                    _ticks_labels_limits(sim,pdata)
+                        query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
+                        _query_points_2D(sdata=sdata,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
+                    _ticks_labels_limits(sdata,pdata)
                     pdata.plot_idx += 1
  
-            _labels_2D(sim,pdata)
-            _colourbar(sim,pdata,freqs = freqs, **kwargs)        # separate from _colourbar — label differs
-            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sim]))
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,freqs = freqs, **kwargs)        # separate from _colourbar — label differs
+            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sdata]))
  
         _rotate_row(pdata)
         _vlim_rasterise(pdata,**kwargs)
@@ -789,7 +789,7 @@ def surface_brightnes_1D(sdata,grid_output,angle,freq,redshift,path_params=None,
         pdata.label = True
         pdata.fig_size = fig_size
         spline_data = pl_splines.get_jet_splines_sb(
-            sim=sdata,
+            sdata=sdata,
             grid_output=grid_output,
             angle=angle,
             freq=freq,

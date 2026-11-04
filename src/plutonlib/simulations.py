@@ -250,7 +250,7 @@ class SimulationData(SimulationSetup):
     def load_jet_data_sb(self,freq,redshift,var_choice,grid_output):
         """Same functionality as load_jet_data_tr but path tracing via a skeletonised SB image"""
         data_splines = {}
-        interp_data = ps.interp_splines_plutogrid(sim=self,grid_output=grid_output,freq=freq,redshift=redshift)
+        interp_data = ps.interp_splines_plutogrid(sdata=self,grid_output=grid_output,freq=freq,redshift=redshift)
         temp_data = self.load_fluid_data(var_choice,grid_output=grid_output,load_slice=self.quick_slice_2D('xz'))
         for var in var_choice:
             data_splines[var] = temp_data[var][interp_data['spline_slice_map']]
@@ -284,7 +284,7 @@ class SimulationData(SimulationSetup):
 
     def load_sb_data(self,grid_output,angles,freq,redshift,plane = 'xz'):
         data = prw.load_sb_hdf5(
-            sim=self,
+            sdata=self,
             grid_outputs=[grid_output],
             angles=[angles],
             freqs="all", #NOTE this was changed from 'all'
@@ -406,7 +406,7 @@ class SimulationData(SimulationSetup):
         print("Importing plutokore...")
         import plutokore.pluto_simulation as pk_sim
         # self.get_metadata().dtype.split(".")[0] #flt or dbl
-        sim = pk_sim.PlutoSimulation(
+        pks = pk_sim.PlutoSimulation(
             simulation_name=self.run_name,                
             simulation_directory=Path(self.wdir),      
             simulation_description="",        
@@ -414,7 +414,7 @@ class SimulationData(SimulationSetup):
             dimensions=self.grid_ndim,                           
         )
 
-        return sim
+        return pks
     
     def quick_slice_1D(self,plane = "xz"):
         plane_map = {"xy": "x3", "xz": "x2", "yz": "x1"}
