@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
+import argparse
 from pathlib import Path 
-from platform import release
 import subprocess
 import re 
 from datetime import date
@@ -24,10 +24,11 @@ def get_commits_from_log(log_md_path):
         line = raw.strip()
 
         if line.startswith("- ["):
-            ticked = line.startswith("- [x]")
+            status = line[3:4]
+            ticked = status in ("x", "c")
             current = None
             if ticked:
-                commits.append({})
+                commits.append({"Status": status})
             
         elif line == "---":
             current = None
@@ -101,11 +102,12 @@ def write_commits_md(commits_md_path,commits,version):
     for name,entries in groups.items():
         blocks.append(f"#### **{name}** ")
         for cm in entries:
+            tick = "x" if cm["Status"] == "c" else " "
             file_name = f"`{cm['File']}`" if cm.get("File") else ""
             subject = f"{cm['Type']}({name}): {cm['Summary']}"
             desc = cm.get("Description", "").split("\n")[0]
             blocks.append(
-                f"- [ ] \n"
+                f"- [{tick}] \n"
                 f"**File:** {file_name}\n"
                 f"**Summary:**\n{fence}bash\n{subject}\n{fence}\n"
                 f"**Description:**\n{fence}bash\n{desc}\n{fence}\n"
@@ -159,26 +161,39 @@ def update_changelog(changelog_path,commits,version):
     # cl.with_suffix(".bak").write_text(existing)
     cl.write_text(new)
 
-def mark_released(log_md_path):
+def mark(log_md_path, old, new):
     log = Path(log_md_path).expanduser()
     lines = log.read_text().splitlines(keepends=True)   # fresh read
-    lines = [l.replace("[x]", "[r]", 1) if l.lstrip().startswith("- [x]") else l
+    lines = [l.replace(f"[{old}]", f"[{new}]", 1)
+             if l.lstrip().startswith(f"- [{old}]") else l
              for l in lines]
     log.write_text("".join(lines))
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c","--committed",help="Mark log entries as committed",action="store_true")
+    args = parser.parse_args()
+
     log_path = "~/Main/alains_obsidian_vault_local/plutonlib/log.md"
     commits_path = "~/Main/alains_obsidian_vault_local/plutonlib/commits.md"
     src_path = "~/plutonlib"
     changelog_path = "~/plutonlib/CHANGELOG.md"
 
+    if args.committed:
+        mark(log_path, "x", "c")
+
     commits = get_commits_from_log(log_path)
     version,release = get_tag_version(src_path,log_path)
     print("Writing commits to commits.md...")
-    write_commits_md(commits_path,commits,version)
+    write_commits_md(commits_path, commits, version)      # only write uncommitted entries
+
+    if args.committed:
+        return
+
     if release:
         print("Updating CHANGELOG.md...")
         update_changelog(changelog_path,commits,version)
-        mark_released(log_path)
+        mark(log_path, "x", "r")
+        mark(log_path, "c", "r")
 if __name__ == "__main__":
     main()

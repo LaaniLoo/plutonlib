@@ -24,9 +24,9 @@ print("Import complete")
 def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml"
 plane = 'xz'
 
-def dry_run(sim,grid_output,angles,freqs,redshift):
+def dry_run(sdata,grid_output,angles,freqs,redshift):
     print("Executing a dry run to gauge memory usage...\n")
-    task = pl_sb._compute_sb_task(sim=sim,grid_output=grid_output,angles=angles,freqs=freqs,redshift=redshift)
+    task = pl_sb._compute_sb_task(sdata=sdata,grid_output=grid_output,angles=angles,freqs=freqs,redshift=redshift)
     print("Dry run complete!\n")
     return task["peak_gb"]
 
@@ -40,7 +40,7 @@ def run_sb_calc(args):
     configs = setup_yml['configs']
 
     for sim_path in setup_yml["simulations"].keys(): #this will do sim by sim rather than constructing a sim dict
-        sim = ps.SimulationData(rel_path=sim_path)
+        sdata = ps.SimulationData(rel_path=sim_path)
         sim_params = setup_yml["simulations"][sim_path]
 
         if sim_params['config'] not in configs:
@@ -77,10 +77,10 @@ def run_sb_calc(args):
         if args.no_dry_run: #do a dry run to see the memory usage, else use 30gb per worker
             req_mem = 30 
         else:
-            req_mem = dry_run(sim,outputs[-1],angles[0],freqs,redshift)
+            req_mem = dry_run(sdata,outputs[-1],angles[0],freqs,redshift)
 
         pl_sb.save_sb_hdf5(
-            sim=sim,
+            sdata=sdata,
             grid_outputs=outputs,
             angles=angles,
             freqs=freqs,

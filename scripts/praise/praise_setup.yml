@@ -27,7 +27,7 @@ configs:
 simulations:
   /u/alainm/pluto-master/Simulations/Jet_mvinj/Q36_v01_a25_wx064z064_eox58z58:
     config: "hybrids_all"
-    outputs: [50]
+    outputs: [25,50,75]
     redshift: 0.02
 
   # /u/alainm/pluto-master/Simulations/Jet_mvinj/Q37_v01_a25_wx1.6:

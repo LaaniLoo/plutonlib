@@ -1,3 +1,5 @@
+#! usr/env/bin python3
+
 import yaml
 import os
 from pathlib import Path
@@ -6,7 +8,6 @@ import gc
 
 import itertools
 import numpy as np 
-import math
 
 import resource
 
@@ -19,7 +20,7 @@ from plutonlib.pbs_job import init_script_dirs,create_run_script, submit_run_scr
 def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml" #NOTE local yml path
 
 plane = 'xz'
-chunk_size = 80 #80 is about the max for 128gb of ram
+# chunk_size = 75 #80 is about the max for 128gb of ram
 
 angle_mode = None
 sb_meta = None
@@ -97,8 +98,8 @@ def create_hybrid_plot(args):
 
                 sim_dict = {sim:[output]}
 
-                for itr, angle_chunk in enumerate(chunked(angles, chunk_size), start=0): #group into plots of 100 angles, each file +10 deg in x 
-                    print(f"Plotting {sim.run_name} at output = {output}, freq = {freq} angles = \n{angle_chunk}")
+                for itr, angle_chunk in enumerate(chunked(angles, args.chunk_size), start=0): #group into plots of 100 angles, each file +10 deg in x 
+                    print(f"Plotting {sim.run_name} at output = {output}, freq = {freq}, redshift = {redshift}, angles = \n{angle_chunk}")
                     angle_dict = {sim: angle_chunk}
 
                     # query_points = {}
@@ -130,11 +131,13 @@ def create_hybrid_plot(args):
                     print(f"Memory used: {peak_gb:.2f} GB")  
                 # del 
                     gc.collect()
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--yml",type=str,help=f"Path to praise setup yaml defaults to {def_yml_path}",default=def_yml_path)
+    parser.add_argument("--yml",type=str,help=f"Path to praise setup yaml defaults to %(default)s",default=def_yml_path)
+    parser.add_argument("--chunk-size",type=int,help=f"Number of plots per file defaults to %(default)s",default = 80)
     # parser.add_argument("-r","--redshift",type=float,help=f"Redshift used to calculate surface brightness, defaults to {def_redshift}",default=def_redshift)
-    parser.add_argument("-d","--wdir",type=str,help=f"Path to working dir (save location for h5 file), defaults to {'./'}",default="./")
+    parser.add_argument("-d","--wdir",type=str,help=f"Path to working dir (save location for h5 file), defaults to %(default)s",default="./")
     parser.add_argument("-c","--cluster",help="Submits this script as a PBS job to kunanyi",action="store_true")
     parser.add_argument("--job-name", default="hybrids_grid")
     parser.add_argument("--job-length", type=int, default=5)
@@ -149,7 +152,7 @@ def main():
         yml_cluster = output_dir /Path(args.yml).name #use yml file in output dir
 
         cmd = ( #NOTE removes script files after job finishes 
-            f'python3 -u "{script_cluster}" --yml "{yml_cluster}" '
+            f'python3 -u "{script_cluster}" --yml "{yml_cluster}" --chunk-size {args.chunk_size} '
             f'--memory {args.memory} ' #--redshift {args.redshift} 
             f'&& rm -rf "{output_dir}"'
         )

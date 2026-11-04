@@ -17,7 +17,7 @@ class SimInfoSetup:
     """
     _unit_map = {} #maps dataclass attrs to user specified unit values in plutonlib/units ini files
     _param_map = {} #maps dataclass attrs to user parameters present in pluto.ini setups
-    usr_ini_path = None #defaults to /plutonlib/units/usr_units.ini
+    usr_ini_path = None #defaults to /plutonlib/src/plutonlib/usr_units.ini
     def __post_init__(self):
         units = pl_units.PlutoUnits.from_definitions(defs=None, usr_ini_path=self.usr_ini_path)
         for sim_v,map_v in self._unit_map.items():

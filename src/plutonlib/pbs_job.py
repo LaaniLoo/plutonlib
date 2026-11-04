@@ -67,7 +67,7 @@ def create_run_script(*,cmd,job_name,job_length,nodes,cpus=28,log_dir=None, memo
             f"#PBS -N {job_name}",
             high_mem_q,
             # f"#PBS -j eo",
-            # f"#PBS -k oe",
+            f"#PBS -k oe",
             f"#PBS -m abe", #email 
             f"#PBS -M alain.mackay@utas.edu.au",
             # *log_str,

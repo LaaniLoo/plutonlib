@@ -249,7 +249,7 @@ def setup_workers(n_tasks,task_req_mem = 30,memory = None):
     Returns:
         int: Number of workers
     """
-    req_mem = math.ceil(task_req_mem)*1.2 #add an extra 20% of headroom
+    req_mem = math.ceil(task_req_mem)*1.1 #add an extra 10% of headroom
     per_task_bytes =  req_mem * 1024**3 #rounds up and conv to int
     avail_bytes = memory * 1024**3 if memory is not None else psutil.virtual_memory().available
     max_workers_by_mem = max(1, avail_bytes // per_task_bytes)

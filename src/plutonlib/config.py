@@ -80,10 +80,8 @@ def pluto_ini_info(sim_dir=None,pluto_ini = None):
             job_dir_files = glob.glob(f"{run_info_dir}/*.ini")
             latest_ini = max(job_dir_files,key=os.path.getctime)
 
-        else:
-            raise FileNotFoundError(f"Unable to find latest ini in '{job_dir_files}'")
-            # dir_files = glob.glob(f"{sim_dir}/*.ini")
-            # latest_ini = max(dir_files,key=os.path.getctime)
+        elif not os.path.isdir(run_info_dir):
+            raise FileNotFoundError(f"Unable to find run info directory: '{run_info_dir}' (location of this runs pluto.ini)")
 
     ini_name = latest_ini.split("/")[-1]
 

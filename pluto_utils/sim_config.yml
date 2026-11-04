@@ -15,16 +15,22 @@
 
 #DEFINITIONS#
   # add only what you want to change, use the same case and syntax as .h file
+
+#!TO BE IMPLEMENTED!#
+  # dbl.h5 and flt.h5 output rates
+  # restart copying files etc 
+  # ini parameters
 #---END---#
+
 
 simulations_root: "~/pluto-master/Simulations/"
 modules: ["HDF5","OpenMPI/4.1.5-GCC-12.3.0-pbs"]
 
 simulations: 
-  yml_test: 
+  Jet_mvinj: 
     pluto_config: 'cluster_hd'
     runs: 
-      test_run:
+      Q36_v01_a25_wx064z064_eox58z58:
         ini_file:
         job_config: 'normal'
         restart: [False,0]
@@ -32,11 +38,19 @@ simulations:
 
 job_config:
   normal:
-    nodes: 10
+    nodes: 70
     cpus: 28
-    job_length: 24
+    job_length: 48
     compression: True
     dbl.h5: [True,1] #yes output dbl, every 1 Myr
+    flt.h5: [True,1]
+
+  long:
+    nodes: 70
+    cpus: 28
+    job_length: 100
+    compression: True
+    dbl.h5: [True,1] 
     flt.h5: [True,1]
 
 pluto_config:
