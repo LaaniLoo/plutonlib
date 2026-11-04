@@ -1,4 +1,54 @@
 # Changelog
+## [0.17.1] - 2026-11-04
+#### **morphology**
+* ***feat:*** added function to get spline segment from injection to peak (`morphology.py`)
+   * See `get_peak_spline_seg(spline_data)`
+* ***feat:*** WIP JetMorphology dataclass and added morphology classification functions (`morphology.py`)
+   * WIP `JetMorphology`dataclass, using own or spline data to assign jet/lobe lengths, FR-index etc. Can classify morphology into common classes using `classify_morphology`. Morphology parameters (e.g. length, bending angle, FR-index) are calculated with `calc_morphology_params`
+
+**`morphology.py`**
+Returns tuple `top_segment`,`bot_segment`
+
+**`morphology.py`**
+* `classify_morphology`classes into some combination of "hybrid", "FR-X", "single-sided","head-tail", "WAT" or "NAT" e.g "WAT+true-hybrid" or "single-sided+FR1"
+* Can save these parameters and classifications to a csv file using `save_morphology_csv`
+
+---
+#### **plotting**
+* ***fix:*** fixed percentile calculations across sb plots (`fancy_plot.py`)
+   * See helpers `_get_sbdata_entries`and `_set_vlim_contours_sb`
+
+**`fancy_plot.py`**
+* Added `_get_sbdata_entries`helper to group all sbdata into a nested dict keyed by the tuple `(sim, output, tuple(angles))`
+* For surface brightness: Sets `vmax`based on the 99th percentile with `vmin = vmax - 2`
+* For spectral index: `vmax`is set to the 98th percentile with `vmin`being the 2nd percentile
+
+---
+#### **praise scripts**
+* ***fix:*** redshift and nlfreqs are now yaml entries (`hybrids_grid.py`)
+* ***fix:*** redshift and nlfreqs are now yaml entries (`praise_hdf5.py`)
+
+---
+#### **readme**
+* ***fix:*** updated readme (`README.md`)
+
+---
+#### **simulations**
+* ***fix:*** SimulationData now has sim_root path (`simulations.py`)
+   * Removes requirement for `sim_dir`to be inside `pluto-master`allowing for multiple simulation root directories e.g `~/pluto-master/Simulations`
+
+---
+#### **all**
+* ***fix:*** replaced all mentions of 'sim' to 'sdata'
+   * `sdata`more accurately describes the parent `SimulationData`object
+
+---
+#### **splines**
+* ***fix:*** no dependency on inj pixel brightness, improved single-sided case (`splines.py`)
+   * source is now selected from the labels at the closest bright region from the injection region. `source = labels == labels[zz[i], xx[i]]`no longer requiring a bright injection region.
+
+---
+
 ## [0.17.0] - 2026-10-26
 
 ### 🚀 Features
