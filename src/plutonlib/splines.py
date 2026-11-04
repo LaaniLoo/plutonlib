@@ -14,11 +14,12 @@ from skimage.graph import route_through_array
 from skimage.filters import threshold_otsu
 
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
+from dataclasses import dataclass,field,replace
 
 @dataclass
 class PathParams:
     sb_percentile: float = 50
+    floor_offset: float = 0 #offsets the sb threshold when generating path_cost
     smoothing: float = 5e-3
     length_penalty: float = 1e-4 #path finding length penalty
     exponent: float = 2 #path finding exponent, the lower this value is the more costly dim pixels are
@@ -29,22 +30,25 @@ class PathParams:
     block_width: float = 1
     angle_cut: float = 35
 
-def path_setup(sim,grid_output,freq,redshift,angle): #setup required data, POS image
+    def replace(self,**changes):
+        return replace(self,**changes)
+
+def path_setup(sdata,grid_output,freq,redshift,angle): #setup required data, POS image
     """Setup all of the sb data required to path trace"""
     #new method using sim obj
-    sbdata = sim.load_sb_data(grid_output=grid_output,angles=angle,freq=freq,redshift=redshift) 
+    sbdata = sdata.load_sb_data(grid_output=grid_output,angles=angle,freq=freq,redshift=redshift) 
     
     grid_dxy = [sbdata["grid_x"][1] - sbdata["grid_x"][0],sbdata["grid_y"][1] - sbdata["grid_y"][0]]
     grid_mxy = [sbdata["grid_mx"],sbdata["grid_my"]]
     # grid_xy = [obs["grid_x"],obs["grid_y"]]
 
-    inj_grid = sim.get_injection_region(grid_output)
+    inj_grid = sdata.get_injection_region(grid_output)
     inj_3d = np.array([inj_grid[0].value, 0, inj_grid[2].value])
     inj_xz = (inj_3d @ sbdata["rot_mat"].T)[[0, 2]]
-
     inj_pxl = [pa.nearest_cell_idx(sbdata["grid_my"], inj_xz[1]),   # z -> rows
         pa.nearest_cell_idx(sbdata["grid_mx"], inj_xz[0])]   # x -> cols
     log_sb = sbdata["log_sb"]
+
     path_data = {
         "grid_dxy":grid_dxy,
         "grid_mxy":grid_mxy,
@@ -60,18 +64,22 @@ def path_setup(sim,grid_output,freq,redshift,angle): #setup required data, POS i
 def path_cost(path_data,path_params):
     """Create a cost map for the sb data using cost = length_penalty + (1-normalised_sb)^exponent.
     This gives the cost to each sb value form inj point"""
+    
     path_params = path_params or PathParams()
-
+    if "log_sb" not in path_data:
+        raise RuntimeError("Path data incomplete or missing, please run path_setup")
 
     log_sb = path_data['log_sb']
     is_valid = np.isfinite(log_sb)
     valids = log_sb[is_valid]
 
     ceil = np.percentile(valids, 99) #set the ceiling at the 99th percentile of sb
-    t = threshold_otsu(valids) + 0 #pick the floor using skimage? plus some offset to raise the floor
+    t = threshold_otsu(valids) + path_params.floor_offset #pick the floor using skimage? plus some offset to raise the floor
     flr = threshold_otsu(valids[valids > t]) #run it again
+
     path_data["ceil"] = ceil
     path_data["flr"] = flr
+    path_data["valids"] = valids
 
     sb_clipped = np.clip(log_sb, flr, ceil)
     sb_norm = (sb_clipped - flr) / (ceil - flr) #sb values are clipped and normalised to either be 0 below for or 1 above it
@@ -82,9 +90,73 @@ def path_cost(path_data,path_params):
     path_data['path_cost'] = cost
     return path_data
 
+def path_score(path_data,path_params):
+    """Create a score from the path cost where the score is highest for pixels that are both 
+    bright and far from the injection region"""    
+
+    path_params = path_params or PathParams()
+    if "sb_norm" not in path_data:
+        path_data = path_cost(path_data=path_data,path_params=path_params)
+
+    log_sb = path_data["log_sb"]
+    inj_z, inj_x = path_data["inj_pxl"]
+
+    low_mask = log_sb > path_data["flr"]
+    labels, n_blobs = label(low_mask, structure=np.ones((3, 3)))
+    path_data['labels'] = labels
+    
+    # if labels[inj_z, inj_x] == 0:
+        # raise ValueError("Injection pixel is below the surface brightness floor")
+
+    zz, xx = np.nonzero(labels)
+    i = np.argmin(np.hypot(zz - inj_z, xx - inj_x)) #shortest dist from inj to valid region 
+    source = labels == labels[zz[i], xx[i]] #set the source as the closest valid bright region to the injection region
+    # source = labels == labels[inj_z, inj_x]
+
+    cut_level = np.percentile(log_sb[source], path_params.sb_percentile)
+    source_cut = source & (log_sb > cut_level)
+    path_data['source'] = source
+    path_data["source_cut"] = source_cut
+
+    pixel_z, pixel_x = np.nonzero(source_cut)
+    bright = path_data["sb_norm"][pixel_z, pixel_x] ** path_params.bright_exp  #can scale the brightness weight by power
+    dist_inj = np.hypot(pixel_z - inj_z, pixel_x - inj_x) ** path_params.inj_exp
+    score = dist_inj * bright #far from inj and bright = good endpoint 
+
+    path_data["pxl_coords"] = [pixel_z,pixel_x]
+    path_data["bright"] = bright
+    path_data["dist_inj"] = dist_inj
+    path_data["score"] = score
+
+    return path_data
+
+def is_single_sided_path(end1,end2,path_data):
+    """Compares distances for each jet from injection region, 
+    if one jet is >90% longer than the other with the short side shorter than 5kpc then 
+    it is marked as single-sided"""
+
+    inj_z, inj_x = path_data["inj_pxl"]
+    dx, dy = path_data["grid_dxy"]   
+
+    #NOTE dist from inj to endpoint in kpc
+    d_inj1 = (np.hypot((end1[0] - inj_z) * dy, (end1[1] - inj_x) * dx))
+    d_inj2 = (np.hypot((end2[0] - inj_z) * dy, (end2[1] - inj_x) * dx))
+    dists = np.array([d_inj1,d_inj2])
+    
+    short_side = np.argmin(dists) #which path is single_sided
+    long_side = np.argmax(dists)
+
+    # print(f"Distance from inj to endpoints: {dists.round(2)} kpc")
+    # print(f"Distance ratio: {(dists[short_side] / dists[long_side]):.3f}")
+
+    if dists[short_side] / dists[long_side] <= 0.1 and dists[short_side] < 5:
+        return (True,short_side)
+    else:
+        return (False,short_side)
+    
 def path_build_with_endpoints(path_data,path_params):
     """
-    Build a lowest cost path for each jet, starting from the injection region using route_through_array. 
+    Build a lowest cost path for each jet, starting fdists[short_side] / dists[long_side]rom the injection region using route_through_array. 
     
     The first endpoint is selected from the path_cost map, as the furthest bright pixel away from the 
     injection region. The lowest cost path is then drawn from inj to ep1 
@@ -97,31 +169,15 @@ def path_build_with_endpoints(path_data,path_params):
     """
 
     path_params = path_params or PathParams()
-    
-    if "sb_norm" not in path_data:
-        path_data = path_cost(path_data=path_data,path_params=path_params)
-        # raise RuntimeError("Run path_cost before path_waypoints")
+    if "score" not in path_data:
+        path_data = path_score(path_data=path_data,path_params=path_params)
 
-    log_sb = path_data["log_sb"]
-    inj_z, inj_x = path_data["inj_pxl"]
-
-    low_mask = log_sb > path_data["flr"]
-    labels, n_blobs = label(low_mask, structure=np.ones((3, 3)))
-    path_data['labels'] = labels
-
-    if labels[inj_z, inj_x] == 0:
-        raise ValueError("Injection pixel is below the surface brightness floor")
-
-    source = labels == labels[inj_z, inj_x]
-    cut_level = np.percentile(log_sb[source], path_params.sb_percentile)
-    source_cut = source & (log_sb > cut_level)
-    path_data['source'] = source
-    path_data["source_cut"] = source_cut
-
-    pixel_z, pixel_x = np.nonzero(source_cut)
-    bright = path_data["sb_norm"][pixel_z, pixel_x] ** path_params.bright_exp  #can scale the brightness weight by power
-    dist_inj = np.hypot(pixel_z - inj_z, pixel_x - inj_x) ** path_params.inj_exp
-    score = dist_inj * bright #far from inj and bright = good endpoint 
+    path_data["func_err"] = (0,None)
+    path_data["source_class"] = None
+    pixel_z,pixel_x = path_data["pxl_coords"]
+    inj_z,inj_x = path_data["inj_pxl"]
+    score = path_data["score"]
+    bright = path_data["bright"]
 
     #---First path---#
     end1 = (pixel_z[score.argmax()], pixel_x[score.argmax()]) #furthest pixel from the injection region
@@ -131,7 +187,7 @@ def path_build_with_endpoints(path_data,path_params):
     path1 = np.array(path1)
 
     #---Separate path1 from path2 by using an angle cut---#
-    k = min(10, len(path1) - 1)
+    # k = min(10, len(path1) - 1)
     dz, dx = pixel_z - inj_z, pixel_x - inj_x
     v = np.array(end1) - np.array([inj_z, inj_x])          # chord injection -> end1
     cos_angle = (dz * v[0] + dx * v[1]) / (np.hypot(dz, dx) * np.hypot(*v) + 1e-9)
@@ -143,7 +199,8 @@ def path_build_with_endpoints(path_data,path_params):
         end2 = (pixel_z[score2.argmax()], pixel_x[score2.argmax()])
     else:
         end2 = (inj_z, inj_x) #one sided jet case 
- 
+        path_data["source_class"] = "single-sided"
+
     #---Second path cost---#
     #create a new cost map based on not path1
     cell = min(path_data["grid_dxy"])
@@ -172,7 +229,10 @@ def path_build_with_endpoints(path_data,path_params):
         path2, _ = route_through_array(cost2, (inj_z, inj_x), end2, fully_connected=True, geometric=True)
         path2 = np.array(path2)
 
-    if len(path2) < 4:        # end2 sits right next to the injection: treat as one-sided
+    single_sided, short_side = is_single_sided_path(end1,end2,path_data)
+    if single_sided and short_side == 0:
+        path1 = path1[:1]
+    elif single_sided and short_side == 1:
         path2 = path2[:1]
 
     path_data["path1"] = path1
@@ -180,12 +240,6 @@ def path_build_with_endpoints(path_data,path_params):
     path_data["end1"] = end1
     path_data["end2"] = end2
 
-    #--angle between path midpoints?---#
-    # v1 = path1[len(path1) // 2] - np.array([inj_z, inj_x])
-    # v2 = path2[len(path2) // 2] - np.array([inj_z, inj_x])
-    # cos_e = np.dot(v1, v2) / (np.hypot(*v1) * np.hypot(*v2) + 1e-9)
-    # angle_between_ends = np.degrees(np.arccos(np.clip(cos_e, -1, 1)))
-    # print(angle_between_ends)
     return path_data
 
 def interpolate_path(path,max_resolution,smoothing):
@@ -202,25 +256,26 @@ def interpolate_path(path,max_resolution,smoothing):
     return splines
 
 #---Jet splines functions---#
-def get_jet_splines_sb(sim,grid_output,freq,redshift,angle,path_params):
+def get_jet_splines_sb(sdata,grid_output,freq,redshift,angle,path_params):
     """
     Generates splines along the AGN jet and lobe by path tracing a cost-weighted SB image 
 
     Args:
-        sim (_type_): _description_
-        grid_output (_type_): _description_
-        angles (_type_): _description_
-        freq (_type_): _description_
-        redshift (_type_): _description_
-        params (_type_, optional): _description_. Defaults to None.
+        sdata (SimulationData): SimulationData object
+        grid_output (int): grid output number
+        angle (list): list of angles e.g. [0,0,0]
+        freq (float): frequency value
+        redshift (float): redshift value
+        params (PathParams, optional): path finding params to use see PathParams. Defaults to None.
 
     Returns:
-        _type_: _description_
+        dict: spline_data
     """
     path_params = path_params or PathParams()
-    setup_data = path_setup(sim,grid_output,freq,redshift,angle=angle)
+    setup_data = path_setup(sdata,grid_output,freq,redshift,angle=angle)
     path_data = path_build_with_endpoints(path_data=setup_data,path_params=path_params)
-
+    if path_data["func_err"][0] == 1:
+        raise RuntimeError(f"Error with `path_build_with_endpoints`: {path_data["func_err"][1]}") 
     mx,my = path_data["grid_mxy"]
     grid_dxy = path_data["grid_dxy"]
     path1 = path_data['path1']
@@ -230,7 +285,7 @@ def get_jet_splines_sb(sim,grid_output,freq,redshift,angle,path_params):
     # check the direction each path is heading relative to each other
     chk = min(5, len(path1) - 1)
     if len(path2) < 2:
-        path1_is_top = my[path1[chk, 0]] > inj_xz[1]      # inj_xz[1] is z in kpc
+        path1_is_top = my[path1[chk, 0]] > path_data['inj_xz'][1]      # inj_xz[1] is z in kpc
     else:
         chk = min(chk, len(path2) - 1)
         path1_is_top = my[path1[chk, 0]] > my[path2[chk, 0]]
@@ -433,13 +488,13 @@ def get_jet_splines_tr(sdata,grid_output,tr_stop=0.2):
     }
     return returns
 
-def interp_splines_plutogrid(sim,grid_output,freq,redshift):
+def interp_splines_plutogrid(sdata,grid_output,freq,redshift):
     """Re-interpolate the sb path to a finer resolution based on the PLUTO grid, used to get fluid vars along sb path"""
-    spline_data = get_jet_splines_sb(sim,grid_output,[0,0,0],freq,redshift)
+    spline_data = get_jet_splines_sb(sdata,grid_output,[0,0,0],freq,redshift)
     jet_splines = spline_data["jet_splines"]   # at SB/observing-grid resolution, already physical (x,z) at 0,0,0
 
     # reinterpolate the SB path onto PLUTO's finer arc-length resolution
-    fluid_resolution = min([sim.grid_setup['x1-grid']['dx'],sim.grid_setup['x2-grid']['dx'],sim.grid_setup['x3-grid']['dx']])
+    fluid_resolution = min([sdata.grid_setup['x1-grid']['dx'],sdata.grid_setup['x2-grid']['dx'],sdata.grid_setup['x3-grid']['dx']])
     n_points_fluid = int(np.sum(spline_data["jet_length"]) / fluid_resolution)
 
     k = min(3, len(jet_splines) - 1)
@@ -451,8 +506,8 @@ def interp_splines_plutogrid(sim,grid_output,freq,redshift):
     inj_idx = np.argmin(np.abs(u2 - u_inj))
 
     # build the spline_slice_map against PLUTO's own grid, not the observing grid
-    ccx = sim.load_fluid_data(["ccx"], grid_output=grid_output, load_slice=sim.quick_slice_1D("yz"))["ccx"]
-    ccz = sim.load_fluid_data(["ccz"], grid_output=grid_output, load_slice=sim.quick_slice_1D("xy"))["ccz"]
+    ccx = sdata.load_fluid_data(["ccx"], grid_output=grid_output, load_slice=sdata.quick_slice_1D("yz"))["ccx"]
+    ccz = sdata.load_fluid_data(["ccz"], grid_output=grid_output, load_slice=sdata.quick_slice_1D("xy"))["ccz"]
     # x_idx = np.clip(np.searchsorted(ccx, jet_splines_fluid[:,0]), 0, len(ccx)-1)
     # z_idx = np.clip(np.searchsorted(ccz, jet_splines_fluid[:,1]), 0, len(ccz)-1)
     x_idx = pa.nearest_cell_idx(ccx, jet_splines_fluid[:,0])
