@@ -114,9 +114,10 @@ def write_commits_md(commits_md_path,commits,version):
             )
 
     cmd = f"git tag v{version} && git push origin v{version}"
-    misc_changes = f"chore: update miscellaneous files and minor fixes"    
+    misc_changes = f"chore: update miscellaneous files and minor fixes"
+    changelog_line = f"**Update CHANGELOG (commit and push first):** `docs: update changelog`"    
     blocks.append(
-        f"#### **Git commands:**\n**Tag and push:**\n{fence}bash\n{cmd}\n{fence}\n**Misc changes:** `{misc_changes}`\n"
+        f"#### **Git commands:**\n**Tag and push:**\n{fence}bash\n{cmd}\n{fence}\n**Misc changes:** `{misc_changes}`\n{changelog_line}\n"
     )
     out_file.write_text("\n".join(blocks))
 

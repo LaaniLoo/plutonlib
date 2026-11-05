@@ -173,7 +173,6 @@ def path_build_with_endpoints(path_data,path_params):
         path_data = path_score(path_data=path_data,path_params=path_params)
 
     path_data["func_err"] = (0,None)
-    path_data["source_class"] = None
     pixel_z,pixel_x = path_data["pxl_coords"]
     inj_z,inj_x = path_data["inj_pxl"]
     score = path_data["score"]
@@ -199,7 +198,6 @@ def path_build_with_endpoints(path_data,path_params):
         end2 = (pixel_z[score2.argmax()], pixel_x[score2.argmax()])
     else:
         end2 = (inj_z, inj_x) #one sided jet case 
-        path_data["source_class"] = "single-sided"
 
     #---Second path cost---#
     #create a new cost map based on not path1

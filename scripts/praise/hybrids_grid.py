@@ -123,7 +123,7 @@ def create_hybrid_plot(args):
                             # "vmax": 0.75,
                         }
                         path_params = pl_splines.PathParams(sb_percentile=50,smoothing = 0.005,length_penalty=1e-5,bright_exp=1,inj_exp=1,angle_cut=40,block_width=1) 
-                        fancypl.surf_brightness_splines(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift,path_params=path_params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
+                        fancypl.sb_morphology(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift,path_params=path_params,fname=grid_file,**plot_kwargs) #NOTE loads the sb data in house  
 
                     else:
                         print(f"File {grid_file}.pdf already exists, skipping...")
