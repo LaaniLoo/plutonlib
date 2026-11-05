@@ -2,10 +2,9 @@
 
 import plutonlib.analysis as pa
 import plutonlib.plot_data as pp
-import plutonlib.read_write as prw
-import plutonlib.utils as pu
 import plutonlib.splines as pl_splines
 import plutonlib.morphology as pl_morph
+import plutonlib.peaks as pl_peaks
 
 import matplotlib.pyplot as plt
 import scienceplots
@@ -162,6 +161,8 @@ def _get_sbdata_entries(sim_dict,angle_dict,freq,redshift):
     for sdata, outputs in sim_dict.items():
         for output in outputs:
             for angles in angle_dict[sdata]: #load all the entries first
+                if not isinstance(angles,list): 
+                    raise ValueError(f"Anlges ({angles}) in entry are not in nested list format e.g. [[0,0,0]]")
                 entries[(sdata, output, tuple(angles))] = sdata.load_sb_data(output, angles, freq, redshift)
     return entries
 
@@ -328,6 +329,23 @@ def _scatter_splines_1D(spline_data,sdata,pdata,tick_axis,query_points=None,use_
             idxs = [idx_minus, idx_plus]
             ax.scatter(from_inj[idxs], var_data[idxs], label=f"{label} = {offset:.2f} kpc", zorder=5,s=12,color = colours[col_idx])
             col_idx += 1
+
+def _overlay_splines_2D(spline_data,pdata,labels = [f"Top jet",f"Bottom jet"],separate=True):
+    ax = pdata.axes[pdata.plot_idx]
+    
+    mx, my = spline_data["grid_mx"],spline_data["grid_my"]
+    inj_idx = spline_data['inj_idx']
+
+    ax.scatter(mx[inj_idx],my[inj_idx],marker = "x", color = "r",s=_get_markersize(pdata.fig_size))
+
+    if separate:
+        top = spline_data["splines_top"]
+        bot = spline_data["splines_bot"]
+        ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = labels[0]) #plot the top splines
+        ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = labels[1]) #plot the bottom splines
+    else:
+        jet_splines = spline_data["jet_splines"]
+        ax.plot(jet_splines[:,0],jet_splines[:,1],"k--",linewidth = 1.5, label = labels[0])
 
 #---Labels/other---#
 def _labels_2D(sdata,pdata):
@@ -589,7 +607,7 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
         plt.close(pdata.fig) 
     return pdata
 
-def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=None, **kwargs):
+def sb(sim_dict, angle_dict,freq,redshift,fname=None,query_points=None, **kwargs):
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
 
@@ -635,7 +653,7 @@ def surf_brightness(sim_dict, angle_dict,freq,redshift,fname=None,query_points=N
         plt.close(pdata.fig) 
     return pdata
 
-def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
+def sb_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
     path_params = path_params or pl_splines.PathParams()
     
     if isinstance(freq,list):
@@ -666,7 +684,6 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
 
                     _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
                     try:
-                        ax = pdata.axes[pdata.plot_idx]                    
                         spline_data = pl_splines.get_jet_splines_sb(
                             sdata=sdata,
                             grid_output=output,
@@ -675,20 +692,78 @@ def surf_brightness_splines(sim_dict,angle_dict,freq,redshift,path_params=None,f
                             angle=angles,
                             path_params=path_params,
                         )
-                        top = spline_data["splines_top"]
-                        bot = spline_data["splines_bot"]
-                        mx, my = spline_data["grid_mx"],spline_data["grid_my"]
-                        inj_idx = spline_data['inj_idx']
+                        ax = pdata.axes[pdata.plot_idx]
+                        _overlay_splines_2D(spline_data=spline_data,pdata=pdata,separate=True)
+                        ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
+                    except ValueError as e:
+                        if "no minimum-cost path was found to the specified end point" in str(e):
+                            print(f"Skipping angles = {angles} due to no minimum-cost path...")
+                        else:
+                            raise
+                    if query_points is not None:
+                        query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
+                        _query_points_2D(sdata=sdata,pdata=pdata,query_points=query_points_rotated,label_all_axes=label_all_axes)
+                    _ticks_labels_limits(sdata,pdata)
+                    pdata.plot_idx += 1
+ 
+            _labels_2D(sdata,pdata)
+            _colourbar(sdata,pdata,freqs = [freq], **kwargs)        # separate from _colourbar — label differs
+            _hide_unused_tiles(pdata, len(outputs) * len(angle_dict[sdata]))
+ 
+        _rotate_row(pdata)
+        _vlim_rasterise(pdata,**kwargs)
+        _save(fname)
+ 
+        plt.close(pdata.fig) 
+    return pdata
 
-                        peak_x, peak_y = pl_morph.get_sb_max_xy(spline_data)
-                        fr_info_top, fr_info_bot = pl_morph.get_fr_idx_spl(spline_data)
-                        fr_labels = [f"{info[1]} ({info[0]:.2f})" if info[0] is not None else "Single-sided" for info in (fr_info_top,fr_info_bot)]
+def sb_morphology(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
+    path_params = path_params or pl_splines.PathParams()
+    
+    if isinstance(freq,list):
+        raise TypeError("Surface brightness plotting only supports single frequency values")
 
-                        ax.scatter(mx[inj_idx],my[inj_idx],marker = "x", color = "r",s=_get_markersize(fig_size))
-                        ax.scatter(peak_x,peak_y,color = "red", s = 3*fig_size,label = "$x_{\\rm{bright}}$") #max sb for top jet
-                        ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = f"Top jet: {fr_labels[0]}") #plot the top splines
-                        ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = f"Bottom jet: {fr_labels[1]}") #plot the bottom splines
+    if len(sim_dict) != len(angle_dict):
+        raise KeyError("Length of sim_dict and angle_dict dont match")
 
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift)
+
+    sim_dict_angles = { #subplot size should be output*angles
+        sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
+        for sdata in sim_dict.keys()
+    }
+    label_all_axes = kwargs.get('label_all_axes',False)
+    fig_size = kwargs.get('fig_size',5)
+    with _plot_style(fig_size):
+        pdata = setup_subplots(sim_dict=sim_dict_angles, **kwargs)
+        pdata.var_name  = 'sb'
+        _set_vlim_contours_sb(pdata,entries) #automatically set vlim/contours #NOTE can still be overwritten with kwarg
+
+        for sdata, outputs in sim_dict.items():
+            pdata.label = True
+            for output in outputs:
+                for angles in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angles))]
+                    pdata.output    = output
+
+                    _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
+                    try:
+                        spline_data = pl_splines.get_jet_splines_sb(
+                            sdata=sdata,
+                            grid_output=output,
+                            freq=freq,
+                            redshift=redshift,
+                            angle=angles,
+                            path_params=path_params,
+                        )
+                        ax = pdata.axes[pdata.plot_idx]
+                        morph_class = pl_morph.classify_morphology_splines(spline_data)
+                        peak_x, peak_y = pl_peaks.get_sb_max_xy(spline_data)
+                        fr_info_top, fr_info_bot = pl_morph.calc_fr_idx_spl(spline_data)
+
+                        ax.scatter(peak_x[0],peak_y[0],color = "orangered", s = 3*fig_size,label = "$FR_{\\rm{idx, top}}$ = " + f"{fr_info_top[0]:.2f}") #max sb for top jet
+                        ax.scatter(peak_x[1],peak_y[1],color = "sienna", s = 3*fig_size,label = "$FR_{\\rm{idx, bottom}}$ = " + f"{fr_info_bot[0]:.2f}") #max sb for top jet
+                        _overlay_splines_2D(spline_data=spline_data,pdata=pdata,separate=False,labels=[morph_class])
                         ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
                     except ValueError as e:
                         if "no minimum-cost path was found to the specified end point" in str(e):
@@ -780,7 +855,7 @@ def fluid_1D_tr_spl(sdata,var,grid_output,tick_axis='x',tr_stop=0.2,fname=None,q
         plt.close(pdata.fig) 
         return pdata
 
-def surface_brightnes_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
+def sb_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
     fig_size = kwargs.get('fig_size',7)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict={sdata:[grid_output]},cbar=False,use_grid_limits=False,**kwargs)
