@@ -18,10 +18,10 @@ from dataclasses import dataclass,field,replace
 
 @dataclass
 class PathParams:
-    sb_percentile: float = 50
-    floor_offset: float = 0 #offsets the sb threshold when generating path_cost
+    sb_percentile: float = 40 #percentile cut used to 'tidy' up the sb image
+    jet_percentile: float = 98 #percentile cut used to separate jets from lobes
     smoothing: float = 5e-3
-    length_penalty: float = 1e-4 #path finding length penalty
+    length_penalty: float = 1e-5 #path finding length penalty
     exponent: float = 2 #path finding exponent, the lower this value is the more costly dim pixels are
 
     bright_exp: float = 1 #increase value to weight brightness on path score
@@ -29,6 +29,7 @@ class PathParams:
 
     block_width: float = 1
     angle_cut: float = 35
+    trace_lobes: bool = True #trace full AGN path jets+lobes
 
     def replace(self,**changes):
         return replace(self,**changes)
@@ -74,7 +75,7 @@ def path_cost(path_data,path_params):
     valids = log_sb[is_valid]
 
     ceil = np.percentile(valids, 99) #set the ceiling at the 99th percentile of sb
-    t = threshold_otsu(valids) + path_params.floor_offset #pick the floor using skimage? plus some offset to raise the floor
+    t = threshold_otsu(valids) + 0 #pick the floor using skimage? plus some offset to raise the floor
     flr = threshold_otsu(valids[valids > t]) #run it again
 
     path_data["ceil"] = ceil
@@ -113,7 +114,9 @@ def path_score(path_data,path_params):
     source = labels == labels[zz[i], xx[i]] #set the source as the closest valid bright region to the injection region
     # source = labels == labels[inj_z, inj_x]
 
-    cut_level = np.percentile(log_sb[source], path_params.sb_percentile)
+    percentile = path_params.sb_percentile if path_params.trace_lobes else path_params.jet_percentile
+    cut_level = np.percentile(log_sb[source],percentile) #cut image for lobes or jet path
+
     source_cut = source & (log_sb > cut_level)
     path_data['source'] = source
     path_data["source_cut"] = source_cut
@@ -172,7 +175,6 @@ def path_build_with_endpoints(path_data,path_params):
     if "score" not in path_data:
         path_data = path_score(path_data=path_data,path_params=path_params)
 
-    path_data["func_err"] = (0,None)
     pixel_z,pixel_x = path_data["pxl_coords"]
     inj_z,inj_x = path_data["inj_pxl"]
     score = path_data["score"]
@@ -272,8 +274,6 @@ def get_jet_splines_sb(sdata,grid_output,freq,redshift,angle,path_params):
     path_params = path_params or PathParams()
     setup_data = path_setup(sdata,grid_output,freq,redshift,angle=angle)
     path_data = path_build_with_endpoints(path_data=setup_data,path_params=path_params)
-    if path_data["func_err"][0] == 1:
-        raise RuntimeError(f"Error with `path_build_with_endpoints`: {path_data["func_err"][1]}") 
     mx,my = path_data["grid_mxy"]
     grid_dxy = path_data["grid_dxy"]
     path1 = path_data['path1']
@@ -302,18 +302,35 @@ def get_jet_splines_sb(sdata,grid_output,freq,redshift,angle,path_params):
     top[0] = inj_xz #set the injection region as the 0th point
     bot[0] = inj_xz
 
-    jet_splines = np.concatenate([splines_bot[::-1], splines_top]) #bot reversed to restore path order
-    x_idx = pa.nearest_cell_idx(mx, jet_splines[:, 0])
-    y_idx = pa.nearest_cell_idx(my, jet_splines[:, 1])
+    splines = np.concatenate([splines_bot[::-1], splines_top]) #bot reversed to restore path order
+    x_idx = pa.nearest_cell_idx(mx, splines[:, 0])
+    y_idx = pa.nearest_cell_idx(my, splines[:, 1])
     spline_slice_map = (x_idx, y_idx)
-    arc_length = [pa.calc_path_length(splits) for splits in [splines_top, splines_bot]]
+    log_sb_spline = path_data["log_sb"][y_idx,x_idx]
+
+    if path_params.trace_lobes: #If tracing lobes, get lobe and jet length
+        lobe_length = [pa.calc_path_length(splits) for splits in [splines_top, splines_bot]]
+
+        level = np.percentile(path_data["log_sb"][path_data["log_sb"] > path_data["flr"]], path_params.jet_percentile)    # same cut as the test plot
+        def truncate(path, sb):                   # path and sb both run outward from the injection
+            above = np.nonzero(sb > level)[0]     # spline points brighter than the cut
+            return path[:above[-1] + 1] if len(above) else path[:1]
+        
+        jet_top = truncate(splines[inj_idx:], log_sb_spline[inj_idx:])
+        jet_bot = truncate(splines[:inj_idx + 1][::-1], log_sb_spline[:inj_idx + 1][::-1])
+        jet_length = [pa.calc_path_length(splits) for splits in [jet_top,jet_bot]]
+
+    else: #If just tracing jet, set lobe length to nan
+        lobe_length = [np.nan,np.nan]
+        jet_length = [pa.calc_path_length(splits) for splits in [splines_top, splines_bot]]
 
     spline_data = {
-        "jet_splines":jet_splines,
+        "splines":splines,
         "splines_top":splines_top,
         "splines_bot":splines_bot,
-        "log_sb_spline": path_data["log_sb"][y_idx,x_idx],
-        "jet_length":np.asarray(arc_length), #NOTE is top -> bottom
+        "log_sb_spline":log_sb_spline,
+        "lobe_length":np.asarray(lobe_length),
+        "jet_length":np.asarray(jet_length), #NOTE is top -> bottom
         "path_data":path_data,
         "inj_xz": inj_xz,
         "inj_idx": inj_idx,
@@ -489,16 +506,16 @@ def get_jet_splines_tr(sdata,grid_output,tr_stop=0.2):
 def interp_splines_plutogrid(sdata,grid_output,freq,redshift):
     """Re-interpolate the sb path to a finer resolution based on the PLUTO grid, used to get fluid vars along sb path"""
     spline_data = get_jet_splines_sb(sdata,grid_output,[0,0,0],freq,redshift)
-    jet_splines = spline_data["jet_splines"]   # at SB/observing-grid resolution, already physical (x,z) at 0,0,0
+    splines = spline_data["splines"]   # at SB/observing-grid resolution, already physical (x,z) at 0,0,0
 
     # reinterpolate the SB path onto PLUTO's finer arc-length resolution
     fluid_resolution = min([sdata.grid_setup['x1-grid']['dx'],sdata.grid_setup['x2-grid']['dx'],sdata.grid_setup['x3-grid']['dx']])
-    n_points_fluid = int(np.sum(spline_data["jet_length"]) / fluid_resolution)
+    n_points_fluid = int(np.sum(spline_data["lobe_length"]) / fluid_resolution)
 
-    k = min(3, len(jet_splines) - 1)
-    tck, u = splprep([jet_splines[:,0], jet_splines[:,1]], s=0, k=k)
+    k = min(3, len(splines) - 1)
+    tck, u = splprep([splines[:,0], splines[:,1]], s=0, k=k)
     u2 = np.linspace(u[0], u[-1], n_points_fluid)
-    jet_splines_fluid = np.column_stack(splev(u2, tck))
+    splines_fluid = np.column_stack(splev(u2, tck))
 
     u_inj = u[spline_data["inj_idx"]]
     inj_idx = np.argmin(np.abs(u2 - u_inj))
@@ -506,18 +523,18 @@ def interp_splines_plutogrid(sdata,grid_output,freq,redshift):
     # build the spline_slice_map against PLUTO's own grid, not the observing grid
     ccx = sdata.load_fluid_data(["ccx"], grid_output=grid_output, load_slice=sdata.quick_slice_1D("yz"))["ccx"]
     ccz = sdata.load_fluid_data(["ccz"], grid_output=grid_output, load_slice=sdata.quick_slice_1D("xy"))["ccz"]
-    # x_idx = np.clip(np.searchsorted(ccx, jet_splines_fluid[:,0]), 0, len(ccx)-1)
-    # z_idx = np.clip(np.searchsorted(ccz, jet_splines_fluid[:,1]), 0, len(ccz)-1)
-    x_idx = pa.nearest_cell_idx(ccx, jet_splines_fluid[:,0])
-    z_idx = pa.nearest_cell_idx(ccz, jet_splines_fluid[:,1])
+    # x_idx = np.clip(np.searchsorted(ccx, splines_fluid[:,0]), 0, len(ccx)-1)
+    # z_idx = np.clip(np.searchsorted(ccz, splines_fluid[:,1]), 0, len(ccz)-1)
+    x_idx = pa.nearest_cell_idx(ccx, splines_fluid[:,0])
+    z_idx = pa.nearest_cell_idx(ccz, splines_fluid[:,1])
 
     spline_slice_map = (x_idx, z_idx)
 
     interp_data = {
-        "jet_splines":jet_splines_fluid,
+        "splines":splines_fluid,
         "spline_slice_map":spline_slice_map,
         "inj_idx": inj_idx,
-        "jet_length": spline_data["jet_length"]
+        "lobe_length": spline_data["lobe_length"]
     }
 
     return interp_data

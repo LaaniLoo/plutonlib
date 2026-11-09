@@ -248,7 +248,7 @@ class SimulationData(SimulationSetup):
         return fluid_data_splines
 
     def load_jet_data_sb(self,freq,redshift,var_choice,grid_output):
-        """Same functionality as load_jet_data_tr but path tracing via a skeletonised SB image"""
+        """Same functionality as load_jet_data_tr but path tracing via a cost-weighted SB image, uses interpolation"""
         data_splines = {}
         interp_data = ps.interp_splines_plutogrid(sdata=self,grid_output=grid_output,freq=freq,redshift=redshift)
         temp_data = self.load_fluid_data(var_choice,grid_output=grid_output,load_slice=self.quick_slice_2D('xz'))
@@ -256,7 +256,7 @@ class SimulationData(SimulationSetup):
             data_splines[var] = temp_data[var][interp_data['spline_slice_map']]
 
         data_splines['inj_idx'] = interp_data["inj_idx"]
-        data_splines['L_jet'] = interp_data["jet_length"]
+        data_splines['L_jet'] = interp_data["lobe_length"] #NOTE or jet length?
         return data_splines
     
     def load_particle_data(self,grid_output=None,part_output=None,tr_cut = None,var_choice=None,force_check=True):

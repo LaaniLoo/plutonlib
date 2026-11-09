@@ -25,8 +25,8 @@ def find_sb_peaks(spline_data,plot=False):
 
     # arc_bot = np.linspace(0,jet_length[1],len(sb_bot))
     # arc_top = np.linspace(arc_bot[-1],np.sum(jet_length),len(sb_top))
-    jet_splines = spline_data["jet_splines"]
-    arc = np.r_[0, np.cumsum(np.hypot(*np.diff(jet_splines,axis=0).T))] #true distance along the full path
+    splines = spline_data["splines"]
+    arc = np.r_[0, np.cumsum(np.hypot(*np.diff(splines,axis=0).T))] #true distance along the full path
     arc -= arc[inj_idx] #0 at the injection point, negative on the bottom jet
 
     arc_top = arc[inj_idx:]
@@ -119,3 +119,21 @@ def find_jets_without_peaks(spline_data):
     err_bot = True if len(bot_slice) == 0 else False
 
     return err_top,err_bot
+
+def get_peak_spline_seg(spline_data):
+    """Gets the spline segments from injection to peak sb value for top/bottom jets
+
+    Args:
+        spline_data (dict): dict returned by `plutonlib.splines.get_jet_splines_sb()`
+
+    Returns:
+        top_segment,bot_segment: truncated jet_splines from inj->peak for top/bottom jets
+    """
+
+    top_idx,bot_idx = get_sb_max_idx(spline_data)
+    inj_idx = spline_data["inj_idx"]
+    
+    top_segment = spline_data["splines"][inj_idx:top_idx]
+    bot_segment = spline_data["splines"][bot_idx:inj_idx][::-1] #reversed, inj->peak  
+
+    return top_segment,bot_segment
