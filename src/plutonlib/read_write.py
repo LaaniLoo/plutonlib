@@ -609,13 +609,13 @@ def load_all_particles_batched(wdir, existing_data=None, existing_times=None):
 def save_particle_data_hdf5(wdir,force_check=True):
 
     zfp_kwargs = {"reversible": True}
-    file_path = os.path.join(wdir,"particles.hdf5")
+    file_path = os.path.join(wdir,"particles.h5")
 
     resave = False
     existing_data = None
     existing_times = None
 
-    if os.path.isfile(file_path): #if particles.hdf5 already exists and there are more outputs, update
+    if os.path.isfile(file_path): #if particles.h5 already exists and there are more outputs, update
         with h5py.File(file_path,"r") as f:
             if not force_check:
                 # print(f"'force_check' = False, skipping particle update check, using existing particle data")
@@ -629,7 +629,7 @@ def save_particle_data_hdf5(wdir,force_check=True):
                 return
 
             resave = True
-            print("New particle files found, resaving particles.hdf5...")
+            print("New particle files found, resaving particles.h5...")
             existing_times = f["time"][:]                                   
             existing_data = {k: v[:] for k, v in f["particle_data"].items()}
 
@@ -695,7 +695,7 @@ def save_particle_data_hdf5(wdir,force_check=True):
 
 def load_particles_hdf5(wdir,part_outputs = None,tr_cut = None,var_choice = None):
     """if output = int, load all particles up to output, if output = tuple, load just that particle output"""
-    particle_data_path = os.path.join(wdir,"particles.hdf5")
+    particle_data_path = os.path.join(wdir,"particles.h5")
 
     particle_dict = {}
     particle_times = None
@@ -707,7 +707,7 @@ def load_particles_hdf5(wdir,part_outputs = None,tr_cut = None,var_choice = None
         loaded_outputs = get_particle_outputs(wdir=wdir) if part_outputs is None else part_outputs
 
         if n_available_outputs >= n_outpus:
-            print(f"particles.hdf5 only has {n_outpus} outputs saved, there are {n_available_outputs} outputs, consider resaving file.\n")
+            print(f"particles.h5 only has {n_outpus} outputs saved, there are {n_available_outputs} outputs, consider resaving file.\n")
 
         if isinstance(loaded_outputs,tuple) and max(loaded_outputs) > n_outpus:
             raise IndexError(f"Trying to load output {max(loaded_outputs)}, when there are only {n_outpus} outputs saved")
