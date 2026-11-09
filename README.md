@@ -70,22 +70,23 @@ pip install -e .
 	  * `fluid(sim_dict={sim5:[50,75]},var='rho').fig`
 	* `jet_splines`: scatter plot of PLUTO particles for a variable with tracer spline fitting, at the particle output matching each sim time
 	  * `jet_splines(sim_dict={sim5:[50]},var='tr1').fig`
-	* `surf_brightness`: pcolormesh plot of PRAiSE particle emisivity
-	  * `surf_brightness({sim5:[50]},{sim5:angles},freq,0.02,).fig`
+	* `sb`: pcolormesh plot of PRAiSE particle emisivity
+	  * `sb({sim5:[50]},{sim5:angles},freq,0.02,).fig`
 	  * `freq` must be a single value (not a list), one subplot per output per angle set
-	* `surf_brightness_splines`: as `surf_brightness`, with the jet spline and injection point overlaid
+	* `sb_splines`: as `sb`, with the jet spline and injection point overlaid
 	  * `surf_brightness_splines({sim5:[50]},{sim5:angles},freq,0.02,params).fig`
 	* `spectral_idx`: pcolormesh plot of spectral index between a pair of frequencies
 	  * `spectral_idx({sim5:[50]},{sim5:angles},[freq1,freq2],0.02).fig`
 	* `fluid_1D_tr_spl`: 1D profile of a fluid variable along the jet using tracer splines
 	  * `fluid_1D_tr_spl(sim5,var='rho',grid_output=50,tick_axis='x').fig`
-	* `surface_brightnes_1D`: 1D surface brightness profile along the jet
-	  * `surface_brightnes_1D(sim5,grid_output=50,angles=angles,freq=freq,redshift=0.02).fig`
+	* `sb_1D`: 1D surface brightness profile along the jet
+	  * `sb_1D(sim5,grid_output=50,angles=angles,freq=freq,redshift=0.02).fig`
 	* `animation_fluid`: gif of a fluid variable over all valid outputs, saved to `sim.save_dir`
 	  * `animation_fluid(sim5,var_name='rho',fps=20)`
 
 * **`morphology`**
-	* **WIP** functions to determine morphology of jets e.g FR morphology of jets using surface brightness splines in `get_fr_idx_spl`
+	* functions to determine morphology of jets e.g FR morphology of jets using surface brightness splines in `get_fr_idx_spl` or BT/FR classification string using `classify_morphology`
+	* Set/store and fetch this information using the `JetMorphology` data class
 
 * **`plot_data`**
   * **PlotData class:** stores plotting state, used to track plotting variables across the plot functions
@@ -110,7 +111,7 @@ pip install -e .
 * **`simulation_report`**
   * Quickly produce a report for a given simulation -> `SimulationReport.from_sim(sim)`
   * Prints simulation, grid, output file (including compression) and particle info
-  * Currently WIP
+  * **Currently WIP**
 
 * **`simulations`**
   * **SimulationSetup:** Initializes simulation metadata, directories, and INI file parameters
@@ -190,6 +191,37 @@ Q = 1*watt
 tr1 = 1
 ```
 
+# New simulation data
+* **Surface brightness data as hdf5 (`save_sb_hdf5`)**
+	* Saves to simulation run directory as `sbdata.h5` each SB array is per redshift, grid output and angle with a shared grid entry
+```bash
+~/pluto-master/Simulations/jet/Q36_v01_a25/sbdata.h5
+├── @run_name = "Q36_v01_a25"                  # only attr at file root
+└── 0.05                                       # redshift group
+    ├── @redshift = 0.05
+    ├── @freqs = [0.15, 1.4, 5]                # sorted union of all freqs calculated so far
+    ├── metadata                               # one per redshift group
+    │   ├── @delta_r = 0.3
+    │   ├── @omega_beam = 10.197810319111186
+    │   ├── @plane = "xz"
+    │   ├── @ray_depth_max = 200
+    │   ├── @ray_depth_min = -200
+    │   └── gaussian_kernel (11, 11) float64
+    ├── grid                                   # one per plane, shared by all outputs/angles
+    │   └── xz
+    │       ├── grid_mx (310,) float64
+    │       ├── grid_my (477,) float64
+    │       ├── grid_x (311,) float64
+    │       └── grid_y (478,) float64
+    └── 50                                     # PLUTO grid output (timestep)
+        └── [0, 0, 0]                          # angle set, stored as a string
+            ├── @freqs = [0.15, 1.4, 5]        # freqs used for this specific calculation
+            ├── alpha (1, 477, 310) float64    # (n_pairs, ny, nx), only if >= 2 freqs
+            ├── contour_levels (3, 3) float64  # (n_freqs, 3)
+            ├── log_sb (3, 477, 310) float64   # (n_freqs, ny, nx)
+            ├── rot_mat (3, 3) float64
+            └── sb (310, 477, 3) float64       # (nx, ny, n_freqs)
+```
 # Python scripts for analysis (`plutonlib/scripts`)
 * **`compression_script.py`**
   * A python script that automatically compresses and chunks PLUTO HDF5 data files using the functions from `compression.py`
