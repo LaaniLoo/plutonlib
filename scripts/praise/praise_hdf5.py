@@ -9,6 +9,7 @@ import plutonlib.simulations as ps
 # import plutonlib.analysis as pa
 import plutonlib.surface_brightness as pl_sb
 from plutonlib.pbs_job import init_script_dirs,create_run_script, submit_run_script
+from plutonlib.obs_properties import ObsProperties
 
 import yaml
 
@@ -24,9 +25,10 @@ print("Import complete")
 def_yml_path = "/home/laani/plutonlib/scripts/praise/praise_setup.yml"
 plane = 'xz'
 
-def dry_run(sdata,grid_output,angles,freqs,redshift):
+def dry_run(sdata,grid_output,angle,freqs,redshift):
     print("Executing a dry run to gauge memory usage...\n")
-    task = pl_sb._compute_sb_task(sdata=sdata,grid_output=grid_output,angles=angles,freqs=freqs,redshift=redshift)
+    obs_props = ObsProperties(freqs=freqs,angle=angle,redshift=redshift)
+    task = pl_sb._compute_sb_task(sdata=sdata,obs_props=obs_props,grid_output=grid_output,)
     print("Dry run complete!\n")
     return task["peak_gb"]
 
@@ -79,13 +81,12 @@ def run_sb_calc(args):
         else:
             req_mem = dry_run(sdata,outputs[-1],angles[0],freqs,redshift)
 
+        obs_props = ObsProperties(freqs=freqs,redshift=redshift) #angle=angle
         pl_sb.save_sb_hdf5(
             sdata=sdata,
+            obs_props=obs_props,
             grid_outputs=outputs,
             angles=angles,
-            freqs=freqs,
-            redshift=redshift,
-            plane=plane,
             memory = args.memory,
             task_req_mem=req_mem
             )

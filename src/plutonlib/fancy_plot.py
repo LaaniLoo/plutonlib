@@ -154,16 +154,16 @@ def _plot_style(fig_size):
         yield
 
 #---SB specific helpers---#
-def _get_sbdata_entries(sim_dict,angle_dict,freq,redshift):
+def _get_sbdata_entries(sim_dict,angle_dict,obs_props,freq):
     """Groups output, angle, freq and redshift data per simulation, 
-    returns a dict keyed by a tuple -> (sim, output, tuple(angles))"""
+    returns a dict keyed by a tuple -> (sim, output, tuple(angle))"""
     entries = {}
     for sdata, outputs in sim_dict.items():
         for output in outputs:
-            for angles in angle_dict[sdata]: #load all the entries first
-                if not isinstance(angles,list): 
-                    raise ValueError(f"Anlges ({angles}) in entry are not in nested list format e.g. [[0,0,0]]")
-                entries[(sdata, output, tuple(angles))] = sdata.load_sb_data(output, angles, freq, redshift)
+            for angle in angle_dict[sdata]: #load all the entries first
+                if not isinstance(angle,list): 
+                    raise ValueError(f"Angle ({angle}) in entry are not in nested list format e.g. [[0,0,0]]")
+                entries[(sdata, output, tuple(angle))] = sdata.load_sb_data(obs_props,output,freq)    
     return entries
 
 def _set_vlim_contours_sb(pdata,sb_entries,freq_tuple=None):
@@ -208,7 +208,7 @@ def _im_2d_fluid(sdata,pdata,**kwargs):
     Y = fluid_data[pdata.coord_choice[1]]
     pdata.im = ax.pcolormesh(X,Y,vars_data,cmap=pdata.get_colourmap(var_name = pdata.var_name),vmin=pdata.vmin,vmax=pdata.vmax)
 
-def _im_2d_sb(entry,angles,pdata,freqs=None,**kwargs):
+def _im_2d_sb(entry,angle,pdata,freqs=None,**kwargs):
     ax = pdata.axes[pdata.plot_idx]
 
     if pdata.var_name == 'sb':
@@ -246,7 +246,7 @@ def _im_2d_sb(entry,angles,pdata,freqs=None,**kwargs):
             cmap="turbo",
         )
     ax.annotate(
-        f"x={angles[0]}° y={angles[1]}° z={angles[2]}°",
+        f"x={angle[0]}° y={angle[1]}° z={angle[2]}°",
         xy=(0.032, 0.98),
         xycoords=ax.transAxes,
         xytext=(0, 0),          # fixed offset from top
@@ -280,7 +280,7 @@ def _im_scatter_particles(sdata,pdata,tr_cut=None,**kwargs):
 
 def _scatter_splines_1D(spline_data,sdata,pdata,tick_axis,query_points=None,use_sb =False):
     if use_sb:
-        dx,dz = np.diff(spline_data["jet_splines"][:,0]), np.diff(spline_data["jet_splines"][:,1]) 
+        dx,dz = np.diff(spline_data["splines"][:,0]), np.diff(spline_data["splines"][:,1]) 
         var_data = spline_data["log_sb_spline"]
         tick_coord = f"grid_m{tick_axis}"
     else:
@@ -344,8 +344,8 @@ def _overlay_splines_2D(spline_data,pdata,labels = [f"Top jet",f"Bottom jet"],se
         ax.plot(top[:,0],top[:,1],"k:",linewidth = 2,label = labels[0]) #plot the top splines
         ax.plot(bot[:,0],bot[:,1],"k--",linewidth = 1.5, label = labels[1]) #plot the bottom splines
     else:
-        jet_splines = spline_data["jet_splines"]
-        ax.plot(jet_splines[:,0],jet_splines[:,1],"k--",linewidth = 1.5, label = labels[0])
+        splines = spline_data["splines"]
+        ax.plot(splines[:,0],splines[:,1],"k--",linewidth = 1.5, label = labels[0])
 
 #---Labels/other---#
 def _labels_2D(sdata,pdata):
@@ -607,14 +607,16 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
         plt.close(pdata.fig) 
     return pdata
 
-def sb(sim_dict, angle_dict,freq,redshift,fname=None,query_points=None, **kwargs):
+def sb(sim_dict,angle_dict,obs_props,freq=None,fname=None,query_points=None, **kwargs):
+    freq = obs_props.freqs[0].value if freq is None else freq
+
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
 
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
     
-    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift) #gets all grouped sbdata
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,obs_props=obs_props,freq=freq) #gets all grouped sbdata
 
     sim_dict_angles = { #subplot size should be output*angles
         sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
@@ -630,11 +632,11 @@ def sb(sim_dict, angle_dict,freq,redshift,fname=None,query_points=None, **kwargs
         for sdata, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
-                for angles in angle_dict[sdata]:
-                    entry = entries[(sdata, output, tuple(angles))]
+                for angle in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angle))]
                     pdata.output    = output
 
-                    _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
+                    _im_2d_sb(entry=entry,angle=angle,pdata=pdata)
                     
                     if query_points is not None:
                         query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
@@ -653,16 +655,17 @@ def sb(sim_dict, angle_dict,freq,redshift,fname=None,query_points=None, **kwargs
         plt.close(pdata.fig) 
     return pdata
 
-def sb_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
+def sb_splines(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname=None,query_points=None,**kwargs):
     path_params = path_params or pl_splines.PathParams()
-    
+    freq = obs_props.freqs[0].value if freq is None else freq
+
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
 
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
 
-    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift)
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,obs_props=obs_props,freq=freq)
 
     sim_dict_angles = { #subplot size should be output*angles
         sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
@@ -678,18 +681,17 @@ def sb_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,que
         for sdata, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
-                for angles in angle_dict[sdata]:
-                    entry = entries[(sdata, output, tuple(angles))]
+                for angle in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angle))]
                     pdata.output    = output
 
-                    _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
+                    _im_2d_sb(entry=entry,angle=angle,pdata=pdata)
                     try:
                         spline_data = pl_splines.get_jet_splines_sb(
                             sdata=sdata,
+                            obs_props=obs_props,
                             grid_output=output,
                             freq=freq,
-                            redshift=redshift,
-                            angle=angles,
                             path_params=path_params,
                         )
                         ax = pdata.axes[pdata.plot_idx]
@@ -697,7 +699,7 @@ def sb_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,que
                         ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
                     except ValueError as e:
                         if "no minimum-cost path was found to the specified end point" in str(e):
-                            print(f"Skipping angles = {angles} due to no minimum-cost path...")
+                            print(f"Skipping angle = {angle} due to no minimum-cost path...")
                         else:
                             raise
                     if query_points is not None:
@@ -717,16 +719,17 @@ def sb_splines(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,que
         plt.close(pdata.fig) 
     return pdata
 
-def sb_morphology(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,query_points=None,**kwargs):
+def sb_morphology(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname=None,query_points=None,**kwargs):
     path_params = path_params or pl_splines.PathParams()
-    
+    freq = obs_props.freqs[0].value if freq is None else freq
+
     if isinstance(freq,list):
         raise TypeError("Surface brightness plotting only supports single frequency values")
 
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
 
-    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freq,redshift=redshift)
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,obs_props=obs_props,freq=freq)
 
     sim_dict_angles = { #subplot size should be output*angles
         sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
@@ -742,18 +745,17 @@ def sb_morphology(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,
         for sdata, outputs in sim_dict.items():
             pdata.label = True
             for output in outputs:
-                for angles in angle_dict[sdata]:
-                    entry = entries[(sdata, output, tuple(angles))]
+                for angle in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angle))]
                     pdata.output    = output
 
-                    _im_2d_sb(entry=entry,angles=angles,pdata=pdata)
+                    _im_2d_sb(entry=entry,angle=angle,pdata=pdata)
                     try:
                         spline_data = pl_splines.get_jet_splines_sb(
                             sdata=sdata,
+                            obs_props=obs_props,
                             grid_output=output,
                             freq=freq,
-                            redshift=redshift,
-                            angle=angles,
                             path_params=path_params,
                         )
                         ax = pdata.axes[pdata.plot_idx]
@@ -767,7 +769,7 @@ def sb_morphology(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,
                         ax.legend(loc="lower left",fontsize=0.8*_get_fontsize(fig_size,"text"))
                     except ValueError as e:
                         if "no minimum-cost path was found to the specified end point" in str(e):
-                            print(f"Skipping angles = {angles} due to no minimum-cost path...")
+                            print(f"Skipping angle = {angle} due to no minimum-cost path...")
                         else:
                             raise
                     if query_points is not None:
@@ -787,11 +789,11 @@ def sb_morphology(sim_dict,angle_dict,freq,redshift,path_params=None,fname=None,
         plt.close(pdata.fig) 
     return pdata
 
-def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=None, **kwargs):
+def spectral_idx(sim_dict,angle_dict,obs_props,fname=None,query_points=None,**kwargs):
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
-    
-    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,freq=freqs[0],redshift=redshift)
+    freqs = obs_props.freqs.value
+    entries = _get_sbdata_entries(sim_dict=sim_dict,angle_dict=angle_dict,obs_props=obs_props,freq=freqs[0].value)
 
     sim_dict_angles = { #subplot size should be output*angles
         sdata: list(range(len(sim_dict[sdata]) * len(angle_dict[sdata]))) 
@@ -807,11 +809,11 @@ def spectral_idx(sim_dict, angle_dict,freqs,redshift,fname=None,query_points=Non
         for sdata, outputs in sim_dict.items():
             pdata.label = True            
             for output in outputs:
-                for angles in angle_dict[sdata]:
-                    entry = entries[(sdata, output, tuple(angles))]
+                for angle in angle_dict[sdata]:
+                    entry = entries[(sdata, output, tuple(angle))]
                     pdata.output = output
 
-                    _im_2d_sb(entry=entry,angles=angles,pdata=pdata,freqs=freqs)
+                    _im_2d_sb(entry=entry,angle=angle,pdata=pdata,freqs=freqs)
 
                     if query_points is not None:
                         query_points_rotated = _rotate_query_points(sdata=sdata,query_points=query_points,rot_mat=entry['rot_mat'])
@@ -855,7 +857,9 @@ def fluid_1D_tr_spl(sdata,var,grid_output,tick_axis='x',tr_stop=0.2,fname=None,q
         plt.close(pdata.fig) 
         return pdata
 
-def sb_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
+def sb_1D(sdata,grid_output,obs_props,freq=None,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
+    freq = obs_props.freqs[0].value if freq is None else freq
+
     fig_size = kwargs.get('fig_size',7)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict={sdata:[grid_output]},cbar=False,use_grid_limits=False,**kwargs)
@@ -865,11 +869,11 @@ def sb_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',f
         pdata.fig_size = fig_size
         spline_data = pl_splines.get_jet_splines_sb(
             sdata=sdata,
+            obs_props=obs_props,
             grid_output=grid_output,
-            angle=angle,
             freq=freq,
-            redshift=redshift,
-            path_params=path_params)
+            path_params=path_params,
+        )
 
         _scatter_splines_1D(spline_data,sdata,pdata,tick_axis,query_points,use_sb=True)
 
@@ -882,7 +886,7 @@ def sb_1D(sdata,grid_output,angle,freq,redshift,path_params=None,tick_axis='x',f
         ax.set_xlabel("Arc length along jet [kpc]", fontsize=label_fontsize)
         ax.legend(fontsize = 0.5*_get_fontsize(pdata.fig_size, "text"),loc='lower left')
         ax.annotate(
-            f"x={angle[0]}° y={angle[1]}° z={angle[2]}°",
+            f"x={obs_props.angle[0]}° y={obs_props.angle[1]}° z={obs_props.angle[2]}°",
             xy=(0.032, 0.98),
             xycoords=ax.transAxes,
             xytext=(0, 0),          # fixed offset from top

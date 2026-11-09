@@ -88,6 +88,11 @@ pip install -e .
 	* functions to determine morphology of jets e.g FR morphology of jets using surface brightness splines in `get_fr_idx_spl` or BT/FR classification string using `classify_morphology`
 	* Set/store and fetch this information using the `JetMorphology` data class
 
+* **`obs_properties`**
+	* Stores the `ObsProperties` data class, used to store PRAiSE radio-observing properties e.g. frequencies, redshift, angle 
+	* Has properties: `pixel_size_kpc`, `beam_size_kpc`, `rot_matrix` etc
+	* Example: `ObsProperties(freqs=[0.15,1.4],redshift=0.05,angle=[0,0,0])`
+
 * **`plot_data`**
   * **PlotData class:** stores plotting state, used to track plotting variables across the plot functions
   * Holds the matplotlib `fig`, `axes` and `gs` (gridspec), plus the current `plot_idx`, `output`, `var_name`, `im` and `label`
@@ -192,7 +197,7 @@ tr1 = 1
 ```
 
 # New simulation data
-* **Surface brightness data as hdf5 (`save_sb_hdf5`)**
+* **Surface brightness data as hdf5 (`plutonlib.surface_brightness.save_sb_hdf5`)**
 	* Saves to simulation run directory as `sbdata.h5` each SB array is per redshift, grid output and angle with a shared grid entry
 ```bash
 ~/pluto-master/Simulations/jet/Q36_v01_a25/sbdata.h5

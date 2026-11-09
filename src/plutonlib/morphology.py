@@ -4,6 +4,7 @@ import plutonlib.analysis as pl_analysis
 from plutonlib.simulation_info import JetInfo,SimInfoSetup
 import plutonlib.splines as pl_splines
 import plutonlib.peaks as pl_peaks
+import plutonlib.morphology as pl_morph
 
 import numpy as np 
 from astropy import units as u
@@ -12,15 +13,6 @@ from dataclasses import dataclass,field,replace
 import pandas as pd
 from pathlib import Path
 
-
-from plutonlib.simulation_info import JetInfo,SimInfoSetup
-from astropy import units as u
-from dataclasses import dataclass,field,fields,replace
-import numpy as np
-
-import plutonlib.peaks as pl_peaks
-import plutonlib.analysis as pl_analysis
-import plutonlib.morphology as pl_morph
 
 @dataclass
 class JetMorphology():
@@ -73,9 +65,27 @@ class JetMorphology():
             l_jets=spline_data["jet_length"].round(3), #NOTE need jet data somehow
             dist_to_brights=d_inj_peak.round(3),
         )
-        
-    # @classmethod
-    # def from_obs_properties():
+
+    @classmethod
+    def from_obs_properties(cls,sdata,obs_props,grid_output,freq=None,path_params=None):
+        """Creates a class instance from ObsProperties object using `from_spline_data` method
+
+        Args:
+            sdata (SimulationData): SimulationData object
+            obs_props (ObsProperties): ObsProperties object
+            grid_output (int): PLUTO grid output number
+            freq (float, Optional): optional freq else ObsProperties.freqs[0]
+            path_params (PathParams, Optional): optional PathParams object for path tracing, see defaults
+
+        """
+        #NOTE defaults to first element of ObsProperties.freqs --> dont think there is a big freq dependence
+        spline_data = pl_splines.get_jet_splines_sb(
+            sdata=sdata,obs_props=obs_props,
+            grid_output=grid_output,freq=freq,
+            path_params=path_params
+            ) 
+
+        return cls.from_spline_data(spline_data)
 
     def __post_init__(self):
         #run the assign unit method from SimInfoSetup to properly assign and convert units

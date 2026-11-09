@@ -747,7 +747,19 @@ def load_particles_hdf5(wdir,part_outputs = None,tr_cut = None,var_choice = None
     return particle_dict
 
 #---Surface brightness----#
-def load_sb_hdf5(sdata, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
+def load_sb_hdf5(sdata,obs_props,grid_outputs,angles,all_freqs=False):
+    """Loads surface brightness data from hdf5, can save this data to simulation run dir using
+    `plutonlib.surface_brightness.save_sb_hdf5`
+
+    Args:
+        sdata (SimulationData): SimulationData object: stored simulation data, wdir etc
+        obs_props (ObsProperties): ObsProperties object: stores redsfhit,freqs etc
+        grid_outputs (list): list of PLUTO grid outputs to load data for
+        angles (nested list [[]]): nested list of 3D angles to load data for e.g. [[0,0,0],[0,0,90]]
+
+    Returns:
+        sbdata: dict containing entires for log_sb, alpha etc from sbdata.h5, keyed as: sbdata[sdata][output][tuple(angle)]
+    """
     file_path = os.path.join(sdata.wdir, f"sbdata.h5")
 
     if not os.path.isfile(file_path):
@@ -758,20 +770,20 @@ def load_sb_hdf5(sdata, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
         if data_file.attrs["run_name"] != sdata.run_name: 
             raise ValueError(f"File {file_path} does not have matching run_name attr, \n{dict(data_file.attrs)}")
 
-        if str(redshift) not in data_file:
-            raise ValueError(f"Redshift {redshift} not found in {file_path}, available: {list(data_file.keys())}")
+        if str(obs_props.redshift) not in data_file:
+            raise ValueError(f"Redshift {obs_props.redshift} not found in {file_path}, available: {list(data_file.keys())}")
 
-        run_data = data_file[str(redshift)]
+        run_data = data_file[str(obs_props.redshift)]
         avail_outputs = [int(k) for k in list(run_data.keys()) if k.isdigit()]
         angles_all = { #dict[output] of all angles at output
             o: [[int(x) for x in k.strip("[]").split(",")] for k in run_data[str(o)].keys()]
             for o in avail_outputs
         }
         file_freqs = list(run_data.attrs["freqs"])
-        freqs = file_freqs if freqs == "all" else freqs
+        freqs = file_freqs if all_freqs else obs_props.freqs.value
         missing_freqs = [f for f in freqs if f not in file_freqs]
         if missing_freqs:
-            raise ValueError(f"Requested freqs {missing_freqs} not found for redshift {redshift}. Available: {file_freqs}")
+            raise ValueError(f"Requested freqs {missing_freqs} not found for redshift {obs_props.redshift}. Available: {file_freqs}")
 
         global_meta = run_data["metadata"]
         delta_r         = global_meta.attrs["delta_r"]
@@ -780,14 +792,14 @@ def load_sb_hdf5(sdata, grid_outputs, angles, freqs, redshift=0.05, plane='xz'):
         omega_beam      = global_meta.attrs["omega_beam"]
         gaussian_kernel = global_meta["gaussian_kernel"][()]
 
-        grid = run_data["grid"][plane]
+        grid = run_data["grid"][obs_props.plane]
         grid_x, grid_y  = grid["grid_x"][()], grid["grid_y"][()]
         grid_mx, grid_my = grid["grid_mx"][()], grid["grid_my"][()]
 
         sb_data = {}
         for output in grid_outputs:
             if str(output) not in run_data:
-                raise ValueError(f"Output {output} not found for redshift {redshift} in {file_path}\n Available outputs: {avail_outputs}")
+                raise ValueError(f"Output {output} not found for redshift {obs_props.redshift} in {file_path}\n Available outputs: {avail_outputs}")
 
             sb_data.setdefault(output, {})
             for angle_set in angles:

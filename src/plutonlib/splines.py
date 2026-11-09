@@ -3,6 +3,7 @@
 import plutonlib.read_write as prw
 # import plutonlib.simulations as ps
 import plutonlib.analysis as pa
+from plutonlib.obs_properties import ObsProperties
 
 import numpy as np
 
@@ -34,11 +35,10 @@ class PathParams:
     def replace(self,**changes):
         return replace(self,**changes)
 
-def path_setup(sdata,grid_output,freq,redshift,angle): #setup required data, POS image
+def path_setup(sdata,obs_props,grid_output,freq=None): #setup required data, POS image
     """Setup all of the sb data required to path trace"""
-    #new method using sim obj
-    sbdata = sdata.load_sb_data(grid_output=grid_output,angles=angle,freq=freq,redshift=redshift) 
-    
+    freq = obs_props.freqs[0].value if freq is None else freq
+    sbdata = sdata.load_sb_data(obs_props=obs_props,grid_output=grid_output,freq=freq) 
     grid_dxy = [sbdata["grid_x"][1] - sbdata["grid_x"][0],sbdata["grid_y"][1] - sbdata["grid_y"][0]]
     grid_mxy = [sbdata["grid_mx"],sbdata["grid_my"]]
     # grid_xy = [obs["grid_x"],obs["grid_y"]]
@@ -53,7 +53,7 @@ def path_setup(sdata,grid_output,freq,redshift,angle): #setup required data, POS
     path_data = {
         "grid_dxy":grid_dxy,
         "grid_mxy":grid_mxy,
-        "angle": angle,
+        "angle": obs_props.angle,
         "rot_mat":sbdata["rot_mat"],
         "inj_xz": inj_xz,
         "inj_pxl": inj_pxl,
@@ -256,23 +256,23 @@ def interpolate_path(path,max_resolution,smoothing):
     return splines
 
 #---Jet splines functions---#
-def get_jet_splines_sb(sdata,grid_output,freq,redshift,angle,path_params):
+def get_jet_splines_sb(sdata,obs_props,grid_output,freq=None,path_params=None):
     """
     Generates splines along the AGN jet and lobe by path tracing a cost-weighted SB image 
 
     Args:
         sdata (SimulationData): SimulationData object
+        obs_props (ObsProperties): ObsProperties object
         grid_output (int): grid output number
-        angle (list): list of angles e.g. [0,0,0]
-        freq (float): frequency value
-        redshift (float): redshift value
+        freq (float): frequency value or first element of ObsProperties.freqs
         params (PathParams, optional): path finding params to use see PathParams. Defaults to None.
 
     Returns:
         dict: spline_data
     """
+    freq = obs_props.freqs[0].value if freq is None else freq
     path_params = path_params or PathParams()
-    setup_data = path_setup(sdata,grid_output,freq,redshift,angle=angle)
+    setup_data = path_setup(sdata,obs_props,grid_output,freq)
     path_data = path_build_with_endpoints(path_data=setup_data,path_params=path_params)
     mx,my = path_data["grid_mxy"]
     grid_dxy = path_data["grid_dxy"]
@@ -503,9 +503,13 @@ def get_jet_splines_tr(sdata,grid_output,tr_stop=0.2):
     }
     return returns
 
-def interp_splines_plutogrid(sdata,grid_output,freq,redshift):
+def interp_splines_plutogrid(sdata,obs_props,grid_output,freq=None,path_params=None):
     """Re-interpolate the sb path to a finer resolution based on the PLUTO grid, used to get fluid vars along sb path"""
-    spline_data = get_jet_splines_sb(sdata,grid_output,[0,0,0],freq,redshift)
+
+    freq = obs_props.freqs[0].value if freq is None else freq
+    path_params = path_params or PathParams()
+    obs_props.replace(angle = [0,0,0]) #set the angle to 0,0,0
+    spline_data = get_jet_splines_sb(sdata,obs_props,grid_output,freq,path_params)
     splines = spline_data["splines"]   # at SB/observing-grid resolution, already physical (x,z) at 0,0,0
 
     # reinterpolate the SB path onto PLUTO's finer arc-length resolution

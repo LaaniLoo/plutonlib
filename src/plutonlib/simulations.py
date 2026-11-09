@@ -247,10 +247,11 @@ class SimulationData(SimulationSetup):
         fluid_data_splines['L_jet'] = spline_data['jet_length'] #TODO add to jet class pls
         return fluid_data_splines
 
-    def load_jet_data_sb(self,freq,redshift,var_choice,grid_output):
+    def load_jet_data_sb(self,obs_props,grid_output,var_choice,freq=None,path_params=None):
         """Same functionality as load_jet_data_tr but path tracing via a cost-weighted SB image, uses interpolation"""
         data_splines = {}
-        interp_data = ps.interp_splines_plutogrid(sdata=self,grid_output=grid_output,freq=freq,redshift=redshift)
+        freq = obs_props.freqs[0].value if freq is None else freq
+        interp_data = ps.interp_splines_plutogrid(sdata=self,obs_props=obs_props,grid_output=grid_output,freq=freq,path_params=path_params)
         temp_data = self.load_fluid_data(var_choice,grid_output=grid_output,load_slice=self.quick_slice_2D('xz'))
         for var in var_choice:
             data_splines[var] = temp_data[var][interp_data['spline_slice_map']]
@@ -282,20 +283,23 @@ class SimulationData(SimulationSetup):
 
         return data
 
-    def load_sb_data(self,grid_output,angles,freq,redshift,plane = 'xz'):
+    def load_sb_data(self,obs_props,grid_output,freq=None):
+        """Loads surface brightness data for single set of angles from ObsProperties obj, see surface_brightness.py"""
+        freq = obs_props.freqs[0].value if freq is None else freq
+        
         data = prw.load_sb_hdf5(
             sdata=self,
+            obs_props=obs_props,
             grid_outputs=[grid_output],
-            angles=[angles],
-            freqs="all", #NOTE this was changed from 'all'
-            redshift=redshift,
-            plane=plane)
+            angles=[obs_props.angle],
+            all_freqs=True
+            )
 
         file_freqs = data['metadata']['freqs']
         if freq not in file_freqs:
-            raise ValueError(f"Requested freq {freq} not found for redshift {redshift}. Available: {file_freqs}")
+            raise ValueError(f"Requested freq {freq} not found for redshift {obs_props.redshift}. Available: {file_freqs}")
 
-        entry = data[self][grid_output][tuple(angles)]
+        entry = data[self][grid_output][tuple(obs_props.angle)]
         obs = entry["obs_properties"]
         sb_data = {
             "freqs": data['metadata']['freqs'],
