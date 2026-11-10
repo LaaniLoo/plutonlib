@@ -419,6 +419,7 @@ def _rotate_row(pdata):
                 ax.set_xlim(pdata.xlim)     
 
 def _query_points_2D(sdata,pdata,query_points,label_all_axes = False):
+    """nested dict keyed by SimulationData, subdict has key = matplotlib marker and value = coords"""
     # plot_idx is assigned as row_start * ncols for the first subplot of each sim
     if pdata.plot_idx != pdata.row_start * pdata.ncols and not label_all_axes: 
         return
@@ -465,9 +466,22 @@ def _save(fname):
     if fname is not None:
         plt.savefig(f"./{fname}.pdf", bbox_inches='tight', dpi=300)
 
+#-----------------------------------------END-HELPERS-----------------------------------------------#
+
 #---Subplot setup---#
 def setup_subplots(sim_dict,cbar=True,use_grid_limits=True,subplot_aspect=None,**kwargs):
-    """Returns a PlotData obj"""
+    """Sets up correct number of subplots where n_plots = n_outputs by default each sim in sim_dict gets
+    its own row, can be chaged with row_len kwarg
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        cbar (bool, optional): set to false to hide colourbar. Defaults to True.
+        use_grid_limits (bool, optional): sets the plot extents and aspect using the grid exctent of the simulation. Defaults to True.
+        subplot_aspect (float, optional): Overwrite the aspect of the subplots. Defaults to None = 0.6.
+
+    Returns:
+        PlotData: PlotData object containing figure -> pdata.fig, axes -> pdata.axes etc
+    """
     plane = kwargs.get('plane') or "xz"
     row_len = kwargs.get('row_len',5) #TODO make pdata?
     arr_type = "nc" #hardcoded array type for 3D plots
@@ -524,6 +538,17 @@ def setup_subplots(sim_dict,cbar=True,use_grid_limits=True,subplot_aspect=None,*
 
 #---2D plotting functions---#
 def fluid(sim_dict,var,fname=None,query_points=None,**kwargs):
+    """Plots simulation fluid variables e.g. rho or prs 
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        var (str): PLUTO fluid variable name e.g. 'rho','prs','vx3'
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict, **kwargs)
@@ -550,6 +575,18 @@ def fluid(sim_dict,var,fname=None,query_points=None,**kwargs):
     return pdata
 
 def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs):
+    """Plots simulation particle varaible with tracer splines fitted 
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        var (str): PLUTO fluid variable name e.g. 'rho','prs','vx3'
+        tr_stop (float): tracer cutoff value for tracer spline fitting
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
     fig_size = kwargs.get('fig_size',5)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict=sim_dict, **kwargs)
@@ -607,7 +644,21 @@ def jet_splines(sim_dict, var,tr_stop=0.2,fname=None,query_points=None,**kwargs)
         plt.close(pdata.fig) 
     return pdata
 
-def sb(sim_dict,angle_dict,obs_props,freq=None,fname=None,query_points=None, **kwargs):
+def sb(sim_dict,angle_dict,obs_props,freq=None,fname=None,query_points=None,**kwargs):
+    """Plots simulation synthetic surface brightness from PRAiSE 
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        angle_dict (dict): dict with SimulationData objs as keys and nested list of angles as values e.g. {sim5:[[0,0,0],[0,0,90]]}
+        obs_props (ObsProperties): ObsProperties data class obj, stores freq, redshift etc 
+        freq (float, optional): Frequency to plot at, must be present in simulation run's sbdata.h5 file, when set to None, uses obs_props.freqs[0]
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
+
     freq = obs_props.freqs[0].value if freq is None else freq
 
     if isinstance(freq,list):
@@ -656,6 +707,21 @@ def sb(sim_dict,angle_dict,obs_props,freq=None,fname=None,query_points=None, **k
     return pdata
 
 def sb_splines(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname=None,query_points=None,**kwargs):
+    """Plots simulation synthetic surface brightness from PRAiSE with sb splines fitted
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        angle_dict (dict): dict with SimulationData objs as keys and nested list of angles as values e.g. {sim5:[[0,0,0],[0,0,90]]}
+        obs_props (ObsProperties): ObsProperties data class obj, stores freq, redshift etc 
+        freq (float, optional): Frequency to plot at, must be present in simulation run's sbdata.h5 file, when set to None, uses obs_props.freqs[0]
+        path_params (PathParams, optional): sb spline fitting PathParams data class obj use if you want to use custom path fitting params else see defautlts
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
+    
     path_params = path_params or pl_splines.PathParams()
     freq = obs_props.freqs[0].value if freq is None else freq
 
@@ -720,6 +786,22 @@ def sb_splines(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname=No
     return pdata
 
 def sb_morphology(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname=None,query_points=None,**kwargs):
+    """Plots simulation synthetic surface brightness from PRAiSE with useful morphology info 
+    e.g FR-idx values and morphology type
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        angle_dict (dict): dict with SimulationData objs as keys and nested list of angles as values e.g. {sim5:[[0,0,0],[0,0,90]]}
+        obs_props (ObsProperties): ObsProperties data class obj, stores freq, redshift etc 
+        freq (float, optional): Frequency to plot at, must be present in simulation run's sbdata.h5 file, when set to None, uses obs_props.freqs[0]
+        path_params (PathParams, optional): sb spline fitting PathParams data class obj use if you want to use custom path fitting params else see defautlts
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
+    
     path_params = path_params or pl_splines.PathParams()
     freq = obs_props.freqs[0].value if freq is None else freq
 
@@ -790,6 +872,20 @@ def sb_morphology(sim_dict,angle_dict,obs_props,freq=None,path_params=None,fname
     return pdata
 
 def spectral_idx(sim_dict,angle_dict,obs_props,fname=None,query_points=None,**kwargs):
+    """Plots simulation synthetic spectral index using ObsProperties freqs and alpha power law index (ObsProperties.alpha_inj).
+    ObsProperties.freqs but have freq pair elements e.g. [0.15,1.11] where sbdata.h5 has the alpha calculation btwn those freqs
+
+    Args:
+        sim_dict (dict): dict with SimulationData objs as keys and output lists as values e.g {sim5: [50,55]}
+        angle_dict (dict): dict with SimulationData objs as keys and nested list of angles as values e.g. {sim5:[[0,0,0],[0,0,90]]}
+        obs_props (ObsProperties): ObsProperties data class obj, stores freqs, redshift etc 
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with sdata as key e.g. {sim:{"x":[50,50]}}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
+    
     if len(sim_dict) != len(angle_dict):
         raise KeyError("Length of sim_dict and angle_dict dont match")
     freqs = obs_props.freqs.value
@@ -834,7 +930,21 @@ def spectral_idx(sim_dict,angle_dict,obs_props,fname=None,query_points=None,**kw
 
 #---1D plotting functions---#
 def fluid_1D_tr_spl(sdata,var,grid_output,tick_axis='x',tr_stop=0.2,fname=None,query_points=None,**kwargs):
-    """Uses tracer splines to plot a 1D profile of a fluid variable along the jet"""
+    """Uses tracer splines to plot a 1D profile of a fluid variable along the jet
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        var (str): PLUTO fluid variable e.g. 'rho', 'prs'
+        grid_output (int): PLUTO simulation output
+        tick_axis (str, optional): When set to 'x' shows the corresponding x values along the arg length. Defaults to 'x'.
+        tr_stop (float): tracer cutoff value for tracer spline fitting
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with name as key e.g. {"$L_{{1a}}$": 1}. Defaults to None.
+
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
     fig_size = kwargs.get('fig_size',7)
     with _plot_style(fig_size):
         pdata = setup_subplots(sim_dict={sdata:[grid_output]},cbar=False,use_grid_limits=False,**kwargs)
@@ -858,6 +968,23 @@ def fluid_1D_tr_spl(sdata,var,grid_output,tick_axis='x',tr_stop=0.2,fname=None,q
         return pdata
 
 def sb_1D(sdata,grid_output,obs_props,freq=None,path_params=None,tick_axis='x',fname=None,query_points=None,**kwargs):
+    """Uses sb splines to plot a 1D profile of a surface brightness along the jet
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        grid_output (int): PLUTO simulation output
+        obs_props (ObsProperties): ObsProperties data class obj, stores freq, redshift etc 
+        freq (float, optional): Frequency to plot at, must be present in simulation run's sbdata.h5 file, when set to None, uses obs_props.freqs[0]
+        path_params (PathParams, optional): sb spline fitting PathParams data class obj use if you want to use custom path fitting params else see defautlts
+        tick_axis (str, optional): When set to 'x' shows the corresponding x values along the arg length. Defaults to 'x'.
+        tr_stop (float): tracer cutoff value for tracer spline fitting
+        fname (str, optional): filename of saved plot without extension. Defaults to None.
+        query_points (dict, optional): dict of optional points to overlay on plot with name as key e.g. {"$L_{{1a}}$": 1}. Defaults to None.
+
+    Returns:
+        PlotData: PlotData object, use PlotData.fig or PlotData.show() to display fig
+    """
+    
     freq = obs_props.freqs[0].value if freq is None else freq
 
     fig_size = kwargs.get('fig_size',7)
@@ -901,6 +1028,14 @@ def sb_1D(sdata,grid_output,obs_props,freq=None,path_params=None,tick_axis='x',f
 
 #---Animations---#
 def animation_fluid(sdata, var_name, load_outputs=None, fps=20, **kwargs):
+    """WIP ploter to generate a gif of fluid variables given a list of grid outputs
+
+    Args:
+        sdata (SimulationData): SimulationData object
+        var_name (str): PLUTO fluid variable e.g. 'rho', 'prs'
+        load_outputs (list, optional): list of grid outputs e.g. [0,5,10,15]. Defaults to None.
+        fps (int, optional): fps of gif. Defaults to 20.
+    """
     def _output_exists(sdata, output):
         try:
             sdata.get_metadata(output)
